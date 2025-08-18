@@ -125,9 +125,9 @@ jobs:
           $deviceIn = "${{ inputs.device }}"
           $ftypeIn  = "${{ inputs.flasher_type }}"
           $regionIn = "${{ inputs.region }}"
-          $file     = Get-Item -Path $env:DOWNLOADED_ZIP
-          $base     = [System.IO.Path]::GetFileNameWithoutExtension($file.Name)
-          $ver      = $base -replace '[^0-9A-Za-z._-]',''
+          $file   = Get-Item -Path $env:DOWNLOADED_ZIP
+          $base   = [System.IO.Path]::GetFileNameWithoutExtension($file.Name)
+          $ver    = $base -replace '[^0-9A-Za-z._-]',''
           if ([string]::IsNullOrWhiteSpace($ver) -or $ver.Length -lt 4) {
             $short = ((Get-FileHash -Path $file.FullName -Algorithm SHA256).Hash).Substring(0,8)
             $ver = (Get-Date -Format "yyyyMMdd") + "-${short}"
@@ -145,59 +145,3 @@ jobs:
           "REGION_FOR_NAME=$regionNorm"   | Out-File -FilePath $env:GITHUB_ENV -Append
           "VERSION=$ver"                  | Out-File -FilePath $env:GITHUB_ENV -Append
           "OTAFILE=$($file.FullName)"     | Out-File -FilePath $env:GITHUB_ENV -Append
-
-      - name: Build flasher (correct paths)
-        shell: pwsh
-        run: |
-          $deviceDisp  = $env:DEVICE_DISPLAY
-          $ftypeDisp   = $env:FTYPE_DISPLAY
-          $regionDisp  = $env:REGION
-          $deviceName  = $env:DEVICE
-          $ftypeName   = $env:FTYPE
-          $regionName  = $env:REGION_FOR_NAME
-          $version     = $env:VERSION
-          $repoRoot    = $env:GITHUB_WORKSPACE
-
-          $outBaseName = if ($regionName) { "$deviceName-$ftypeName-$regionName-$version" } else { "$deviceName-$ftypeName-$version" }
-          "ARTIFACT_NAME=$outBaseName" | Out-File -FilePath $env:GITHUB_ENV -Append
-          $outBase = Join-Path "$env:OUT_DIR" $outBaseName
-          New-Item -ItemType Directory -Path $outBase -Force | Out-Null
-
-          Copy-Item $env:OTAFILE -Destination (Join-Path $outBase "OTA.zip")
-          $placeholderNote = if ($env:USE_PLACEHOLDER -eq '1') { "`nNOTE: Placeholder OTA used for this run." } else { "" }
-          "Device: $deviceDisp`nType: $ftypeDisp`nRegion: $regionDisp`nVersion: $version$placeholderNote" |
-            Out-File -FilePath (Join-Path $outBase "README.txt") -Encoding utf8
-
-          if ($deviceDisp -eq 'Oneplus 13' -and $ftypeDisp -eq 'SuperHybrid Flasher' -and $regionDisp -eq 'GLO') {
-            $srcBaseSuperFs  = "$repoRoot\flasher_scripts\13\oos\super"
-            $srcSuperPackDir = "$repoRoot\super_packers\13"
-            $srcLpmakeDir    = "$repoRoot\lpmake"
-
-            $srcMeta         = Join-Path $srcBaseSuperFs 'META-INF'
-            $srcDtbo         = Join-Path $srcBaseSuperFs 'dtbo_patcher.bat'
-            $srcSuperFlasher = Join-Path $srcBaseSuperFs 'Super.Flasher.bat'
-            $srcSuperOOSBat  = Join-Path $srcSuperPackDir 'super_oos.bat'
-            $srcCygwinDll    = Join-Path $srcLpmakeDir 'cygwin1.dll'
-            $srcLpmakeExe    = Join-Path $srcLpmakeDir 'lpmake.exe'
-
-            foreach ($p in @($srcMeta,$srcDtbo,$srcSuperFlasher,$srcSuperOOSBat,$srcCygwinDll,$srcLpmakeExe)) {
-              if (-not (Test-Path $p)) { throw "Required path not found: $p" }
-            }
-
-            $destHybrid = Join-Path $outBase 'Super Hybrid Flasher'
-            $destSuper  = Join-Path $destHybrid 'Super'
-            New-Item -ItemType Directory -Path $destHybrid -Force | Out-Null
-            New-Item -ItemType Directory -Path $destSuper  -Force | Out-Null
-
-            Copy-Item -Path $srcMeta -Destination $destHybrid -Recurse -Force
-            Copy-Item -Path $srcDtbo, $srcSuperFlasher -Destination $destHybrid -Force
-            Copy-Item -Path $srcSuperOOSBat -Destination $destSuper -Force
-            Copy-Item -Path $srcCygwinDll, $srcLpmakeExe -Destination $destSuper -Force
-            Write-Host "✅ Staged Super Hybrid Flasher + nested Super."
-          } else {
-            Write-Host "⏩ Skipped special staging block."
-          }
-
-          $zipName = "$outBaseName.zip"
-          7z a -tzip "$zipName" "$outBase\*" | Out-Null
-          "ZIP_NAME=$zipName" | Out-File -FilePath $env:GITHUB_ENV -Append
