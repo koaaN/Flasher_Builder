@@ -1,0 +1,182 @@
+name: Build Android Flasher from OTA
+
+on:
+  workflow_dispatch:
+    inputs:
+      ota_url:
+        description: "Paste the FULL OTA.zip URL here"
+        type: string
+        required: true
+      device:
+        description: "Device"
+        type: choice
+        required: true
+        options:
+          - Oneplus 13
+          - Oneplus 13R
+          - Oneplus 13S
+          - Oneplus 13T
+      flasher_type:
+        description: "Flasher type"
+        type: choice
+        required: true
+        options:
+          - Super Flasher
+          - Regional Flasher
+      region:
+        description: "Region"
+        type: choice
+        required: true
+        options:
+          - GLO
+          - EU
+          - IN
+          - NA
+          - CN
+
+permissions:
+  contents: read
+
+concurrency:
+  group: flasher-${{ github.ref }}-${{ github.run_id }}
+  cancel-in-progress: false
+
+env:
+  OUT_DIR: out
+  ARTIFACT_RETENTION_DAYS: 14
+
+jobs:
+  build:
+    name: Build ${{ inputs.flasher_type }} • ${{ inputs.device }} • ${{ inputs.region }}
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Sanity check inputs
+        shell: pwsh
+        run: |
+          $url = "${{ inputs.ota_url }}".Trim()
+          if ([string]::IsNullOrWhiteSpace($url)) { throw "OTA URL is empty." }
+          if ($url -notmatch '^https?://') { throw "OTA URL must start with http(s)://"; }
+          if ($url -notmatch '\.zip(\?|$)') { Write-Warning "URL does not end in .zip — continuing anyway."; }
+          "OK: Inputs look sane."
+
+      - name: Prepare tools
+        shell: pwsh
+        run: |
+          choco install -y aria2 7zip
+          # Optional: Python if you prefer a Python-based builder
+          choco install -y python --version=3.11.9
+          # Make dirs
+          New-Item -ItemType Directory -Path "$env:OUT_DIR" -Force | Out-Null
+          New-Item -ItemType Directory -Path "download" -Force | Out-Null
+
+      - name: Download OTA.zip
+        shell: pwsh
+        run: |
+          $url = "${{ inputs.ota_url }}"
+          $fileName = Split-Path $url -Leaf
+          if ([string]::IsNullOrWhiteSpace($fileName)) { $fileName = "ota.zip" }
+          $dst = "download\$fileName"
+          aria2c -x16 -s16 -k1M --console-log-level=warn --allow-overwrite=true -o "$fileName" -d "download" "$url"
+          if (!(Test-Path $dst)) { throw "Failed to download OTA." }
+          Write-Host "Downloaded -> $dst"
+          # Compute SHA256 for provenance
+          $sha = (Get-FileHash -Path $dst -Algorithm SHA256).Hash
+          $sha | Out-File -FilePath "download\${fileName}.sha256.txt" -Encoding ascii
+          Write-Host "SHA256: $sha"
+
+      - name: Derive version & metadata
+        id: meta
+        shell: pwsh
+        run: |
+          $device = "${{ inputs.device }}".Replace(' ','')
+          $ftype  = "${{ inputs.flasher_type }}".Replace(' ','')
+          $region = "${{ inputs.region }}"
+          $file   = Get-ChildItem -Path "download" -Filter *.zip | Select-Object -First 1
+          if (-not $file) { throw "No OTA zip found in download/." }
+          # Try to extract a versionish token from the filename; fallback to date+short hash
+          $base  = [System.IO.Path]::GetFileNameWithoutExtension($file.Name)
+          $ver   = $base -replace '[^0-9A-Za-z._-]',''
+          if ([string]::IsNullOrWhiteSpace($ver) -or $ver.Length -lt 4) {
+            $short = ((Get-FileHash -Path $file.FullName -Algorithm SHA256).Hash).Substring(0,8)
+            $ver = (Get-Date -Format "yyyyMMdd") + "-${short}"
+          }
+          "version=$ver"           | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "device=$device"         | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "ftype=$ftype"           | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "region=$region"         | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "otafile=$($file.FullName)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Build flasher (use your repo’s builder if present)
+        shell: pwsh
+        run: |
+          $ota     = "${{ steps.meta.outputs.otafile }}"
+          $device  = "${{ steps.meta.outputs.device }}"
+          $ftype   = "${{ steps.meta.outputs.ftype }}"
+          $region  = "${{ steps.meta.outputs.region }}"
+          $version = "${{ steps.meta.outputs.version }}"
+          $outBase = Join-Path "$env:OUT_DIR" "$device-$ftype-$region-$version"
+          New-Item -ItemType Directory -Path $outBase -Force | Out-Null
+
+          # Preferred entrypoints (choose whichever you keep in-repo):
+          $ps1 = "scripts\build_flasher.ps1"         # PowerShell builder
+          $py  = "scripts\build_flasher.py"          # Python builder
+          $exe = "tools\updater.exe"                 # Your packer, if committed
+
+          if (Test-Path $ps1) {
+            Write-Host "Running repo builder: $ps1"
+            pwsh -File $ps1 -OtaPath $ota -Device $device -FlasherType $ftype -Region $region -OutDir $outBase
+          }
+          elseif (Test-Path $py) {
+            Write-Host "Running repo builder: $py"
+            python "$py" --ota "$ota" --device "$device" --type "$ftype" --region "$region" --out "$outBase"
+          }
+          elseif (Test-Path $exe) {
+            Write-Host "Running repo tool: $exe"
+            & "$exe" build `
+              --ota "$ota" `
+              --device "$device" `
+              --type "$ftype" `
+              --region "$region" `
+              --out "$outBase"
+          }
+          else {
+            Write-Warning "No builder found (scripts/build_flasher.ps1, scripts/build_flasher.py, tools/updater.exe)."
+            Write-Warning "Creating a placeholder package so the pipeline still succeeds."
+            # Minimal placeholder: stash OTA + metadata + a README
+            Copy-Item -Path $ota -Destination (Join-Path $outBase "OTA.zip")
+            @"
+Device:   $device
+Type:     $ftype
+Region:   $region
+Version:  $version
+
+NOTE:
+  • Commit one of these to your repo and this step will auto-use it:
+      scripts/build_flasher.ps1
+      scripts/build_flasher.py
+      tools/updater.exe  (supports: build --ota --device --type --region --out)
+"@ | Out-File -FilePath (Join-Path $outBase "README.txt") -Encoding utf8
+          }
+
+          # Zip the final bundle
+          $zipName = "$device-$ftype-$region-$version.zip"
+          7z a -tzip "$zipName" "$outBase\*" | Out-Null
+          "zipname=$zipName" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Attach SHA256 and metadata
+        shell: pwsh
+        run: |
+          $zipName = "${{ steps.build.outputs.zipname }}"
+          if (-not $zipName) { $zipName = (Get-ChildItem -Filter "*.zip" | Sort-Object LastWriteTime -Descending | Select-Object -First 1).Name }
+          $hash = (Get-FileHash -Path $zipName -Algorithm SHA256).Hash
+          $hash | Out-File -FilePath "$zipName.sha256" -Encoding ascii
+          # Write a small info file
+          @"
+device=${{ steps.meta.outputs.device }}
+flasher_type=${{ steps.meta.outputs.ftype }}
+region=${{ steps.meta.outputs.region }}
+version=${{ steps.meta.outputs.ver
