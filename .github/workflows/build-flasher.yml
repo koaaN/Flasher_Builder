@@ -108,10 +108,11 @@ jobs:
           Copy-Item $env:OTAFILE -Destination "$out\OTA.zip"
 
           if ($d -eq 'Oneplus 13' -and $t -eq 'SuperHybrid Flasher' -and $r -eq 'GLO') {
-            $base = "$env:GITHUB_WORKSPACE"
-            $superFs    = "$base\flasher_scripts\13\oos\super"
-            $superPack  = "$base\super_packers\13"
-            $lpmake     = "$base\lpmake"
+            $realRoot = Join-Path $env:GITHUB_WORKSPACE 'Build_Tools'
+
+            $superFs    = "$realRoot\flasher_scripts\13\oos\super"
+            $superPack  = "$realRoot\super_packers\13"
+            $lpmake     = "$realRoot\lpmake"
 
             $destMain = Join-Path $out "Super Hybrid Flasher"
             $destSuper = Join-Path $destMain "Super"
