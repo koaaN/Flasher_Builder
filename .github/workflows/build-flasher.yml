@@ -1,3 +1,4 @@
+
 # .github/workflows/build-flasher.yml
 name: Build Android Flasher from OTA
 
@@ -144,78 +145,3 @@ jobs:
           "REGION_FOR_NAME=$regionNorm"   | Out-File -FilePath $env:GITHUB_ENV -Append
           "VERSION=$ver"                  | Out-File -FilePath $env:GITHUB_ENV -Append
           "OTAFILE=$($file.FullName)"     | Out-File -FilePath $env:GITHUB_ENV -Append
-
-      - name: Build flasher (staging + Oneplus 13 SuperHybrid extras)
-        shell: pwsh
-        run: |
-          $deviceDisp  = $env:DEVICE_DISPLAY
-          $ftypeDisp   = $env:FTYPE_DISPLAY
-          $regionDisp  = $env:REGION
-          $deviceName  = $env:DEVICE
-          $ftypeName   = $env:FTYPE
-          $regionName  = $env:REGION_FOR_NAME
-          $version     = $env:VERSION
-
-          $outBaseName = if ($regionName) { "$deviceName-$ftypeName-$regionName-$version" } else { "$deviceName-$ftypeName-$version" }
-          "ARTIFACT_NAME=$outBaseName" | Out-File -FilePath $env:GITHUB_ENV -Append
-          $outBase = Join-Path "$env:OUT_DIR" $outBaseName
-          New-Item -ItemType Directory -Path $outBase -Force | Out-Null
-
-          Copy-Item $env:OTAFILE -Destination (Join-Path $outBase "OTA.zip")
-          $placeholderNote = if ($env:USE_PLACEHOLDER -eq '1') { "`nNOTE: Placeholder OTA used for this run." } else { "" }
-          "Device: $deviceDisp`nType: $ftypeDisp`nRegion: $regionDisp`nVersion: $version$placeholderNote" |
-            Out-File -FilePath (Join-Path $outBase "README.txt") -Encoding utf8
-
-          $root = $env:GITHUB_WORKSPACE
-          function Find-Dir([string]$pattern) {
-            Get-ChildItem -Path $root -Directory -Recurse -Force -ErrorAction SilentlyContinue |
-              Where-Object { $_.FullName -like $pattern } |
-              Select-Object -First 1 | ForEach-Object { $_.FullName }
-          }
-          $baseSuperFs = Find-Dir("*\flasher_scripts\13\oos\super")
-          $basePack13  = Find-Dir("*\super_packers\13")
-          $baseLpmake  = Find-Dir("*\lpmake")
-
-          if ($deviceDisp -eq 'Oneplus 13' -and $ftypeDisp -eq 'SuperHybrid Flasher' -and $regionDisp -eq 'GLO') {
-            $srcMeta          = Join-Path $baseSuperFs 'META-INF'
-            $srcDtbo          = Join-Path $baseSuperFs 'dtbo_patcher.bat'
-            $srcSuperFlasher  = Join-Path $baseSuperFs 'Super.Flasher.bat'
-            $srcSuperOOSBat   = Join-Path $basePack13  'super_oos.bat'
-            $srcCygwinDll     = Join-Path $baseLpmake  'cygwin1.dll'
-            $srcLpmakeExe     = Join-Path $baseLpmake  'lpmake.exe'
-
-            $destHybrid = Join-Path $outBase 'Super Hybrid Flasher'
-            $destSuper  = Join-Path $destHybrid 'Super'
-            New-Item -ItemType Directory -Path $destHybrid -Force | Out-Null
-            New-Item -ItemType Directory -Path $destSuper -Force | Out-Null
-
-            Copy-Item -Path $srcMeta -Destination $destHybrid -Recurse -Force
-            Copy-Item -Path $srcDtbo, $srcSuperFlasher -Destination $destHybrid -Force
-            Copy-Item -Path $srcSuperOOSBat -Destination $destSuper -Force
-            Copy-Item -Path $srcCygwinDll, $srcLpmakeExe -Destination $destSuper -Force
-          }
-
-          7z a -tzip "$outBaseName.zip" "$outBase\*" | Out-Null
-          "ZIP_NAME=$outBaseName.zip" | Out-File -FilePath $env:GITHUB_ENV -Append
-
-      - name: Attach SHA256 and metadata
-        shell: pwsh
-        run: |
-          $zipName = $env:ZIP_NAME
-          $hash = (Get-FileHash -Path $zipName -Algorithm SHA256).Hash
-          $hash | Out-File -FilePath "$zipName.sha256" -Encoding ascii
-          echo "device=$env:DEVICE_DISPLAY`nflasher_type=$env:FTYPE_DISPLAY`nregion=$env:REGION`nversion=$env:VERSION`nota_url=${{ inputs.ota_url }}`nsha256=$hash" |
-            Out-File -FilePath "BUILD_INFO.txt" -Encoding utf8
-
-      - name: Upload artifact to GitHub
-        if: ${{ inputs.upload_to == 'Artifact on GitHub' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ env.ARTIFACT_NAME }}
-          path: |
-            *.zip
-            *.sha256
-            BUILD_INFO.txt
-            download/*.sha256.txt
-          if-no-files-found: error
-          retention-days: ${{ env.ARTIFACT_RETENTION_DAYS }}
