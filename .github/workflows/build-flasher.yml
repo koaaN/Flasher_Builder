@@ -1,3 +1,4 @@
+# .github/workflows/build-flasher.yml
 name: Build Android Flasher from OTA
 
 on:
@@ -38,7 +39,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: flasher-${{ github.ref }}-${{ github.run_id }}
+  group: flasher-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: false
 
 env:
@@ -67,9 +68,7 @@ jobs:
         shell: pwsh
         run: |
           choco install -y aria2 7zip
-          # Optional: Python if you prefer a Python-based builder
           choco install -y python --version=3.11.9
-          # Make dirs
           New-Item -ItemType Directory -Path "$env:OUT_DIR" -Force | Out-Null
           New-Item -ItemType Directory -Path "download" -Force | Out-Null
 
@@ -83,13 +82,11 @@ jobs:
           aria2c -x16 -s16 -k1M --console-log-level=warn --allow-overwrite=true -o "$fileName" -d "download" "$url"
           if (!(Test-Path $dst)) { throw "Failed to download OTA." }
           Write-Host "Downloaded -> $dst"
-          # Compute SHA256 for provenance
           $sha = (Get-FileHash -Path $dst -Algorithm SHA256).Hash
           $sha | Out-File -FilePath "download\${fileName}.sha256.txt" -Encoding ascii
           Write-Host "SHA256: $sha"
 
       - name: Derive version & metadata
-        id: meta
         shell: pwsh
         run: |
           $device = "${{ inputs.device }}".Replace(' ','')
@@ -97,34 +94,33 @@ jobs:
           $region = "${{ inputs.region }}"
           $file   = Get-ChildItem -Path "download" -Filter *.zip | Select-Object -First 1
           if (-not $file) { throw "No OTA zip found in download/." }
-          # Try to extract a versionish token from the filename; fallback to date+short hash
           $base  = [System.IO.Path]::GetFileNameWithoutExtension($file.Name)
           $ver   = $base -replace '[^0-9A-Za-z._-]',''
           if ([string]::IsNullOrWhiteSpace($ver) -or $ver.Length -lt 4) {
             $short = ((Get-FileHash -Path $file.FullName -Algorithm SHA256).Hash).Substring(0,8)
             $ver = (Get-Date -Format "yyyyMMdd") + "-${short}"
           }
-          "version=$ver"           | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-          "device=$device"         | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-          "ftype=$ftype"           | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-          "region=$region"         | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-          "otafile=$($file.FullName)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "DEVICE=$device"                  | Out-File -FilePath $env:GITHUB_ENV -Append
+          "FTYPE=$ftype"                    | Out-File -FilePath $env:GITHUB_ENV -Append
+          "REGION=$region"                  | Out-File -FilePath $env:GITHUB_ENV -Append
+          "VERSION=$ver"                    | Out-File -FilePath $env:GITHUB_ENV -Append
+          "OTAFILE=$($file.FullName)"       | Out-File -FilePath $env:GITHUB_ENV -Append
+          Write-Host "Device=$device Type=$ftype Region=$region Version=$ver"
 
-      - name: Build flasher (use your repo’s builder if present)
+      - name: Build flasher (repo builder autodetect)
         shell: pwsh
         run: |
-          $ota     = "${{ steps.meta.outputs.otafile }}"
-          $device  = "${{ steps.meta.outputs.device }}"
-          $ftype   = "${{ steps.meta.outputs.ftype }}"
-          $region  = "${{ steps.meta.outputs.region }}"
-          $version = "${{ steps.meta.outputs.version }}"
+          $ota     = $env:OTAFILE
+          $device  = $env:DEVICE
+          $ftype   = $env:FTYPE
+          $region  = $env:REGION
+          $version = $env:VERSION
           $outBase = Join-Path "$env:OUT_DIR" "$device-$ftype-$region-$version"
           New-Item -ItemType Directory -Path $outBase -Force | Out-Null
 
-          # Preferred entrypoints (choose whichever you keep in-repo):
-          $ps1 = "scripts\build_flasher.ps1"         # PowerShell builder
-          $py  = "scripts\build_flasher.py"          # Python builder
-          $exe = "tools\updater.exe"                 # Your packer, if committed
+          $ps1 = "scripts\build_flasher.ps1"
+          $py  = "scripts\build_flasher.py"
+          $exe = "tools\updater.exe"
 
           if (Test-Path $ps1) {
             Write-Host "Running repo builder: $ps1"
@@ -146,7 +142,6 @@ jobs:
           else {
             Write-Warning "No builder found (scripts/build_flasher.ps1, scripts/build_flasher.py, tools/updater.exe)."
             Write-Warning "Creating a placeholder package so the pipeline still succeeds."
-            # Minimal placeholder: stash OTA + metadata + a README
             Copy-Item -Path $ota -Destination (Join-Path $outBase "OTA.zip")
             @"
 Device:   $device
@@ -162,21 +157,39 @@ NOTE:
 "@ | Out-File -FilePath (Join-Path $outBase "README.txt") -Encoding utf8
           }
 
-          # Zip the final bundle
           $zipName = "$device-$ftype-$region-$version.zip"
           7z a -tzip "$zipName" "$outBase\*" | Out-Null
-          "zipname=$zipName" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "ZIP_NAME=$zipName" | Out-File -FilePath $env:GITHUB_ENV -Append
+          Write-Host "Created $zipName"
 
       - name: Attach SHA256 and metadata
         shell: pwsh
         run: |
-          $zipName = "${{ steps.build.outputs.zipname }}"
-          if (-not $zipName) { $zipName = (Get-ChildItem -Filter "*.zip" | Sort-Object LastWriteTime -Descending | Select-Object -First 1).Name }
+          $zipName = $env:ZIP_NAME
+          if (-not $zipName) {
+            $zipName = (Get-ChildItem -Filter "*.zip" | Sort-Object LastWriteTime -Descending | Select-Object -First 1).Name
+          }
           $hash = (Get-FileHash -Path $zipName -Algorithm SHA256).Hash
           $hash | Out-File -FilePath "$zipName.sha256" -Encoding ascii
-          # Write a small info file
+
           @"
-device=${{ steps.meta.outputs.device }}
-flasher_type=${{ steps.meta.outputs.ftype }}
-region=${{ steps.meta.outputs.region }}
-version=${{ steps.meta.outputs.ver
+device=$($env:DEVICE)
+flasher_type=$($env:FTYPE)
+region=$($env:REGION)
+version=$($env:VERSION)
+ota_url=${{ inputs.ota_url }}
+artifact=$zipName
+sha256=$hash
+"@ | Out-File -FilePath "BUILD_INFO.txt" -Encoding utf8
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.DEVICE }}-${{ env.FTYPE }}-${{ env.REGION }}-${{ env.VERSION }}
+          path: |
+            *.zip
+            *.sha256
+            BUILD_INFO.txt
+            download/*.sha256.txt
+          if-no-files-found: error
+          retention-days: ${{ env.ARTIFACT_RETENTION_DAYS }}
