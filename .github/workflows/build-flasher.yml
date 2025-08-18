@@ -75,8 +75,8 @@ jobs:
             "USE_PLACEHOLDER=1" | Out-File -FilePath $env:GITHUB_ENV -Append
             Write-Host "No OTA URL provided -> using placeholder ZIP."
           } else {
-            if ($url -notmatch '^https?://') { throw "OTA URL must start with http(s)://". }
-            if ($url -notmatch '\.zip(\?|$)') { Write-Warning "URL does not end with .zip — continuing anyway." }
+            if ($url -notmatch '^https?://') { throw "OTA URL must start with http(s)://"; }
+            if ($url -notmatch '\.zip(\?|$)') { Write-Warning "URL does not end with .zip — continuing anyway."; }
             "USE_PLACEHOLDER=0" | Out-File -FilePath $env:GITHUB_ENV -Append
           }
 
@@ -155,8 +155,11 @@ jobs:
           $ftypeName   = $env:FTYPE
           $regionName  = $env:REGION_FOR_NAME
           $version     = $env:VERSION
+
+          # Output base folder (omit region token when NONE)
           $outBaseName = if ($regionName) { "$deviceName-$ftypeName-$regionName-$version" } else { "$deviceName-$ftypeName-$version" }
-          $outBase     = Join-Path "$env:OUT_DIR" $outBaseName
+          "ARTIFACT_NAME=$outBaseName" | Out-File -FilePath $env:GITHUB_ENV -Append
+          $outBase = Join-Path "$env:OUT_DIR" $outBaseName
           New-Item -ItemType Directory -Path $outBase -Force | Out-Null
 
           # Always include OTA + README (placeholder-aware)
@@ -168,20 +171,18 @@ jobs:
           # === SPECIAL: Oneplus 13 + SuperHybrid Flasher + GLO ===
           if ($deviceDisp -eq 'Oneplus 13' -and $ftypeDisp -eq 'SuperHybrid Flasher' -and $regionDisp -eq 'GLO') {
             $repoRoot = (Get-Location).Path
-            # Source roots
+            # Sources
             $srcBaseSuperFs   = Join-Path $repoRoot 'Build_Tools\flasher_scripts\13\oos\super'
             $srcMeta          = Join-Path $srcBaseSuperFs 'META-INF'
             $srcDtbo          = Join-Path $srcBaseSuperFs 'dtbo_patcher.bat'
             $srcSuperFlasher  = Join-Path $srcBaseSuperFs 'Super.Flasher.bat'
-
             $srcSuperPackDir  = Join-Path $repoRoot 'Build_Tools\super_packers\13'
             $srcSuperOOSBat   = Join-Path $srcSuperPackDir 'super_oos.bat'
-
             $srcLpmakeDir     = Join-Path $repoRoot 'Build_Tools\lpmake'
             $srcCygwinDll     = Join-Path $srcLpmakeDir 'cygwin1.dll'
             $srcLpmakeExe     = Join-Path $srcLpmakeDir 'lpmake.exe'
 
-            # Validate sources
+            # Validate
             if (!(Test-Path $srcMeta)) { throw "Required folder not found: $srcMeta" }
             if (!(Test-Path $srcDtbo)) { throw "Required file not found: $srcDtbo" }
             if (!(Test-Path $srcSuperFlasher)) { throw "Required file not found: $srcSuperFlasher" }
@@ -189,7 +190,7 @@ jobs:
             if (!(Test-Path $srcCygwinDll)) { throw "Required file not found: $srcCygwinDll" }
             if (!(Test-Path $srcLpmakeExe)) { throw "Required file not found: $srcLpmakeExe" }
 
-            # Destination folders
+            # Destinations
             $destHybrid = Join-Path $outBase 'Super Hybrid Flasher'
             $destSuper  = Join-Path $destHybrid 'Super'
             New-Item -ItemType Directory -Path $destHybrid -Force | Out-Null
@@ -203,10 +204,10 @@ jobs:
             Copy-Item -Path $srcSuperOOSBat -Destination $destSuper -Force
             Copy-Item -Path $srcCygwinDll, $srcLpmakeExe -Destination $destSuper -Force
 
-            Write-Host "Staged 'Super Hybrid Flasher' + nested 'Super' with META-INF, dtbo_patcher.bat, Super.Flasher.bat, super_oos.bat, cygwin1.dll, lpmake.exe"
+            Write-Host "Staged 'Super Hybrid Flasher' + nested 'Super' (META-INF, dtbo_patcher.bat, Super.Flasher.bat, super_oos.bat, cygwin1.dll, lpmake.exe)."
           }
 
-          # Package bundle
+          # Package
           $zipName = "$outBaseName.zip"
           7z a -tzip "$zipName" "$outBase\*" | Out-Null
           "ZIP_NAME=$zipName" | Out-File -FilePath $env:GITHUB_ENV -Append
@@ -269,7 +270,7 @@ jobs:
         if: ${{ inputs.upload_to == 'Artifact on GitHub' }}
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.DEVICE }}${{ env.REGION_FOR_NAME && format('-{0}', env.REGION_FOR_NAME) || '' }}-${{ env.FTYPE }}-${{ env.VERSION }}
+          name: ${{ env.ARTIFACT_NAME }}
           path: |
             *.zip
             *.sha256
