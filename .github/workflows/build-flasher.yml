@@ -1,154 +1,127 @@
-name: Build Android Flasher from OTA
+name: Build Flasher Package
 
 on:
   workflow_dispatch:
     inputs:
-      ota_url:
-        description: "Paste the FULL OTA.zip URL here (leave empty to dry-run with a placeholder)"
-        type: string
+      DEVICE:
+        description: "Device (e.g., Oneplus13, Oneplus13R, Oneplus13S, Oneplus13T)"
+        required: true
+        default: Oneplus13
+      DEVICE_DISPLAY:
+        description: "Display name (e.g., Oneplus 13)"
+        required: true
+        default: Oneplus 13
+      FTYPE:
+        description: "Flasher type (e.g., SuperHybridFlasher)"
+        required: true
+        default: SuperHybridFlasher
+      FTYPE_DISPLAY:
+        description: "Flasher display name"
+        required: true
+        default: SuperHybrid Flasher
+      REGION:
+        description: "Region (e.g., EU, GLO, IN, NA)"
+        required: true
+        default: GLO
+      REGION_FOR_NAME:
+        description: "Region suffix in folder name (blank for NONE)"
         required: false
-      device:
-        description: "Device"
-        type: choice
+        default: GLO
+      VERSION:
+        description: "Version label"
         required: true
-        options:
-          - Oneplus 13
-          - Oneplus 13R
-          - Oneplus 13S
-          - Oneplus 13T
-      flasher_type:
-        description: "Flasher type"
-        type: choice
+        default: ota-placeholder
+      USE_PLACEHOLDER:
+        description: "Use placeholder OTA (1 = yes, 0 = no)"
         required: true
-        options:
-          - Super Flasher
-          - Regional Flasher
-          - SuperHybrid Flasher
-          - RegionalHybrid Flasher
-          - SuperHybrid SunOS Flasher
-      region:
-        description: "Region (choose NONE only for 'SuperHybrid SunOS Flasher')"
-        type: choice
-        required: true
-        options:
-          - GLO
-          - EU
-          - IN
-          - NA
-          - CN
-          - NONE
-      upload_to:
-        description: "Upload To"
-        type: choice
-        required: true
-        options:
-          - Artifact on GitHub
-
-permissions:
-  contents: read
-
-env:
-  OUT_DIR: out
-  ARTIFACT_RETENTION_DAYS: 14
+        default: "1"
 
 jobs:
-  build:
-    name: Build ${{ inputs.flasher_type }} • ${{ inputs.device }} • ${{ inputs.region }}
+  build-flasher:
     runs-on: windows-latest
+
+    env:
+      ARTIFACT_RETENTION_DAYS: 14
+      OUT_DIR: out
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          path: .  # No nesting issue
-
-      - name: Prepare and validate input
-        shell: pwsh
-        run: |
-          $url = "${{ inputs.ota_url }}".Trim()
-          if ([string]::IsNullOrWhiteSpace($url)) {
-            "USE_PLACEHOLDER=1" | Out-File -FilePath $env:GITHUB_ENV -Append
-          } else {
-            "USE_PLACEHOLDER=0" | Out-File -FilePath $env:GITHUB_ENV -Append
-          }
-
-          if ("${{ inputs.flasher_type }}" -eq "SuperHybrid SunOS Flasher" -and "${{ inputs.region }}" -ne "NONE") {
-            throw "Region must be NONE for SuperHybrid SunOS Flasher"
-          }
 
       - name: Install tools
-        shell: pwsh
-        run: |
-          choco install -y aria2 7zip
-          New-Item -ItemType Directory -Force -Path "download", "$env:OUT_DIR" | Out-Null
+        run: choco install -y aria2 7zip
 
-      - name: Download or create placeholder OTA
-        shell: pwsh
+      - name: Define environment variables
         run: |
-          if ($env:USE_PLACEHOLDER -eq '1') {
-            Set-Content -Path "download\PLACEHOLDER.txt" -Value "Placeholder OTA"
-            Compress-Archive -Path "download\PLACEHOLDER.txt" -DestinationPath "download\ota-placeholder.zip" -Force
-            "OTAFILE=$PWD\download\ota-placeholder.zip" | Out-File -FilePath $env:GITHUB_ENV -Append
+          $env:OTAFILE = if ($env:USE_PLACEHOLDER -eq '1') {
+            "download/ota-placeholder.zip"
           } else {
-            $url = "${{ inputs.ota_url }}"
-            $file = "download\OTA.zip"
-            aria2c -x16 -s16 -k1M -o "OTA.zip" -d "download" "$url"
-            "OTAFILE=$PWD\$file" | Out-File -FilePath $env:GITHUB_ENV -Append
+            "download/real-ota.zip"
           }
+          echo "OTAFILE=$($env:OTAFILE)" >> $env:GITHUB_ENV
 
-      - name: Set OTA metadata
-        shell: pwsh
+      - name: Prepare output folder
         run: |
-          $deviceDisp = "${{ inputs.device }}"
-          $ftypeDisp = "${{ inputs.flasher_type }}"
-          $regionDisp = "${{ inputs.region }}"
-          $device = $deviceDisp -replace ' ', ''
-          $ftype = $ftypeDisp -replace ' ', ''
-          $region = if ($regionDisp -eq 'NONE') { '' } else { $regionDisp }
-          $date = Get-Date -Format "yyyyMMdd"
-          $version = "$date-$device-$ftype"
+          $deviceDisp  = "${{ github.event.inputs.DEVICE_DISPLAY }}"
+          $ftypeDisp   = "${{ github.event.inputs.FTYPE_DISPLAY }}"
+          $regionDisp  = "${{ github.event.inputs.REGION }}"
+          $deviceName  = "${{ github.event.inputs.DEVICE }}"
+          $ftypeName   = "${{ github.event.inputs.FTYPE }}"
+          $regionName  = "${{ github.event.inputs.REGION_FOR_NAME }}"
+          $version     = "${{ github.event.inputs.VERSION }}"
+          $outName = if ($regionName) { "$deviceName-$ftypeName-$regionName-$version" } else { "$deviceName-$ftypeName-$version" }
+          echo "ARTIFACT_NAME=$outName" >> $env:GITHUB_ENV
 
-          $folderName = if ($region) { "$device-$ftype-$region-$version" } else { "$device-$ftype-$version" }
+          $outPath = Join-Path $env:OUT_DIR $outName
+          echo "OUT_PATH=$outPath" >> $env:GITHUB_ENV
 
-          "DEVICE_DISPLAY=$deviceDisp" | Out-File -FilePath $env:GITHUB_ENV -Append
-          "FTYPE_DISPLAY=$ftypeDisp" | Out-File -FilePath $env:GITHUB_ENV -Append
-          "REGION=$regionDisp" | Out-File -FilePath $env:GITHUB_ENV -Append
-          "FOLDER_NAME=$folderName" | Out-File -FilePath $env:GITHUB_ENV -Append
+          New-Item -ItemType Directory -Path $outPath -Force | Out-Null
 
-      - name: Stage flasher output
-        shell: pwsh
+          Copy-Item $env:OTAFILE -Destination (Join-Path $outPath "OTA.zip")
+
+          $note = if ("${{ github.event.inputs.USE_PLACEHOLDER }}" -eq '1') { "`nNOTE: Placeholder OTA used." } else { "" }
+          "Device: $deviceDisp`nType: $ftypeDisp`nRegion: $regionDisp`nVersion: $version$note" |
+            Out-File -FilePath (Join-Path $outPath "README.txt") -Encoding utf8
+
+      - name: Run build script based on device/region
+        shell: cmd
         run: |
-          $output = Join-Path $env:OUT_DIR $env:FOLDER_NAME
-          New-Item -ItemType Directory -Force -Path $output | Out-Null
+          SETLOCAL ENABLEDELAYEDEXPANSION
+          SET DEVICE=${{ github.event.inputs.DEVICE }}
+          SET REGION=${{ github.event.inputs.REGION }}
+          SET REGION_SUFFIX=${{ github.event.inputs.REGION_FOR_NAME }}
+          SET VERSION=${{ github.event.inputs.VERSION }}
+          SET OUT_NAME=%DEVICE%-%FTYPE%-%REGION_SUFFIX%-%VERSION%
+          SET OUT_DIR=out
+          SET OUT_PATH=%OUT_DIR%\%OUT_NAME%
+          SET ZIP_PATH=%OUT_NAME%.zip
 
-          Copy-Item $env:OTAFILE -Destination "$output\OTA.zip"
-          $note = if ($env:USE_PLACEHOLDER -eq '1') { "`nNOTE: Placeholder OTA." } else { "" }
+          IF "%REGION%"=="EU"  SET BLOAT_DIR=bloat\13\EUGLO_BLOAT
+          IF "%REGION%"=="GLO" SET BLOAT_DIR=bloat\13\EUGLO_BLOAT
+          IF "%REGION%"=="IN"  SET BLOAT_DIR=bloat\13\IN_BLOAT
+          IF "%REGION%"=="NA"  SET BLOAT_DIR=bloat\13\NA_BLOAT
 
-          "Device: $env:DEVICE_DISPLAY`nType: $env:FTYPE_DISPLAY`nRegion: $env:REGION$note" |
-            Out-File -FilePath "$output\README.txt" -Encoding utf8
+          :: Copy bloat files to Super folder if present
+          IF EXIST "%BLOAT_DIR%\my_preload.img" (
+            COPY /Y "%BLOAT_DIR%\my_preload.img" "%OUT_PATH%\SuperHybrid Flasher\super\"
+          )
+          IF EXIST "%BLOAT_DIR%\my_company.img" (
+            COPY /Y "%BLOAT_DIR%\my_company.img" "%OUT_PATH%\SuperHybrid Flasher\super\"
+          )
 
-          # --- Special case: Oneplus 13 + SuperHybrid Flasher + GLO ---
-          if ($env:DEVICE_DISPLAY -eq 'Oneplus 13' -and $env:FTYPE_DISPLAY -eq 'SuperHybrid Flasher' -and $env:REGION -eq 'GLO') {
-            $superFs = "flasher_scripts\13\oos\super"
-            $superPk = "super_packers\13"
-            $lpmake  = "lpmake"
+          :: Run the correct .bat script
+          IF "%DEVICE%"=="Oneplus13"  CALL build_scripts\13\SUPERHYBRID_FULL_SUPERBUILD.bat
+          IF "%DEVICE%"=="Oneplus13R" CALL build_scripts\13R\SUPERHYBRID_FULL_SUPERBUILD.bat
+          IF "%DEVICE%"=="Oneplus13S" CALL build_scripts\13S\SUPERHYBRID_FULL_SUPERBUILD.bat
+          IF "%DEVICE%"=="Oneplus13T" CALL build_scripts\13T\SUPERHYBRID_FULL_SUPERBUILD.bat
 
-            $destMain  = Join-Path $output 'Super Hybrid Flasher'
-            $destSuper = Join-Path $destMain 'Super'
-            New-Item -ItemType Directory -Force -Path $destMain, $destSuper | Out-Null
+      - name: Zip output
+        run: |
+          7z a -tzip "${{ env.ARTIFACT_NAME }}.zip" "${{ env.OUT_PATH }}\SuperHybrid Flasher\*"
 
-            Copy-Item "$superFs\META-INF" -Destination $destMain -Recurse -Force
-            Copy-Item "$superFs\dtbo_patcher.bat", "$superFs\Super_Flasher.bat" -Destination $destMain -Force
-            Copy-Item "$superPk\super_oos.bat" -Destination $destSuper -Force
-            Copy-Item "$lpmake\cygwin1.dll", "$lpmake\lpmake.exe" -Destination $destSuper -Force
-
-            Write-Host "Staged special content for Oneplus 13 + SuperHybrid Flasher + GLO"
-          }
-
-      - name: Upload output folder as GitHub Artifact
+      - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.FOLDER_NAME }}
-          path: ${{ env.OUT_DIR }}/${{ env.FOLDER_NAME }}
-          if-no-files-found: error
+          name: ${{ env.ARTIFACT_NAME }}
+          path: "${{ env.ARTIFACT_NAME }}.zip"
           retention-days: ${{ env.ARTIFACT_RETENTION_DAYS }}
