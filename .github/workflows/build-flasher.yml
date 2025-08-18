@@ -1,4 +1,3 @@
-# .github/workflows/build-flasher.yml
 name: Build Android Flasher from OTA
 
 on:
@@ -135,16 +134,17 @@ jobs:
           "ARTIFACT_NAME=$($outBase -replace '.*\\', '')" | Out-File -FilePath $env:GITHUB_ENV -Append
           New-Item -ItemType Directory -Path $outBase -Force | Out-Null
 
-          # Include OTA.zip and README
+          # Always include OTA.zip and README
           Copy-Item $env:OTAFILE -Destination "$outBase\OTA.zip"
           "Device: $env:DEVICE_DISPLAY`nType: $env:FTYPE_DISPLAY`nRegion: $env:REGION`nVersion: $env:VERSION" |
             Out-File -FilePath "$outBase\README.txt" -Encoding utf8
 
           # Special case: Oneplus 13 + SuperHybrid Flasher + GLO
           if ($env:DEVICE_DISPLAY -eq 'Oneplus 13' -and $env:FTYPE_DISPLAY -eq 'SuperHybrid Flasher' -and $env:REGION -eq 'GLO') {
-            $baseSuper = "flasher_scripts\13\oos\super"
-            $basePack  = "super_packers\13"
-            $baseLpm   = "lpmake"
+            $root = $env:GITHUB_WORKSPACE
+            $baseSuper = Join-Path $root "flasher_scripts\13\oos\super"
+            $basePack  = Join-Path $root "super_packers\13"
+            $baseLpm   = Join-Path $root "lpmake"
 
             $srcMeta = Join-Path $baseSuper 'META-INF'
             $srcDtbo = Join-Path $baseSuper 'dtbo_patcher.bat'
