@@ -34,6 +34,15 @@ on:
           - IN
           - NA
           - CN
+      upload_to:
+        description: "Upload To"
+        type: choice
+        required: true
+        options:
+          - Sourceforge
+          - Daniels Server
+          - Both Sourceforge & Daniels Server
+          - Artifact on GitHub
 
 permissions:
   contents: read
@@ -110,6 +119,7 @@ jobs:
           $outBase = Join-Path "$env:OUT_DIR" "$device-$ftype-$region-$version"
           New-Item -ItemType Directory -Path $outBase -Force | Out-Null
 
+          # TODO: replace with your real builder; placeholder bundles the OTA + README
           Copy-Item $env:OTAFILE -Destination (Join-Path $outBase "OTA.zip")
           "Device: $device`nType: $ftype`nRegion: $region`nVersion: $version" |
             Out-File -FilePath (Join-Path $outBase "README.txt") -Encoding utf8
@@ -127,7 +137,54 @@ jobs:
           echo "device=$env:DEVICE`nflasher_type=$env:FTYPE`nregion=$env:REGION`nversion=$env:VERSION`nota_url=${{ inputs.ota_url }}`nartifact=$zipName`nsha256=$hash" |
             Out-File -FilePath "BUILD_INFO.txt" -Encoding utf8
 
-      - name: Upload artifact
+      # ---------- Optional uploads ----------
+      - name: Prepare SSH keys (if needed)
+        if: ${{ inputs.upload_to == 'Sourceforge' || inputs.upload_to == 'Daniels Server' || inputs.upload_to == 'Both Sourceforge & Daniels Server' }}
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\.ssh" | Out-Null
+          # SourceForge key (if provided)
+          if ("${{ secrets.SF_SSH_KEY }}") {
+            $sfKeyPath = "$env:USERPROFILE\.ssh\sf_key"
+            Set-Content -Path $sfKeyPath -Value "${{ secrets.SF_SSH_KEY }}"
+          }
+          # Daniel's server key (if provided)
+          if ("${{ secrets.DAN_SSH_KEY }}") {
+            $danKeyPath = "$env:USERPROFILE\.ssh\dan_key"
+            Set-Content -Path $danKeyPath -Value "${{ secrets.DAN_SSH_KEY }}"
+          }
+
+      - name: Upload to SourceForge
+        if: ${{ inputs.upload_to == 'Sourceforge' || inputs.upload_to == 'Both Sourceforge & Daniels Server' }}
+        shell: pwsh
+        env:
+          SF_USER: ${{ secrets.SF_USERNAME }}
+          SF_PROJECT: ${{ secrets.SF_PROJECT }}
+          SF_PATH: ${{ secrets.SF_PATH }}
+        run: |
+          $zip = $env:ZIP_NAME
+          $dstBase = "/home/frs/project/$env:SF_PROJECT"
+          if ($env:SF_PATH) { $dstBase = "$dstBase/$env:SF_PATH" }
+          $host = "frs.sourceforge.net"
+          $key  = "$env:USERPROFILE\.ssh\sf_key"
+          ssh -i "$key" -o StrictHostKeyChecking=no "$env:SF_USER@$host" "mkdir -p '$dstBase'"
+          scp -i "$key" -o StrictHostKeyChecking=no "$zip" "$zip.sha256" "BUILD_INFO.txt" "$env:SF_USER@$host:`"$dstBase/`""
+
+      - name: Upload to Daniel's server
+        if: ${{ inputs.upload_to == 'Daniels Server' || inputs.upload_to == 'Both Sourceforge & Daniels Server' }}
+        shell: pwsh
+        env:
+          DAN_USER: ${{ secrets.DAN_USER }}
+          DAN_HOST: ${{ secrets.DAN_HOST }}
+          DAN_PATH: ${{ secrets.DAN_PATH }}
+        run: |
+          $zip = $env:ZIP_NAME
+          $key = "$env:USERPROFILE\.ssh\dan_key"
+          ssh -i "$key" -o StrictHostKeyChecking=no "$env:DAN_USER@$env:DAN_HOST" "mkdir -p '$env:DAN_PATH'"
+          scp -i "$key" -o StrictHostKeyChecking=no "$zip" "$zip.sha256" "BUILD_INFO.txt" "$env:DAN_USER@$env:DAN_HOST:`"$env:DAN_PATH/`""
+
+      - name: Upload artifact to GitHub
+        if: ${{ inputs.upload_to == 'Artifact on GitHub' }}
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.DEVICE }}-${{ env.FTYPE }}-${{ env.REGION }}-${{ env.VERSION }}
