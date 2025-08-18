@@ -50,10 +50,8 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - name: Checkout repository into src/
+      - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          path: src
 
       - name: Setup environment
         shell: pwsh
@@ -99,7 +97,7 @@ jobs:
           "BUILD_NAME=$name"           | Out-File -FilePath $env:GITHUB_ENV -Append
           "BUILD_DIR=out\$name"        | Out-File -FilePath $env:GITHUB_ENV -Append
 
-      - name: Stage flasher files (Oneplus 13 + SuperHybrid Flasher + GLO)
+      - name: Stage flasher files
         shell: pwsh
         run: |
           $d = "$env:DEVICE"
@@ -110,10 +108,10 @@ jobs:
           Copy-Item $env:OTAFILE -Destination "$out\OTA.zip"
 
           if ($d -eq 'Oneplus 13' -and $t -eq 'SuperHybrid Flasher' -and $r -eq 'GLO') {
-            $src = "$env:GITHUB_WORKSPACE\src"
-            $superFs = "$src\flasher_scripts\13\oos\super"
-            $superPack = "$src\super_packers\13"
-            $lpmake = "$src\lpmake"
+            $base = "$env:GITHUB_WORKSPACE"
+            $superFs    = "$base\flasher_scripts\13\oos\super"
+            $superPack  = "$base\super_packers\13"
+            $lpmake     = "$base\lpmake"
 
             $destMain = Join-Path $out "Super Hybrid Flasher"
             $destSuper = Join-Path $destMain "Super"
@@ -123,6 +121,8 @@ jobs:
             Copy-Item "$superFs\dtbo_patcher.bat", "$superFs\Super.Flasher.bat" -Destination $destMain -Force
             Copy-Item "$superPack\super_oos.bat" -Destination $destSuper -Force
             Copy-Item "$lpmake\cygwin1.dll", "$lpmake\lpmake.exe" -Destination $destSuper -Force
+
+            Write-Host "✅ Staged SuperHybrid Flasher for Oneplus 13 (GLO)"
           }
 
       - name: Archive flasher ZIP
