@@ -1,17 +1,16 @@
-# .github/workflows/build-flasher.yml
 name: Build Android Flasher from OTA
 
 on:
   workflow_dispatch:
     inputs:
       ota_url:
-        description: "Paste the FULL OTA.zip URL here (leave empty to dry-run with a placeholder)"
-        type: string
+        description: "Paste the FULL OTA.zip URL here (leave empty to test with placeholder)"
         required: false
+        type: string
       device:
         description: "Device"
-        type: choice
         required: true
+        type: choice
         options:
           - Oneplus 13
           - Oneplus 13R
@@ -19,8 +18,8 @@ on:
           - Oneplus 13T
       flasher_type:
         description: "Flasher type"
-        type: choice
         required: true
+        type: choice
         options:
           - Super Flasher
           - Regional Flasher
@@ -28,9 +27,9 @@ on:
           - RegionalHybrid Flasher
           - SuperHybrid SunOS Flasher
       region:
-        description: "Region (choose NONE only for 'SuperHybrid SunOS Flasher')"
-        type: choice
+        description: "Region (set to NONE for SunOS flasher)"
         required: true
+        type: choice
         options:
           - GLO
           - EU
@@ -40,20 +39,16 @@ on:
           - NONE
       upload_to:
         description: "Upload To"
-        type: choice
         required: true
+        type: choice
         options:
+          - Artifact on GitHub
           - Sourceforge
           - Daniels Server
           - Both Sourceforge & Daniels Server
-          - Artifact on GitHub
 
 permissions:
   contents: read
-
-concurrency:
-  group: flasher-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: false
 
 env:
   OUT_DIR: out
@@ -67,231 +62,154 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Validate inputs (and decide placeholder mode)
+      - name: Validate + select OTA mode
         shell: pwsh
         run: |
           $url = "${{ inputs.ota_url }}".Trim()
           if ([string]::IsNullOrWhiteSpace($url)) {
             "USE_PLACEHOLDER=1" | Out-File -FilePath $env:GITHUB_ENV -Append
-            Write-Host "No OTA URL provided -> using placeholder ZIP."
+            Write-Host "Using placeholder ZIP."
           } else {
-            if ($url -notmatch '^https?://') { throw "OTA URL must start with http(s)://"; }
-            if ($url -notmatch '\.zip(\?|$)') { Write-Warning "URL does not end with .zip — continuing anyway."; }
+            if ($url -notmatch '^https?://') { throw "OTA URL must start with http:// or https://" }
+            if ($url -notmatch '\.zip(\?|$)') { Write-Warning "URL does not end in .zip" }
             "USE_PLACEHOLDER=0" | Out-File -FilePath $env:GITHUB_ENV -Append
           }
 
-          $ftype  = "${{ inputs.flasher_type }}"
+          # Validate flasher type + region
+          $ftype = "${{ inputs.flasher_type }}"
           $region = "${{ inputs.region }}"
-          if ($ftype -eq 'SuperHybrid SunOS Flasher' -and $region -ne 'NONE') {
-            throw "For 'SuperHybrid SunOS Flasher' you must set Region to 'NONE'."
+          if ($ftype -eq "SuperHybrid SunOS Flasher" -and $region -ne "NONE") {
+            throw "'SuperHybrid SunOS Flasher' must have region set to NONE."
           }
-          if ($ftype -ne 'SuperHybrid SunOS Flasher' -and $region -eq 'NONE') {
-            throw "Region 'NONE' is only valid with 'SuperHybrid SunOS Flasher'."
+          if ($ftype -ne "SuperHybrid SunOS Flasher" -and $region -eq "NONE") {
+            throw "Region NONE is only valid for 'SuperHybrid SunOS Flasher'."
           }
 
-      - name: Prepare tools
+      - name: Install dependencies
         shell: pwsh
         run: |
           choco install -y aria2 7zip
-          New-Item -ItemType Directory -Path "$env:OUT_DIR" -Force | Out-Null
-          New-Item -ItemType Directory -Path "download" -Force | Out-Null
+          New-Item -ItemType Directory -Force -Path "$env:OUT_DIR", "download" | Out-Null
 
-      - name: Get OTA.zip (download or create placeholder)
+      - name: Download or create OTA.zip
         shell: pwsh
         run: |
           if ($env:USE_PLACEHOLDER -eq '1') {
-            $tmp = "download\PLACEHOLDER.txt"
-            Set-Content -Path $tmp -Encoding ascii -Value "This is a placeholder OTA payload used for dry-runs."
-            $dst = "download\ota-placeholder.zip"
-            if (Test-Path $dst) { Remove-Item $dst -Force }
-            Compress-Archive -Path $tmp -DestinationPath $dst -Force
-            $fileName = Split-Path $dst -Leaf
+            $p = "download\PLACEHOLDER.txt"
+            "Placeholder OTA payload" | Out-File -FilePath $p
+            Compress-Archive -Path $p -DestinationPath "download\ota-placeholder.zip"
+            $fileName = "ota-placeholder.zip"
           } else {
             $url = "${{ inputs.ota_url }}"
             $fileName = Split-Path $url -Leaf
-            if ([string]::IsNullOrWhiteSpace($fileName)) { $fileName = "ota.zip" }
-            $dst = "download\$fileName"
-            aria2c -x16 -s16 -k1M --console-log-level=warn --allow-overwrite=true -o "$fileName" -d "download" "$url"
-            if (!(Test-Path $dst)) { throw "Failed to download OTA." }
-          }
-          $sha = (Get-FileHash -Path $dst -Algorithm SHA256).Hash
-          $sha | Out-File -FilePath "download\${fileName}.sha256.txt" -Encoding ascii
-          "DOWNLOADED_ZIP=$dst" | Out-File -FilePath $env:GITHUB_ENV -Append
-
-      - name: Derive version & metadata
-        shell: pwsh
-        run: |
-          $deviceIn = "${{ inputs.device }}"
-          $ftypeIn  = "${{ inputs.flasher_type }}"
-          $regionIn = "${{ inputs.region }}"
-          $file   = Get-Item -Path $env:DOWNLOADED_ZIP
-          $base   = [System.IO.Path]::GetFileNameWithoutExtension($file.Name)
-          $ver    = $base -replace '[^0-9A-Za-z._-]',''
-          if ([string]::IsNullOrWhiteSpace($ver) -or $ver.Length -lt 4) {
-            $short = ((Get-FileHash -Path $file.FullName -Algorithm SHA256).Hash).Substring(0,8)
-            $ver = (Get-Date -Format "yyyyMMdd") + "-${short}"
+            aria2c -x16 -s16 -k1M -d download -o $fileName $url
           }
 
-          $deviceNorm = $deviceIn.Replace(' ','')
-          $ftypeNorm  = $ftypeIn.Replace(' ','')
-          $regionNorm = if ($regionIn -eq 'NONE') { '' } else { $regionIn }
+          $zipPath = "download\$fileName"
+          "DOWNLOADED_ZIP=$zipPath" | Out-File -FilePath $env:GITHUB_ENV -Append
+          $hash = (Get-FileHash -Path $zipPath -Algorithm SHA256).Hash
+          $hash | Out-File -FilePath "$zipPath.sha256.txt" -Encoding ascii
 
-          "DEVICE=$deviceNorm"            | Out-File -FilePath $env:GITHUB_ENV -Append
-          "DEVICE_DISPLAY=$deviceIn"      | Out-File -FilePath $env:GITHUB_ENV -Append
-          "FTYPE=$ftypeNorm"              | Out-File -FilePath $env:GITHUB_ENV -Append
-          "FTYPE_DISPLAY=$ftypeIn"        | Out-File -FilePath $env:GITHUB_ENV -Append
-          "REGION=$regionIn"              | Out-File -FilePath $env:GITHUB_ENV -Append
-          "REGION_FOR_NAME=$regionNorm"   | Out-File -FilePath $env:GITHUB_ENV -Append
-          "VERSION=$ver"                  | Out-File -FilePath $env:GITHUB_ENV -Append
-          "OTAFILE=$($file.FullName)"     | Out-File -FilePath $env:GITHUB_ENV -Append
-
-      - name: Build flasher (staging + Oneplus 13 SuperHybrid extras)
+      - name: Derive metadata
         shell: pwsh
         run: |
-          $deviceDisp  = $env:DEVICE_DISPLAY
-          $ftypeDisp   = $env:FTYPE_DISPLAY
-          $regionDisp  = $env:REGION
-          $deviceName  = $env:DEVICE
-          $ftypeName   = $env:FTYPE
-          $regionName  = $env:REGION_FOR_NAME
-          $version     = $env:VERSION
+          $device = "${{ inputs.device }}"
+          $ftype = "${{ inputs.flasher_type }}"
+          $region = "${{ inputs.region }}"
+          $file = Get-Item "$env:DOWNLOADED_ZIP"
+          $ver = [System.IO.Path]::GetFileNameWithoutExtension($file.Name) -replace '[^0-9A-Za-z._-]', ''
+          if ($ver.Length -lt 4) {
+            $hash = (Get-FileHash -Path $file.FullName -Algorithm SHA256).Hash.Substring(0, 8)
+            $ver = (Get-Date -Format "yyyyMMdd") + "-$hash"
+          }
 
-          # Output base folder (omit region token when NONE)
-          $outBaseName = if ($regionName) { "$deviceName-$ftypeName-$regionName-$version" } else { "$deviceName-$ftypeName-$version" }
+          $deviceNorm = $device.Replace(' ', '')
+          $ftypeNorm = $ftype.Replace(' ', '')
+          $regionNorm = if ($region -eq 'NONE') { '' } else { $region }
+
+          "DEVICE=$deviceNorm" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "DEVICE_DISPLAY=$device" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "FTYPE=$ftypeNorm" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "FTYPE_DISPLAY=$ftype" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "REGION=$region" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "REGION_FOR_NAME=$regionNorm" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "VERSION=$ver" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "OTAFILE=$($file.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Build flasher
+        shell: pwsh
+        run: |
+          $device = $env:DEVICE_DISPLAY
+          $ftype  = $env:FTYPE_DISPLAY
+          $region = $env:REGION
+          $ver    = $env:VERSION
+
+          $outBaseName = if ($env:REGION_FOR_NAME) { "$env:DEVICE-$env:FTYPE-$env:REGION_FOR_NAME-$ver" } else { "$env:DEVICE-$env:FTYPE-$ver" }
+          $outDir = Join-Path "$env:OUT_DIR" $outBaseName
           "ARTIFACT_NAME=$outBaseName" | Out-File -FilePath $env:GITHUB_ENV -Append
-          $outBase = Join-Path "$env:OUT_DIR" $outBaseName
-          New-Item -ItemType Directory -Path $outBase -Force | Out-Null
+          New-Item -ItemType Directory -Path $outDir -Force | Out-Null
 
-          # Always include OTA + README (placeholder-aware)
-          Copy-Item $env:OTAFILE -Destination (Join-Path $outBase "OTA.zip")
-          $placeholderNote = if ($env:USE_PLACEHOLDER -eq '1') { "`nNOTE: Placeholder OTA used for this run." } else { "" }
-          "Device: $deviceDisp`nType: $ftypeDisp`nRegion: $regionDisp`nVersion: $version$placeholderNote" |
-            Out-File -FilePath (Join-Path $outBase "README.txt") -Encoding utf8
-
-          # --------- FIND PATHS RELIABLY (NO hard-coded 'Build_Tools\Build_Tools') ----------
-          $root = $env:GITHUB_WORKSPACE
+          Copy-Item $env:OTAFILE -Destination (Join-Path $outDir "OTA.zip")
+          $note = if ($env:USE_PLACEHOLDER -eq '1') { "`nNOTE: Placeholder OTA used." } else { "" }
+          "Device: $device`nFlasher: $ftype`nRegion: $region`nVersion: $ver$note" |
+            Out-File -FilePath (Join-Path $outDir "README.txt") -Encoding utf8
 
           function Find-Dir([string]$pattern) {
-            $m = Get-ChildItem -Path $root -Directory -Force -Recurse -ErrorAction SilentlyContinue |
-                 Where-Object { $_.FullName -replace '/', '\' -like $pattern } |
-                 Select-Object -First 1
-            if ($m) { return $m.FullName } else { return $null }
-          }
-          function Find-File([string]$name, [string]$pathLike) {
-            $m = Get-ChildItem -Path $root -File -Force -Recurse -Filter $name -ErrorAction SilentlyContinue |
-                 Where-Object { $_.DirectoryName -replace '/', '\' -like $pathLike } |
-                 Select-Object -First 1
+            $m = Get-ChildItem -Path $env:GITHUB_WORKSPACE -Directory -Recurse -ErrorAction SilentlyContinue |
+                 Where-Object { $_.FullName -like "*$pattern" } | Select-Object -First 1
             if ($m) { return $m.FullName } else { return $null }
           }
 
-          # Bases we need (we search anywhere under workspace)
-          $baseSuperFs = Find-Dir('*\flasher_scripts\13\oos\super')
-          $basePack13  = Find-Dir('*\super_packers\13')
-          $baseLpmake  = Find-Dir('*\lpmake')
+          # === SPECIAL CASE: Oneplus 13 + SuperHybrid Flasher + GLO ===
+          if ($device -eq 'Oneplus 13' -and $ftype -eq 'SuperHybrid Flasher' -and $region -eq 'GLO') {
+            $baseSuperFs = Find-Dir("flasher_scripts\13\oos\super")
+            $basePack13  = Find-Dir("super_packers\13")
+            $baseLpmake  = Find-Dir("lpmake")
 
-          # Report what we found (for debugging)
-          Write-Host "Resolved paths:"
-          Write-Host "  flasher_scripts\13\oos\super -> $baseSuperFs"
-          Write-Host "  super_packers\13              -> $basePack13"
-          Write-Host "  lpmake                         -> $baseLpmake"
-
-          # === SPECIAL: Oneplus 13 + SuperHybrid Flasher + GLO ===
-          if ($deviceDisp -eq 'Oneplus 13' -and $ftypeDisp -eq 'SuperHybrid Flasher' -and $regionDisp -eq 'GLO') {
-
-            if (-not $baseSuperFs) { throw "Could not find folder matching *\flasher_scripts\13\oos\super" }
-            if (-not $basePack13)  { throw "Could not find folder matching *\super_packers\13" }
-            if (-not $baseLpmake)  { throw "Could not find folder matching *\lpmake" }
-
-            $srcMeta          = Join-Path $baseSuperFs 'META-INF'
-            $srcDtbo          = Join-Path $baseSuperFs 'dtbo_patcher.bat'
-            $srcSuperFlasher  = Join-Path $baseSuperFs 'Super.Flasher.bat'
-            $srcSuperOOSBat   = Join-Path $basePack13  'super_oos.bat'
-            $srcCygwinDll     = Join-Path $baseLpmake  'cygwin1.dll'
-            $srcLpmakeExe     = Join-Path $baseLpmake  'lpmake.exe'
-
-            foreach ($p in @($srcMeta,$srcDtbo,$srcSuperFlasher,$srcSuperOOSBat,$srcCygwinDll,$srcLpmakeExe)) {
-              if (-not (Test-Path $p)) { throw "Required path not found: $p" }
+            if (!$baseSuperFs -or !$basePack13 -or !$baseLpmake) {
+              throw "Required directories not found."
             }
 
-            # Destinations
-            $destHybrid = Join-Path $outBase 'Super Hybrid Flasher'
-            $destSuper  = Join-Path $destHybrid 'Super'
-            New-Item -ItemType Directory -Path $destHybrid -Force | Out-Null
-            New-Item -ItemType Directory -Path $destSuper  -Force | Out-Null
+            $srcMeta   = Join-Path $baseSuperFs "META-INF"
+            $srcDtbo   = Join-Path $baseSuperFs "dtbo_patcher.bat"
+            $srcFlasher= Join-Path $baseSuperFs "Super.Flasher.bat"
+            $srcOOSBat = Join-Path $basePack13 "super_oos.bat"
+            $srcCygwin = Join-Path $baseLpmake "cygwin1.dll"
+            $srcLpmake = Join-Path $baseLpmake "lpmake.exe"
 
-            # Copy content into "Super Hybrid Flasher"
+            foreach ($f in @($srcMeta, $srcDtbo, $srcFlasher, $srcOOSBat, $srcCygwin, $srcLpmake)) {
+              if (!(Test-Path $f)) { throw "Required path not found: $f" }
+            }
+
+            $destHybrid = Join-Path $outDir "Super Hybrid Flasher"
+            $destSuper  = Join-Path $destHybrid "Super"
+            New-Item -ItemType Directory -Path $destHybrid, $destSuper -Force | Out-Null
+
             Copy-Item -Path $srcMeta -Destination $destHybrid -Recurse -Force
-            Copy-Item -Path $srcDtbo, $srcSuperFlasher -Destination $destHybrid -Force
-
-            # Copy into nested "Super" folder
-            Copy-Item -Path $srcSuperOOSBat -Destination $destSuper -Force
-            Copy-Item -Path $srcCygwinDll, $srcLpmakeExe -Destination $destSuper -Force
-
-            Write-Host "Staged 'Super Hybrid Flasher' + nested 'Super' OK."
-          } else {
-            Write-Host "Special staging skipped (conditions not met)."
+            Copy-Item -Path $srcDtbo, $srcFlasher -Destination $destHybrid -Force
+            Copy-Item -Path $srcOOSBat, $srcCygwin, $srcLpmake -Destination $destSuper -Force
           }
 
-          # Package
-          $zipName = "$outBaseName.zip"
-          7z a -tzip "$zipName" "$outBase\*" | Out-Null
-          "ZIP_NAME=$zipName" | Out-File -FilePath $env:GITHUB_ENV -Append
+          7z a -tzip "$outBaseName.zip" "$outDir\*" | Out-Null
+          "ZIP_NAME=$outBaseName.zip" | Out-File -FilePath $env:GITHUB_ENV -Append
 
-      - name: Attach SHA256 and metadata
+      - name: Write SHA256 and metadata
         shell: pwsh
-        run: |
-          $zipName = $env:ZIP_NAME
-          $hash = (Get-FileHash -Path $zipName -Algorithm SHA256).Hash
-          $hash | Out-File -FilePath "$zipName.sha256" -Encoding ascii
-          $otaUrlShown = if ($env:USE_PLACEHOLDER -eq '1') { '(placeholder)' } else { '${{ inputs.ota_url }}' }
-          echo "device=$env:DEVICE_DISPLAY`nflasher_type=$env:FTYPE_DISPLAY`nregion=$env:REGION`nversion=$env:VERSION`nota_url=$otaUrlShown`nartifact=$zipName`nsha256=$hash" |
-            Out-File -FilePath "BUILD_INFO.txt" -Encoding utf8
-
-      # ---------- Optional uploads ----------
-      - name: Prepare SSH keys (if needed)
-        if: ${{ inputs.upload_to == 'Sourceforge' || inputs.upload_to == 'Daniels Server' || inputs.upload_to == 'Both Sourceforge & Daniels Server' }}
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\.ssh" | Out-Null
-          if ("${{ secrets.SF_SSH_KEY }}") {
-            $sfKeyPath = "$env:USERPROFILE\.ssh\sf_key"
-            Set-Content -Path $sfKeyPath -Value "${{ secrets.SF_SSH_KEY }}"
-          }
-          if ("${{ secrets.DAN_SSH_KEY }}") {
-            $danKeyPath = "$env:USERPROFILE\.ssh\dan_key"
-            Set-Content -Path $danKeyPath -Value "${{ secrets.DAN_SSH_KEY }}"
-          }
-
-      - name: Upload to SourceForge
-        if: ${{ inputs.upload_to == 'Sourceforge' || inputs.upload_to == 'Both Sourceforge & Daniels Server' }}
-        shell: pwsh
-        env:
-          SF_USER: ${{ secrets.SF_USERNAME }}
-          SF_PROJECT: ${{ secrets.SF_PROJECT }}
-          SF_PATH: ${{ secrets.SF_PATH }}
         run: |
           $zip = $env:ZIP_NAME
-          $dstBase = "/home/frs/project/$env:SF_PROJECT"
-          if ($env:SF_PATH) { $dstBase = "$dstBase/$env:SF_PATH" }
-          $host = "frs.sourceforge.net"
-          $key  = "$env:USERPROFILE\.ssh\sf_key"
-          ssh -i "$key" -o StrictHostKeyChecking=no "$env:SF_USER@$host" "mkdir -p '$dstBase'"
-          scp -i "$key" -o StrictHostKeyChecking=no "$zip" "$zip.sha256" "BUILD_INFO.txt" "$env:SF_USER@$host:`"$dstBase/`""
+          $sha = (Get-FileHash -Path $zip -Algorithm SHA256).Hash
+          $sha | Out-File -FilePath "$zip.sha256" -Encoding ascii
+          @"
+device=$env:DEVICE_DISPLAY
+flasher_type=$env:FTYPE_DISPLAY
+region=$env:REGION
+version=$env:VERSION
+ota_url=${{ inputs.ota_url }}
+artifact=$zip
+sha256=$sha
+"@ | Out-File -FilePath "BUILD_INFO.txt" -Encoding utf8
 
-      - name: Upload to Daniel's server
-        if: ${{ inputs.upload_to == 'Daniels Server' || inputs.upload_to == 'Both Sourceforge & Daniels Server' }}
-        shell: pwsh
-        env:
-          DAN_USER: ${{ secrets.DAN_USER }}
-          DAN_HOST: ${{ secrets.DAN_HOST }}
-          DAN_PATH: ${{ secrets.DAN_PATH }}
-        run: |
-          $zip = $env:ZIP_NAME
-          $key = "$env:USERPROFILE\.ssh\dan_key"
-          ssh -i "$key" -o StrictHostKeyChecking=no "$env:DAN_USER@$env:DAN_HOST" "mkdir -p '$env:DAN_PATH'"
-          scp -i "$key" -o StrictHostKeyChecking=no "$zip" "$zip.sha256" "BUILD_INFO.txt" "$env:DAN_USER@$env:DAN_HOST:`"$env:DAN_PATH/`""
-
-      - name: Upload artifact to GitHub
+      - name: Upload GitHub artifact
         if: ${{ inputs.upload_to == 'Artifact on GitHub' }}
         uses: actions/upload-artifact@v4
         with:
