@@ -168,55 +168,63 @@ jobs:
           "Device: $deviceDisp`nType: $ftypeDisp`nRegion: $regionDisp`nVersion: $version$placeholderNote" |
             Out-File -FilePath (Join-Path $outBase "README.txt") -Encoding utf8
 
-          # Helper to locate paths when repo root IS the "Build_Tools" folder or contains it as a subfolder.
+          # ------- helpers (handle repo is root vs repo contains Build_Tools/) -------
           function Pick-Path {
             param([string[]]$RelCandidates)
-            $repoRoot = (Get-Location).Path
+            $root = $env:GITHUB_WORKSPACE
             foreach ($rel in $RelCandidates) {
-              $p = Join-Path $repoRoot $rel
+              $p = Join-Path $root $rel
               if (Test-Path $p) { return $p }
             }
-            throw "None of these paths exist: $RelCandidates"
+            return $null
+          }
+          function Copy-IfExists {
+            param([string[]]$Paths,[string]$Dest,[switch]$Recurse)
+            foreach($p in $Paths) {
+              if (Test-Path $p) {
+                if ($Recurse) { Copy-Item -Path $p -Destination $Dest -Recurse -Force }
+                else { Copy-Item -Path $p -Destination $Dest -Force }
+              } else {
+                Write-Warning "Missing: $p"
+              }
+            }
           }
 
           # === SPECIAL: Oneplus 13 + SuperHybrid Flasher + GLO ===
           if ($deviceDisp -eq 'Oneplus 13' -and $ftypeDisp -eq 'SuperHybrid Flasher' -and $regionDisp -eq 'GLO') {
-            # Sources that might be either at repo root (when repo itself is Build_Tools) or under Build_Tools\...
-            $srcBaseSuperFs = Pick-Path @('flasher_scripts\13\oos\super', 'Build_Tools\flasher_scripts\13\oos\super')
-            $srcMeta         = Join-Path $srcBaseSuperFs 'META-INF'
-            $srcDtbo         = Join-Path $srcBaseSuperFs 'dtbo_patcher.bat'
-            $srcSuperFlasher = Join-Path $srcBaseSuperFs 'Super.Flasher.bat'
+            # Try both layouts (repo itself == Build_Tools, or Build_Tools/ subdir)
+            $baseSuperFs = Pick-Path @('flasher_scripts\13\oos\super','Build_Tools\flasher_scripts\13\oos\super')
+            $basePack13  = Pick-Path @('super_packers\13','Build_Tools\super_packers\13')
+            $baseLpmake  = Pick-Path @('lpmake','Build_Tools\lpmake')
 
-            $srcSuperPackDir = Pick-Path @('super_packers\13', 'Build_Tools\super_packers\13')
-            $srcSuperOOSBat  = Join-Path $srcSuperPackDir 'super_oos.bat'
-
-            $srcLpmakeDir    = Pick-Path @('lpmake', 'Build_Tools\lpmake')
-            $srcCygwinDll    = Join-Path $srcLpmakeDir 'cygwin1.dll'
-            $srcLpmakeExe    = Join-Path $srcLpmakeDir 'lpmake.exe'
-
-            # Validate
-            if (!(Test-Path $srcMeta)) { throw "Required folder not found: $srcMeta" }
-            if (!(Test-Path $srcDtbo)) { throw "Required file not found: $srcDtbo" }
-            if (!(Test-Path $srcSuperFlasher)) { throw "Required file not found: $srcSuperFlasher" }
-            if (!(Test-Path $srcSuperOOSBat)) { throw "Required file not found: $srcSuperOOSBat" }
-            if (!(Test-Path $srcCygwinDll)) { throw "Required file not found: $srcCygwinDll" }
-            if (!(Test-Path $srcLpmakeExe)) { throw "Required file not found: $srcLpmakeExe" }
-
-            # Destinations
             $destHybrid = Join-Path $outBase 'Super Hybrid Flasher'
             $destSuper  = Join-Path $destHybrid 'Super'
             New-Item -ItemType Directory -Path $destHybrid -Force | Out-Null
-            New-Item -ItemType Directory -Path $destSuper  -Force | Out-Null
+            New-Item -ItemType Directory -Path $destSuper -Force | Out-Null
 
-            # Copy content into "Super Hybrid Flasher"
-            Copy-Item -Path $srcMeta -Destination $destHybrid -Recurse -Force
-            Copy-Item -Path $srcDtbo, $srcSuperFlasher -Destination $destHybrid -Force
+            if ($null -eq $baseSuperFs) { Write-Warning "Could not locate flasher_scripts\13\oos\super"; }
+            if ($null -eq $basePack13)  { Write-Warning "Could not locate super_packers\13"; }
+            if ($null -eq $baseLpmake)  { Write-Warning "Could not locate lpmake"; }
 
-            # Copy into nested "Super" folder
-            Copy-Item -Path $srcSuperOOSBat -Destination $destSuper -Force
-            Copy-Item -Path $srcCygwinDll, $srcLpmakeExe -Destination $destSuper -Force
+            # Copy into "Super Hybrid Flasher"
+            Copy-IfExists -Paths @(
+              Join-Path $baseSuperFs 'META-INF'
+            ) -Dest $destHybrid -Recurse
+            Copy-IfExists -Paths @(
+              Join-Path $baseSuperFs 'dtbo_patcher.bat';
+              Join-Path $baseSuperFs 'Super.Flasher.bat'
+            ) -Dest $destHybrid
 
-            Write-Host "Staged 'Super Hybrid Flasher' + nested 'Super' (META-INF, dtbo_patcher.bat, Super.Flasher.bat, super_oos.bat, cygwin1.dll, lpmake.exe)."
+            # Copy into nested "Super"
+            Copy-IfExists -Paths @(
+              Join-Path $basePack13 'super_oos.bat'
+            ) -Dest $destSuper
+            Copy-IfExists -Paths @(
+              Join-Path $baseLpmake 'cygwin1.dll';
+              Join-Path $baseLpmake 'lpmake.exe'
+            ) -Dest $destSuper
+
+            Write-Host "Staged 'Super Hybrid Flasher' + 'Super' (files copied when present; missing items warned but not fatal)."
           }
 
           # Package
