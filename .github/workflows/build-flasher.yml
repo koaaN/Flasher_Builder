@@ -24,8 +24,11 @@ on:
         options:
           - Super Flasher
           - Regional Flasher
+          - SuperHybrid Flasher
+          - RegionalHybrid Flasher
+          - SuperHybrid SunOS Flasher
       region:
-        description: "Region"
+        description: "Region (choose NONE only for 'SuperHybrid SunOS Flasher')"
         type: choice
         required: true
         options:
@@ -34,6 +37,7 @@ on:
           - IN
           - NA
           - CN
+          - NONE
       upload_to:
         description: "Upload To"
         type: choice
@@ -63,13 +67,34 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Sanity check inputs
+      - name: Validate inputs
         shell: pwsh
         run: |
+          # Basic URL checks
           $url = "${{ inputs.ota_url }}".Trim()
           if ([string]::IsNullOrWhiteSpace($url)) { throw "OTA URL is empty." }
-          if ($url -notmatch '^https?://') { throw "OTA URL must start with http(s)://"; }
-          if ($url -notmatch '\.zip(\?|$)') { Write-Warning "URL does not end in .zip — continuing anyway."; }
+          if ($url -notmatch '^https?://') { throw "OTA URL must start with http(s)://". }
+          if ($url -notmatch '\.zip(\?|$)') { Write-Warning "URL does not end in .zip — continuing anyway." }
+
+          $device = "${{ inputs.device }}"
+          $ftype  = "${{ inputs.flasher_type }}"
+          $region = "${{ inputs.region }}"
+
+          # Device-specific rules:
+          # - Hybrid types only allowed on Oneplus 13
+          if ($device -ne 'Oneplus 13' -and ($ftype -like '*Hybrid*')) {
+            throw "Hybrid flasher types are only allowed for 'Oneplus 13'."
+          }
+
+          # - 'SuperHybrid SunOS Flasher' has NO regions -> user must select NONE
+          if ($device -eq 'Oneplus 13' -and $ftype -eq 'SuperHybrid SunOS Flasher' -and $region -ne 'NONE') {
+            throw "For 'SuperHybrid SunOS Flasher' you must set Region to 'NONE'."
+          }
+
+          # - Other types must NOT use NONE region
+          if ($ftype -ne 'SuperHybrid SunOS Flasher' -and $region -eq 'NONE') {
+            throw "Region 'NONE' is only valid with 'SuperHybrid SunOS Flasher'."
+          }
 
       - name: Prepare tools
         shell: pwsh
@@ -93,9 +118,9 @@ jobs:
       - name: Derive version & metadata
         shell: pwsh
         run: |
-          $device = "${{ inputs.device }}".Replace(' ','')
-          $ftype  = "${{ inputs.flasher_type }}".Replace(' ','')
-          $region = "${{ inputs.region }}"
+          $deviceIn = "${{ inputs.device }}"
+          $ftypeIn  = "${{ inputs.flasher_type }}"
+          $regionIn = "${{ inputs.region }}"
           $file   = Get-ChildItem -Path "download" -Filter *.zip | Select-Object -First 1
           $base   = [System.IO.Path]::GetFileNameWithoutExtension($file.Name)
           $ver    = $base -replace '[^0-9A-Za-z._-]',''
@@ -103,28 +128,39 @@ jobs:
             $short = ((Get-FileHash -Path $file.FullName -Algorithm SHA256).Hash).Substring(0,8)
             $ver = (Get-Date -Format "yyyyMMdd") + "-${short}"
           }
-          "DEVICE=$device"  | Out-File -FilePath $env:GITHUB_ENV -Append
-          "FTYPE=$ftype"    | Out-File -FilePath $env:GITHUB_ENV -Append
-          "REGION=$region"  | Out-File -FilePath $env:GITHUB_ENV -Append
-          "VERSION=$ver"    | Out-File -FilePath $env:GITHUB_ENV -Append
-          "OTAFILE=$($file.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
 
-      - name: Build flasher
+          # Normalize for filenames (remove spaces)
+          $deviceNorm = $deviceIn.Replace(' ','')
+          $ftypeNorm  = $ftypeIn.Replace(' ','')
+          $regionNorm = if ($regionIn -eq 'NONE') { '' } else { $regionIn }
+
+          "DEVICE=$deviceNorm"            | Out-File -FilePath $env:GITHUB_ENV -Append
+          "DEVICE_DISPLAY=$deviceIn"      | Out-File -FilePath $env:GITHUB_ENV -Append
+          "FTYPE=$ftypeNorm"              | Out-File -FilePath $env:GITHUB_ENV -Append
+          "FTYPE_DISPLAY=$ftypeIn"        | Out-File -FilePath $env:GITHUB_ENV -Append
+          "REGION=$regionIn"              | Out-File -FilePath $env:GITHUB_ENV -Append
+          "REGION_FOR_NAME=$regionNorm"   | Out-File -FilePath $env:GITHUB_ENV -Append
+          "VERSION=$ver"                  | Out-File -FilePath $env:GITHUB_ENV -Append
+          "OTAFILE=$($file.FullName)"     | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Build flasher (placeholder — replace with your builder)
         shell: pwsh
         run: |
-          $device  = $env:DEVICE
-          $ftype   = $env:FTYPE
-          $region  = $env:REGION
-          $version = $env:VERSION
-          $outBase = Join-Path "$env:OUT_DIR" "$device-$ftype-$region-$version"
+          $deviceName  = $env:DEVICE
+          $ftypeName   = $env:FTYPE
+          $regionName  = $env:REGION_FOR_NAME
+          $regionDisp  = $env:REGION
+          $version     = $env:VERSION
+          $outBaseName = if ($regionName) { "$deviceName-$ftypeName-$regionName-$version" } else { "$deviceName-$ftypeName-$version" }
+          $outBase     = Join-Path "$env:OUT_DIR" $outBaseName
           New-Item -ItemType Directory -Path $outBase -Force | Out-Null
 
-          # TODO: replace with your real builder; placeholder bundles the OTA + README
+          # TODO: plug in your real build pipeline here
           Copy-Item $env:OTAFILE -Destination (Join-Path $outBase "OTA.zip")
-          "Device: $device`nType: $ftype`nRegion: $region`nVersion: $version" |
+          "Device: $env:DEVICE_DISPLAY`nType: $env:FTYPE_DISPLAY`nRegion: $regionDisp`nVersion: $version" |
             Out-File -FilePath (Join-Path $outBase "README.txt") -Encoding utf8
 
-          $zipName = "$device-$ftype-$region-$version.zip"
+          $zipName = "$outBaseName.zip"
           7z a -tzip "$zipName" "$outBase\*" | Out-Null
           "ZIP_NAME=$zipName" | Out-File -FilePath $env:GITHUB_ENV -Append
 
@@ -134,7 +170,7 @@ jobs:
           $zipName = $env:ZIP_NAME
           $hash = (Get-FileHash -Path $zipName -Algorithm SHA256).Hash
           $hash | Out-File -FilePath "$zipName.sha256" -Encoding ascii
-          echo "device=$env:DEVICE`nflasher_type=$env:FTYPE`nregion=$env:REGION`nversion=$env:VERSION`nota_url=${{ inputs.ota_url }}`nartifact=$zipName`nsha256=$hash" |
+          echo "device=$env:DEVICE_DISPLAY`nflasher_type=$env:FTYPE_DISPLAY`nregion=$env:REGION`nversion=$env:VERSION`nota_url=${{ inputs.ota_url }}`nartifact=$zipName`nsha256=$hash" |
             Out-File -FilePath "BUILD_INFO.txt" -Encoding utf8
 
       # ---------- Optional uploads ----------
@@ -143,12 +179,10 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\.ssh" | Out-Null
-          # SourceForge key (if provided)
           if ("${{ secrets.SF_SSH_KEY }}") {
             $sfKeyPath = "$env:USERPROFILE\.ssh\sf_key"
             Set-Content -Path $sfKeyPath -Value "${{ secrets.SF_SSH_KEY }}"
           }
-          # Daniel's server key (if provided)
           if ("${{ secrets.DAN_SSH_KEY }}") {
             $danKeyPath = "$env:USERPROFILE\.ssh\dan_key"
             Set-Content -Path $danKeyPath -Value "${{ secrets.DAN_SSH_KEY }}"
@@ -187,7 +221,7 @@ jobs:
         if: ${{ inputs.upload_to == 'Artifact on GitHub' }}
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.DEVICE }}-${{ env.FTYPE }}-${{ env.REGION }}-${{ env.VERSION }}
+          name: ${{ env.DEVICE }}-${{ env.FTYPE }}${{ env.REGION_FOR_NAME && format('-{0}', env.REGION_FOR_NAME) || '' }}-${{ env.VERSION }}
           path: |
             *.zip
             *.sha256
