@@ -168,19 +168,31 @@ jobs:
           "Device: $deviceDisp`nType: $ftypeDisp`nRegion: $regionDisp`nVersion: $version$placeholderNote" |
             Out-File -FilePath (Join-Path $outBase "README.txt") -Encoding utf8
 
+          # Helper to locate paths when repo root IS the "Build_Tools" folder or contains it as a subfolder.
+          function Pick-Path {
+            param([string[]]$RelCandidates)
+            $repoRoot = (Get-Location).Path
+            foreach ($rel in $RelCandidates) {
+              $p = Join-Path $repoRoot $rel
+              if (Test-Path $p) { return $p }
+            }
+            throw "None of these paths exist: $RelCandidates"
+          }
+
           # === SPECIAL: Oneplus 13 + SuperHybrid Flasher + GLO ===
           if ($deviceDisp -eq 'Oneplus 13' -and $ftypeDisp -eq 'SuperHybrid Flasher' -and $regionDisp -eq 'GLO') {
-            $repoRoot = (Get-Location).Path
-            # Sources
-            $srcBaseSuperFs   = Join-Path $repoRoot 'Build_Tools\flasher_scripts\13\oos\super'
-            $srcMeta          = Join-Path $srcBaseSuperFs 'META-INF'
-            $srcDtbo          = Join-Path $srcBaseSuperFs 'dtbo_patcher.bat'
-            $srcSuperFlasher  = Join-Path $srcBaseSuperFs 'Super.Flasher.bat'
-            $srcSuperPackDir  = Join-Path $repoRoot 'Build_Tools\super_packers\13'
-            $srcSuperOOSBat   = Join-Path $srcSuperPackDir 'super_oos.bat'
-            $srcLpmakeDir     = Join-Path $repoRoot 'Build_Tools\lpmake'
-            $srcCygwinDll     = Join-Path $srcLpmakeDir 'cygwin1.dll'
-            $srcLpmakeExe     = Join-Path $srcLpmakeDir 'lpmake.exe'
+            # Sources that might be either at repo root (when repo itself is Build_Tools) or under Build_Tools\...
+            $srcBaseSuperFs = Pick-Path @('flasher_scripts\13\oos\super', 'Build_Tools\flasher_scripts\13\oos\super')
+            $srcMeta         = Join-Path $srcBaseSuperFs 'META-INF'
+            $srcDtbo         = Join-Path $srcBaseSuperFs 'dtbo_patcher.bat'
+            $srcSuperFlasher = Join-Path $srcBaseSuperFs 'Super.Flasher.bat'
+
+            $srcSuperPackDir = Pick-Path @('super_packers\13', 'Build_Tools\super_packers\13')
+            $srcSuperOOSBat  = Join-Path $srcSuperPackDir 'super_oos.bat'
+
+            $srcLpmakeDir    = Pick-Path @('lpmake', 'Build_Tools\lpmake')
+            $srcCygwinDll    = Join-Path $srcLpmakeDir 'cygwin1.dll'
+            $srcLpmakeExe    = Join-Path $srcLpmakeDir 'lpmake.exe'
 
             # Validate
             if (!(Test-Path $srcMeta)) { throw "Required folder not found: $srcMeta" }
