@@ -168,36 +168,49 @@ jobs:
           "Device: $deviceDisp`nType: $ftypeDisp`nRegion: $regionDisp`nVersion: $version$placeholderNote" |
             Out-File -FilePath (Join-Path $outBase "README.txt") -Encoding utf8
 
-          # ------- Build_Tools root resolver (prevents Build_Tools\Build_Tools confusion) -------
-          function Get-BuildToolsRoot {
-            $ws = $env:GITHUB_WORKSPACE
-            $cand1 = Join-Path $ws 'flasher_scripts\13\oos\super'
-            $cand2 = Join-Path $ws 'Build_Tools\flasher_scripts\13\oos\super'
-            if (Test-Path $cand1) { return $ws }
-            if (Test-Path $cand2) { return (Join-Path $ws 'Build_Tools') }
-            throw "Could not locate Build_Tools root. Expected either '$cand1' or '$cand2'."
+          # --------- FIND PATHS RELIABLY (NO hard-coded 'Build_Tools\Build_Tools') ----------
+          $root = $env:GITHUB_WORKSPACE
+
+          function Find-Dir([string]$pattern) {
+            $m = Get-ChildItem -Path $root -Directory -Force -Recurse -ErrorAction SilentlyContinue |
+                 Where-Object { $_.FullName -replace '/', '\' -like $pattern } |
+                 Select-Object -First 1
+            if ($m) { return $m.FullName } else { return $null }
+          }
+          function Find-File([string]$name, [string]$pathLike) {
+            $m = Get-ChildItem -Path $root -File -Force -Recurse -Filter $name -ErrorAction SilentlyContinue |
+                 Where-Object { $_.DirectoryName -replace '/', '\' -like $pathLike } |
+                 Select-Object -First 1
+            if ($m) { return $m.FullName } else { return $null }
           }
 
-          $btRoot = Get-BuildToolsRoot
+          # Bases we need (we search anywhere under workspace)
+          $baseSuperFs = Find-Dir('*\flasher_scripts\13\oos\super')
+          $basePack13  = Find-Dir('*\super_packers\13')
+          $baseLpmake  = Find-Dir('*\lpmake')
 
-          # Source folders/files (always relative to the resolved Build_Tools root)
-          $srcBaseSuperFs   = Join-Path $btRoot 'flasher_scripts\13\oos\super'
-          $srcMeta          = Join-Path $srcBaseSuperFs 'META-INF'
-          $srcDtbo          = Join-Path $srcBaseSuperFs 'dtbo_patcher.bat'
-          $srcSuperFlasher  = Join-Path $srcBaseSuperFs 'Super.Flasher.bat'
-
-          $srcSuperPackDir  = Join-Path $btRoot 'super_packers\13'
-          $srcSuperOOSBat   = Join-Path $srcSuperPackDir 'super_oos.bat'
-
-          $srcLpmakeDir     = Join-Path $btRoot 'lpmake'
-          $srcCygwinDll     = Join-Path $srcLpmakeDir 'cygwin1.dll'
-          $srcLpmakeExe     = Join-Path $srcLpmakeDir 'lpmake.exe'
+          # Report what we found (for debugging)
+          Write-Host "Resolved paths:"
+          Write-Host "  flasher_scripts\13\oos\super -> $baseSuperFs"
+          Write-Host "  super_packers\13              -> $basePack13"
+          Write-Host "  lpmake                         -> $baseLpmake"
 
           # === SPECIAL: Oneplus 13 + SuperHybrid Flasher + GLO ===
           if ($deviceDisp -eq 'Oneplus 13' -and $ftypeDisp -eq 'SuperHybrid Flasher' -and $regionDisp -eq 'GLO') {
-            # Ensure sources exist (now unambiguous, no duplicated Build_Tools)
-            foreach ($path in @($srcMeta,$srcDtbo,$srcSuperFlasher,$srcSuperOOSBat,$srcCygwinDll,$srcLpmakeExe)) {
-              if (-not (Test-Path $path)) { throw "Required path not found: $path" }
+
+            if (-not $baseSuperFs) { throw "Could not find folder matching *\flasher_scripts\13\oos\super" }
+            if (-not $basePack13)  { throw "Could not find folder matching *\super_packers\13" }
+            if (-not $baseLpmake)  { throw "Could not find folder matching *\lpmake" }
+
+            $srcMeta          = Join-Path $baseSuperFs 'META-INF'
+            $srcDtbo          = Join-Path $baseSuperFs 'dtbo_patcher.bat'
+            $srcSuperFlasher  = Join-Path $baseSuperFs 'Super.Flasher.bat'
+            $srcSuperOOSBat   = Join-Path $basePack13  'super_oos.bat'
+            $srcCygwinDll     = Join-Path $baseLpmake  'cygwin1.dll'
+            $srcLpmakeExe     = Join-Path $baseLpmake  'lpmake.exe'
+
+            foreach ($p in @($srcMeta,$srcDtbo,$srcSuperFlasher,$srcSuperOOSBat,$srcCygwinDll,$srcLpmakeExe)) {
+              if (-not (Test-Path $p)) { throw "Required path not found: $p" }
             }
 
             # Destinations
@@ -214,7 +227,7 @@ jobs:
             Copy-Item -Path $srcSuperOOSBat -Destination $destSuper -Force
             Copy-Item -Path $srcCygwinDll, $srcLpmakeExe -Destination $destSuper -Force
 
-            Write-Host "Staged 'Super Hybrid Flasher' + 'Super' from: $btRoot"
+            Write-Host "Staged 'Super Hybrid Flasher' + nested 'Super' OK."
           } else {
             Write-Host "Special staging skipped (conditions not met)."
           }
