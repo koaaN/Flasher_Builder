@@ -70,28 +70,16 @@ jobs:
       - name: Validate inputs
         shell: pwsh
         run: |
-          # Basic URL checks
           $url = "${{ inputs.ota_url }}".Trim()
           if ([string]::IsNullOrWhiteSpace($url)) { throw "OTA URL is empty." }
           if ($url -notmatch '^https?://') { throw "OTA URL must start with http(s)://". }
           if ($url -notmatch '\.zip(\?|$)') { Write-Warning "URL does not end in .zip — continuing anyway." }
 
-          $device = "${{ inputs.device }}"
           $ftype  = "${{ inputs.flasher_type }}"
           $region = "${{ inputs.region }}"
-
-          # Device-specific rules:
-          # - Hybrid types only allowed on Oneplus 13
-          if ($device -ne 'Oneplus 13' -and ($ftype -like '*Hybrid*')) {
-            throw "Hybrid flasher types are only allowed for 'Oneplus 13'."
-          }
-
-          # - 'SuperHybrid SunOS Flasher' has NO regions -> user must select NONE
-          if ($device -eq 'Oneplus 13' -and $ftype -eq 'SuperHybrid SunOS Flasher' -and $region -ne 'NONE') {
+          if ($ftype -eq 'SuperHybrid SunOS Flasher' -and $region -ne 'NONE') {
             throw "For 'SuperHybrid SunOS Flasher' you must set Region to 'NONE'."
           }
-
-          # - Other types must NOT use NONE region
           if ($ftype -ne 'SuperHybrid SunOS Flasher' -and $region -eq 'NONE') {
             throw "Region 'NONE' is only valid with 'SuperHybrid SunOS Flasher'."
           }
@@ -129,7 +117,7 @@ jobs:
             $ver = (Get-Date -Format "yyyyMMdd") + "-${short}"
           }
 
-          # Normalize for filenames (remove spaces)
+          # Normalize for filenames (remove spaces); omit region token when NONE
           $deviceNorm = $deviceIn.Replace(' ','')
           $ftypeNorm  = $ftypeIn.Replace(' ','')
           $regionNorm = if ($regionIn -eq 'NONE') { '' } else { $regionIn }
@@ -143,23 +131,48 @@ jobs:
           "VERSION=$ver"                  | Out-File -FilePath $env:GITHUB_ENV -Append
           "OTAFILE=$($file.FullName)"     | Out-File -FilePath $env:GITHUB_ENV -Append
 
-      - name: Build flasher (placeholder — replace with your builder)
+      - name: Build flasher (+ Oneplus 13 SuperHybrid GLO file staging)
         shell: pwsh
         run: |
+          $deviceDisp  = $env:DEVICE_DISPLAY
+          $ftypeDisp   = $env:FTYPE_DISPLAY
+          $regionDisp  = $env:REGION
           $deviceName  = $env:DEVICE
           $ftypeName   = $env:FTYPE
           $regionName  = $env:REGION_FOR_NAME
-          $regionDisp  = $env:REGION
           $version     = $env:VERSION
+
+          # Output base folder name (omit region token for NONE)
           $outBaseName = if ($regionName) { "$deviceName-$ftypeName-$regionName-$version" } else { "$deviceName-$ftypeName-$version" }
           $outBase     = Join-Path "$env:OUT_DIR" $outBaseName
           New-Item -ItemType Directory -Path $outBase -Force | Out-Null
 
-          # TODO: plug in your real build pipeline here
+          # Always include OTA + README (you can replace with your real builder)
           Copy-Item $env:OTAFILE -Destination (Join-Path $outBase "OTA.zip")
-          "Device: $env:DEVICE_DISPLAY`nType: $env:FTYPE_DISPLAY`nRegion: $regionDisp`nVersion: $version" |
+          "Device: $deviceDisp`nType: $ftypeDisp`nRegion: $regionDisp`nVersion: $version" |
             Out-File -FilePath (Join-Path $outBase "README.txt") -Encoding utf8
 
+          # === Special staging for Oneplus 13 + SuperHybrid Flasher + GLO region ===
+          if ($deviceDisp -eq 'Oneplus 13' -and $ftypeDisp -eq 'SuperHybrid Flasher' -and $regionDisp -eq 'GLO') {
+            $repoRoot = (Get-Location).Path
+            $srcBase  = Join-Path $repoRoot 'Build_Tools\flasher_scripts\13\oos\super'
+            $srcMeta  = Join-Path $srcBase 'META-INF'
+            $srcDtbo  = Join-Path $srcBase 'dtbo_patcher.bat'
+            $srcBat   = Join-Path $srcBase 'Super.Flasher.bat'
+
+            if (!(Test-Path $srcMeta)) { throw "Required folder not found: $srcMeta" }
+            if (!(Test-Path $srcDtbo)) { throw "Required file not found: $srcDtbo" }
+            if (!(Test-Path $srcBat))  { throw "Required file not found: $srcBat"  }
+
+            $destDir = Join-Path $outBase 'Super Hybrid Flasher'
+            New-Item -ItemType Directory -Path $destDir -Force | Out-Null
+
+            Copy-Item -Path $srcMeta -Destination $destDir -Recurse -Force
+            Copy-Item -Path $srcDtbo, $srcBat -Destination $destDir -Force
+            Write-Host "Staged 'Super Hybrid Flasher' folder with META-INF, dtbo_patcher.bat, Super.Flasher.bat"
+          }
+
+          # Package
           $zipName = "$outBaseName.zip"
           7z a -tzip "$zipName" "$outBase\*" | Out-Null
           "ZIP_NAME=$zipName" | Out-File -FilePath $env:GITHUB_ENV -Append
@@ -221,7 +234,7 @@ jobs:
         if: ${{ inputs.upload_to == 'Artifact on GitHub' }}
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.DEVICE }}-${{ env.FTYPE }}${{ env.REGION_FOR_NAME && format('-{0}', env.REGION_FOR_NAME) || '' }}-${{ env.VERSION }}
+          name: ${{ env.DEVICE }}${{ env.REGION_FOR_NAME && format('-{0}', env.REGION_FOR_NAME) || '' }}-${{ env.FTYPE }}-${{ env.VERSION }}
           path: |
             *.zip
             *.sha256
