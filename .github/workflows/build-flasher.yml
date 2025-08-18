@@ -50,6 +50,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: flasher-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 env:
   OUT_DIR: out
   ARTIFACT_RETENTION_DAYS: 14
@@ -62,6 +66,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          path: .  # prevent Build_Tools/Build_Tools issue
 
       - name: Validate inputs
         shell: pwsh
@@ -74,99 +80,103 @@ jobs:
             "USE_PLACEHOLDER=0" | Out-File -FilePath $env:GITHUB_ENV -Append
           }
 
-          if ("${{ inputs.flasher_type }}" -eq 'SuperHybrid SunOS Flasher' -and "${{ inputs.region }}" -ne 'NONE') {
+          $ftype  = "${{ inputs.flasher_type }}"
+          $region = "${{ inputs.region }}"
+          if ($ftype -eq 'SuperHybrid SunOS Flasher' -and $region -ne 'NONE') {
             throw "Region must be NONE for SuperHybrid SunOS Flasher"
           }
+          if ($ftype -ne 'SuperHybrid SunOS Flasher' -and $region -eq 'NONE') {
+            throw "Region NONE is only valid with SuperHybrid SunOS Flasher"
+          }
 
-      - name: Install tools
+      - name: Install dependencies
         shell: pwsh
         run: |
           choco install -y aria2 7zip
-          New-Item -ItemType Directory -Force -Path download, $env:OUT_DIR | Out-Null
+          New-Item -ItemType Directory -Force -Path "$env:OUT_DIR", "download" | Out-Null
 
       - name: Download or create placeholder OTA
         shell: pwsh
         run: |
           if ($env:USE_PLACEHOLDER -eq '1') {
             $tmp = "download\PLACEHOLDER.txt"
-            Set-Content -Path $tmp -Value "Placeholder OTA"
-            Compress-Archive -Path $tmp -DestinationPath "download\ota-placeholder.zip" -Force
-            "OTAFILE=$pwd\download\ota-placeholder.zip" | Out-File -FilePath $env:GITHUB_ENV -Append
+            Set-Content -Path $tmp -Value "This is a placeholder OTA."
+            Compress-Archive -Path $tmp -DestinationPath "download\ota-placeholder.zip"
+            $path = "download\ota-placeholder.zip"
           } else {
             $url = "${{ inputs.ota_url }}"
-            $filename = Split-Path $url -Leaf
-            aria2c -x16 -s16 -d download -o $filename $url
-            "OTAFILE=$pwd\download\$filename" | Out-File -FilePath $env:GITHUB_ENV -Append
+            $file = Split-Path $url -Leaf
+            $path = "download\$file"
+            aria2c -x16 -s16 -k1M -o $file -d download $url
           }
 
-      - name: Derive metadata
+          $sha = (Get-FileHash $path -Algorithm SHA256).Hash
+          $sha | Out-File -Encoding ascii "$path.sha256.txt"
+          "DOWNLOADED_ZIP=$path" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Set metadata
         shell: pwsh
         run: |
-          $device  = "${{ inputs.device }}"
-          $ftype   = "${{ inputs.flasher_type }}"
-          $region  = "${{ inputs.region }}"
-          $regionN = if ($region -eq 'NONE') { '' } else { $region }
-          $ver     = "ota-placeholder"
+          $d = "${{ inputs.device }}"
+          $f = "${{ inputs.flasher_type }}"
+          $r = "${{ inputs.region }}"
+          $file = Get-Item -Path "$env:DOWNLOADED_ZIP"
+          $base = [IO.Path]::GetFileNameWithoutExtension($file.Name)
+          $ver = $base -replace '[^0-9A-Za-z._-]',''
+          if ($ver.Length -lt 4) { $ver = (Get-Date -f yyyyMMdd) + "-" + ((Get-FileHash $file.FullName -Algorithm SHA256).Hash.Substring(0,8)) }
 
-          "DEVICE=$($device -replace ' ', '')" | Out-File -Append -FilePath $env:GITHUB_ENV
-          "DEVICE_DISPLAY=$device"            | Out-File -Append -FilePath $env:GITHUB_ENV
-          "FTYPE=$($ftype -replace ' ', '')"  | Out-File -Append -FilePath $env:GITHUB_ENV
-          "FTYPE_DISPLAY=$ftype"              | Out-File -Append -FilePath $env:GITHUB_ENV
-          "REGION=$region"                    | Out-File -Append -FilePath $env:GITHUB_ENV
-          "REGION_FOR_NAME=$regionN"          | Out-File -Append -FilePath $env:GITHUB_ENV
-          "VERSION=$ver"                      | Out-File -Append -FilePath $env:GITHUB_ENV
+          "DEVICE=$($d -replace ' ', '')" | Out-File $env:GITHUB_ENV -Append
+          "DEVICE_DISPLAY=$d" | Out-File $env:GITHUB_ENV -Append
+          "FTYPE=$($f -replace ' ', '')" | Out-File $env:GITHUB_ENV -Append
+          "FTYPE_DISPLAY=$f" | Out-File $env:GITHUB_ENV -Append
+          "REGION=$r" | Out-File $env:GITHUB_ENV -Append
+          "REGION_FOR_NAME=$(if ($r -eq 'NONE') { '' } else { $r })" | Out-File $env:GITHUB_ENV -Append
+          "VERSION=$ver" | Out-File $env:GITHUB_ENV -Append
+          "OTAFILE=$($file.FullName)" | Out-File $env:GITHUB_ENV -Append
 
-      - name: Stage flasher
+      - name: Build flasher
         shell: pwsh
         run: |
-          $deviceDisp  = $env:DEVICE_DISPLAY
-          $ftypeDisp   = $env:FTYPE_DISPLAY
-          $regionDisp  = $env:REGION
-          $deviceName  = $env:DEVICE
-          $ftypeName   = $env:FTYPE
-          $regionName  = $env:REGION_FOR_NAME
-          $version     = $env:VERSION
-          $outBaseName = if ($regionName) { "$deviceName-$ftypeName-$regionName-$version" } else { "$deviceName-$ftypeName-$version" }
-          "ARTIFACT_NAME=$outBaseName" | Out-File -FilePath $env:GITHUB_ENV -Append
+          $root = $env:GITHUB_WORKSPACE
+          $device = $env:DEVICE_DISPLAY
+          $ftype = $env:FTYPE_DISPLAY
+          $region = $env:REGION
+          $ver = $env:VERSION
+          $regionName = $env:REGION_FOR_NAME
 
-          $out = Join-Path $env:OUT_DIR $outBaseName
-          New-Item -ItemType Directory -Force -Path $out | Out-Null
+          $outBase = if ($regionName) { "$env:OUT_DIR\$env:DEVICE-$env:FTYPE-$regionName-$ver" } else { "$env:OUT_DIR\$env:DEVICE-$env:FTYPE-$ver" }
+          New-Item -ItemType Directory -Force -Path $outBase | Out-Null
+          Copy-Item $env:OTAFILE -Destination "$outBase\OTA.zip"
+          "Device: $device`nType: $ftype`nRegion: $region`nVersion: $ver" | Out-File -Encoding utf8 "$outBase\README.txt"
 
-          # Always include OTA.zip and README
-          Copy-Item $env:OTAFILE -Destination "$out\OTA.zip"
-          "Device: $deviceDisp`nType: $ftypeDisp`nRegion: $regionDisp`nVersion: $version" |
-            Out-File -FilePath "$out\README.txt" -Encoding utf8
-
-          # === Special Case: OnePlus 13 + SuperHybrid Flasher + GLO ===
-          if ($deviceDisp -eq 'Oneplus 13' -and $ftypeDisp -eq 'SuperHybrid Flasher' -and $regionDisp -eq 'GLO') {
-            $root = $env:GITHUB_WORKSPACE
-            $superFs   = Join-Path $root 'flasher_scripts\13\oos\super'
+          # Special staging
+          if ($device -eq 'Oneplus 13' -and $ftype -eq 'SuperHybrid Flasher' -and $region -eq 'GLO') {
+            $superFs = Join-Path $root 'flasher_scripts\13\oos\super'
             $superPack = Join-Path $root 'super_packers\13'
-            $lpmake    = Join-Path $root 'lpmake'
+            $lpmake = Join-Path $root 'lpmake'
 
-            $destMain  = Join-Path $out "Super Hybrid Flasher"
-            $destSuper = Join-Path $destMain "Super"
-            New-Item -ItemType Directory -Force -Path $destMain, $destSuper | Out-Null
+            $dest = Join-Path $outBase 'Super Hybrid Flasher'
+            $superDest = Join-Path $dest 'Super'
+            New-Item -ItemType Directory -Force -Path $dest, $superDest | Out-Null
 
-            Copy-Item "$superFs\META-INF" -Destination $destMain -Recurse -Force
-            Copy-Item "$superFs\dtbo_patcher.bat", "$superFs\Super.Flasher.bat" -Destination $destMain -Force
-            Copy-Item "$superPack\super_oos.bat" -Destination $destSuper -Force
-            Copy-Item "$lpmake\cygwin1.dll", "$lpmake\lpmake.exe" -Destination $destSuper -Force
-
-            Write-Host "SuperHybrid Flasher staged."
+            Copy-Item "$superFs\META-INF" -Destination $dest -Recurse -Force
+            Copy-Item "$superFs\dtbo_patcher.bat", "$superFs\Super.Flasher.bat" -Destination $dest -Force
+            Copy-Item "$superPack\super_oos.bat" -Destination $superDest -Force
+            Copy-Item "$lpmake\cygwin1.dll", "$lpmake\lpmake.exe" -Destination $superDest -Force
           }
 
-          # Package
-          7z a -tzip "$outBaseName.zip" "$out\*" | Out-Null
-          "ZIP_NAME=$outBaseName.zip" | Out-File -Append -FilePath $env:GITHUB_ENV
+          $zip = "$outBase.zip"
+          7z a -tzip "$zip" "$outBase\*" | Out-Null
+          "ZIP_NAME=$zip" | Out-File $env:GITHUB_ENV -Append
 
-      - name: Upload artifact to GitHub
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
+        if: ${{ inputs.upload_to == 'Artifact on GitHub' }}
         with:
-          name: ${{ env.ARTIFACT_NAME }}
+          name: ${{ env.DEVICE }}-${{ env.FTYPE }}-${{ env.REGION_FOR_NAME }}-${{ env.VERSION }}
           path: |
-            ${{ env.ZIP_NAME }}
-            ${{ env.OUT_DIR }}/${{ env.ARTIFACT_NAME }}/README.txt
-            ${{ env.OUT_DIR }}/${{ env.ARTIFACT_NAME }}/OTA.zip
-          if-no-files-found: error
+            *.zip
+            *.sha256
+            download/*.sha256.txt
+            BUILD_INFO.txt
           retention-days: ${{ env.ARTIFACT_RETENTION_DAYS }}
