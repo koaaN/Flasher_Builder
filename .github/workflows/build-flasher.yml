@@ -79,7 +79,21 @@ jobs:
       - name: Stage working dir (layout only, builder copied but not executed)
         shell: pwsh
         run: |
-          function Copy-BloatFiles {
+          ###############
+          # Helpers
+          ###############
+          function Copy-BloatFilesByFolder {
+            param([string]$base,[string]$folder,[string]$dest)
+            if (-not $folder) { return }
+            $srcDir = Join-Path $base $folder
+            if (!(Test-Path $srcDir)) { return }
+            foreach ($f in @('my_preload.img','my_company.img')) {
+              $srcFile = Join-Path $srcDir $f
+              if (Test-Path $srcFile) { Copy-Item $srcFile -Destination $dest -Force }
+            }
+          }
+
+          function Copy-BloatByRegion {
             param([string]$base,[string]$regionCode,[string]$dest)
             $map = @{
               'EU'  = 'EUGLO_BLOAT'
@@ -90,12 +104,7 @@ jobs:
               'A5'  = 'A5_DEBLOAT'
             }
             if (-not $map.ContainsKey($regionCode)) { return }
-            $srcDir = Join-Path $base $map[$regionCode]
-            if (!(Test-Path $srcDir)) { return }
-            foreach ($f in @('my_preload.img','my_company.img')) {
-              $srcFile = Join-Path $srcDir $f
-              if (Test-Path $srcFile) { Copy-Item $srcFile -Destination $dest -Force }
-            }
+            Copy-BloatFilesByFolder -base $base -folder $map[$regionCode] -dest $dest
           }
 
           function Copy-Template {
@@ -113,6 +122,9 @@ jobs:
             }
           }
 
+          ###############
+          # Inputs
+          ###############
           $devDisp = "${{ inputs.device }}"
           $ftype   = "${{ inputs.flasher_type }}"
           $region  = "${{ inputs.region }}"
@@ -125,6 +137,9 @@ jobs:
             default { throw "Unknown device: $devDisp" }
           }
 
+          ###############
+          # Repo paths
+          ###############
           $root       = $env:GITHUB_WORKSPACE
           $builderDir = Join-Path $root ("build_scripts\" + $dev)
           $otaripper  = Join-Path $root "otaripper\otaripper.exe"
@@ -139,59 +154,65 @@ jobs:
           $tplCOSSuper    = Join-Path $root ("flasher_scripts\" + $dev + "\cos\super")
           $tplCOSRegional = Join-Path $root ("flasher_scripts\" + $dev + "\cos\regional")
 
+          # Reset OUT_DIR
           if (Test-Path $env:OUT_DIR) { Remove-Item $env:OUT_DIR -Recurse -Force }
           New-Item -ItemType Directory -Force -Path $env:OUT_DIR | Out-Null
           $workRoot = $env:OUT_DIR
 
-          # Put otaripper next to builder (outside flasher folders)
+          # Place otaripper next to builder
           if (Test-Path $otaripper) { Copy-Item $otaripper $workRoot -Force }
 
-          # ----- Builder script selection -----
+          ###############
+          # Builder script selection
+          ###############
           $builderBat = switch ($ftype) {
             'SuperHybrid Flasher' {
-              if ($region -eq 'CN') { 'SUPERHYBRID_CN_FULL_SUPERBUILD.bat' }
-              else { 'SUPERHYBRID_FULL_SUPERBUILD.bat' }
+              if     ($dev -eq '13S') { 'SUPER_IN_FULL_SUPERBUILD.bat' }
+              elseif ($region -eq 'CN') { 'SUPERHYBRID_CN_FULL_SUPERBUILD.bat' }
+              else   { 'SUPERHYBRID_FULL_SUPERBUILD.bat' }
             }
             'RegionalHybrid Flasher' {
-              if ($region -eq 'CN') { 'REGIONALHYBRID_CN_FULL_BUILD.bat' }
-              else { 'REGIONALHYBRID_FULL_BUILD.bat' }
+              if     ($dev -eq '13S') { 'REGIONAL_IN_FULL_BUILD.bat' }
+              elseif ($region -eq 'CN') { 'REGIONALHYBRID_CN_FULL_BUILD.bat' }
+              else   { 'REGIONALHYBRID_FULL_BUILD.bat' }
             }
-            'SuperHybrid SunOS Flasher' { 'SUPERHYBRID_SUNOS_FULL_SUPERBUILD.bat' }
+            'SuperHybrid SunOS Flasher' {
+              if ($dev -eq '13S') { 'SUPER_IN_FULL_SUPERBUILD.bat' } else { 'SUPERHYBRID_SUNOS_FULL_SUPERBUILD.bat' }
+            }
             'Super Flasher' {
-              if ($dev -eq '13R') {
-                if ($region -eq 'CN') { 'SUPER_CN_FULL_SUPERBUILD.bat' }
-                else { 'SUPER_EUGLO_FULL_SUPERBUILD.bat' }
-              } else {
-                if ($region -eq 'CN') { 'SUPERHYBRID_CN_FULL_SUPERBUILD.bat' } else { 'SUPERHYBRID_FULL_SUPERBUILD.bat' }
-              }
+              if     ($dev -eq '13R' -and $region -eq 'CN') { 'SUPER_CN_FULL_SUPERBUILD.bat' }
+              elseif ($dev -eq '13R')                        { 'SUPER_EUGLO_FULL_SUPERBUILD.bat' }
+              elseif ($dev -eq '13S')                        { 'SUPER_IN_FULL_SUPERBUILD.bat' }
+              else { if ($region -eq 'CN') { 'SUPERHYBRID_CN_FULL_SUPERBUILD.bat' } else { 'SUPERHYBRID_FULL_SUPERBUILD.bat' } }
             }
             'Regional Flasher' {
-              if ($dev -eq '13R') {
-                if ($region -eq 'CN') { 'REGIONAL_CN_FULL_BUILD.bat' }
-                else { 'REGIONAL_EUGLO_FULL_BUILD.bat' }
-              } else {
-                if ($region -eq 'CN') { 'REGIONALHYBRID_CN_FULL_BUILD.bat' } else { 'REGIONALHYBRID_FULL_BUILD.bat' }
-              }
+              if     ($dev -eq '13R' -and $region -eq 'CN') { 'REGIONAL_CN_FULL_BUILD.bat' }
+              elseif ($dev -eq '13R')                        { 'REGIONAL_EUGLO_FULL_BUILD.bat' }
+              elseif ($dev -eq '13S')                        { 'REGIONAL_IN_FULL_BUILD.bat' }
+              else { if ($region -eq 'CN') { 'REGIONALHYBRID_CN_FULL_BUILD.bat' } else { 'REGIONALHYBRID_FULL_BUILD.bat' } }
             }
           }
 
           $builderPath = Join-Path $builderDir $builderBat
           if (Test-Path $builderPath) { Copy-Item $builderPath $workRoot -Force }
 
-          # --- Flasher type branching ---
+          ###############
+          # Flasher folder + contents
+          ###############
           if ($ftype -in @('SuperHybrid Flasher','SuperHybrid SunOS Flasher','Super Flasher')) {
-            if ($dev -eq '13R' -and $region -eq 'CN') {
-              $flasherFolderName = 'Super Flasher CN'
-              $templateDir = $tplCOSSuper
-              $packerName = 'super_cos.bat'
+            if ($dev -eq '13S') {
+              # 13S always = "Super Flasher"
+              $templateDir = $tplOOSSuper
+              $packerName = 'super_oos.bat'
+              $flasherFolderName = 'Super Flasher'
+            } elseif ($dev -eq '13R' -and $region -eq 'CN') {
+              $templateDir = $tplCOSSuper; $packerName = 'super_cos.bat'; $flasherFolderName = 'Super Flasher CN'
             } elseif ($dev -eq '13' -and $region -eq 'CN') {
-              $flasherFolderName = 'SuperHybrid Flasher CN'
-              $templateDir = $tplCOSSuper
-              $packerName = 'super_cos.bat'
+              $templateDir = $tplCOSSuper; $packerName = 'super_cos.bat'; $flasherFolderName = 'SuperHybrid Flasher CN'
             } else {
-              $flasherFolderName = if ($ftype -eq 'Super Flasher') { 'Super Flasher' } else { 'SuperHybrid Flasher' }
               $templateDir = $tplOOSSuper
               $packerName = if ($ftype -eq 'SuperHybrid SunOS Flasher') { 'super_sunos.bat' } else { 'super_oos.bat' }
+              $flasherFolderName = if ($ftype -eq 'Super Flasher') { 'Super Flasher' } else { 'SuperHybrid Flasher' }
             }
 
             $destDir = Join-Path $workRoot $flasherFolderName
@@ -204,29 +225,27 @@ jobs:
             Copy-Item $cygwinDll $superDir -Force
             Copy-Item (Join-Path $superPacks $packerName) $superDir -Force
 
+            Copy-BloatByRegion $bloatBase $region $superDir
+
             if ($region -eq 'CN') {
-              Copy-BloatFiles $bloatBase 'CN' $superDir
               $oosHere = Join-Path $destDir 'OOS_FILES_HERE'
               New-Item -ItemType Directory -Force -Path $oosHere | Out-Null
-              if ($dev -eq '13R') {
-                Copy-BloatFiles $bloatBase 'A5' $oosHere
-              } else {
-                Copy-BloatFiles $bloatBase 'GLO' $oosHere   # maps to EUGLO_BLOAT
-              }
-            } else {
-              Copy-BloatFiles $bloatBase $region $superDir
+              if     ($dev -eq '13R') { Copy-BloatFilesByFolder $bloatBase 'A5_DEBLOAT'   $oosHere }
+              elseif ($dev -eq '13')  { Copy-BloatFilesByFolder $bloatBase 'EUGLO_BLOAT' $oosHere }
             }
 
           } elseif ($ftype -in @('RegionalHybrid Flasher','Regional Flasher')) {
-            if ($dev -eq '13R' -and $region -eq 'CN') {
-              $flasherFolderName = 'Regional Flasher CN'
-              $templateDir = $tplCOSRegional
-            } elseif ($dev -eq '13' -and $region -eq 'CN') {
-              $flasherFolderName = 'RegionalHybrid Flasher CN'
-              $templateDir = $tplCOSRegional
-            } else {
-              $flasherFolderName = if ($ftype -eq 'Regional Flasher') { 'Regional Flasher' } else { 'RegionalHybrid Flasher' }
+            if ($dev -eq '13S') {
+              # 13S always = "Regional Flasher"
               $templateDir = $tplOOSRegional
+              $flasherFolderName = 'Regional Flasher'
+            } elseif ($dev -eq '13R' -and $region -eq 'CN') {
+              $templateDir = $tplCOSRegional; $flasherFolderName = 'Regional Flasher CN'
+            } elseif ($dev -eq '13' -and $region -eq 'CN') {
+              $templateDir = $tplCOSRegional; $flasherFolderName = 'RegionalHybrid Flasher CN'
+            } else {
+              $templateDir = $tplOOSRegional
+              $flasherFolderName = if ($ftype -eq 'Regional Flasher') { 'Regional Flasher' } else { 'RegionalHybrid Flasher' }
             }
 
             $destDir = Join-Path $workRoot $flasherFolderName
@@ -235,17 +254,14 @@ jobs:
 
             $oosHere = Join-Path $destDir 'OOS_FILES_HERE'
             New-Item -ItemType Directory -Force -Path $oosHere | Out-Null
+            Copy-BloatByRegion $bloatBase $region $oosHere
+
             if ($region -eq 'CN') {
-              if ($dev -eq '13R') {
-                Copy-BloatFiles $bloatBase 'A5' $oosHere
-              } else {
-                Copy-BloatFiles $bloatBase 'GLO' $oosHere   # maps to EUGLO_BLOAT
-              }
               $cosHere = Join-Path $destDir 'COS_FILES_HERE'
               New-Item -ItemType Directory -Force -Path $cosHere | Out-Null
-              Copy-BloatFiles $bloatBase 'CN' $cosHere
-            } else {
-              Copy-BloatFiles $bloatBase $region $oosHere
+              Copy-BloatFilesByFolder $bloatBase 'CN_BLOAT' $cosHere
+              if     ($dev -eq '13R') { Copy-BloatFilesByFolder $bloatBase 'A5_DEBLOAT'   $oosHere }
+              elseif ($dev -eq '13')  { Copy-BloatFilesByFolder $bloatBase 'EUGLO_BLOAT' $oosHere }
             }
           }
 
