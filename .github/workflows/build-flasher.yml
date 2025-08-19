@@ -155,11 +155,11 @@ jobs:
           $builderDir = Join-Path $root ("build_scripts\" + $dev)
           $bloatBase  = Join-Path $root ("bloat\" + $dev)
 
-          # Prepare OUT_DIR
+          # Prepare OUT_DIR fresh
           if (Test-Path $env:OUT_DIR) { Remove-Item $env:OUT_DIR -Recurse -Force }
           New-Item -ItemType Directory -Force -Path $env:OUT_DIR | Out-Null
 
-          # Put otaripper + builder bat in OUT_DIR
+          # Put otaripper + builder bat in OUT_DIR (root of final zip)
           if (Test-Path (Join-Path $root 'otaripper\otaripper.exe')) {
             Copy-Item (Join-Path $root 'otaripper\otaripper.exe') -Destination $env:OUT_DIR -Force
           }
@@ -193,7 +193,7 @@ jobs:
           # Copy template files
           Copy-Item "$tplBase\*" -Destination $workDir -Recurse -Force
 
-          # META-INF → ONLY for Hybrids
+          # META-INF → ONLY for Hybrid builds
           if ($ftype -like '*Hybrid*') {
             $mi = Join-Path $tplBase 'META-INF'
             if (Test-Path $mi) { Copy-Item $mi -Destination (Join-Path $workDir 'META-INF') -Recurse -Force }
@@ -248,14 +248,41 @@ jobs:
             }
           }
 
-          # Build a single zip in OUT_DIR
+          # Expose for packaging step
+          "WORK_DIR=$workDir" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Package output (include folder + otaripper + builder)
+        shell: pwsh
+        run: |
+          $workDir   = $env:WORK_DIR
+          $outRoot   = $env:OUT_DIR
           $devName   = "${{ inputs.device }}".Replace(' ','')
           $ftypeName = "${{ inputs.flasher_type }}".Replace(' ','')
           $regionStr = "${{ inputs.region }}"
           $ts        = Get-Date -Format "yyyyMMdd-HHmmss"
           $artifact  = "$devName-$ftypeName-$regionStr-$ts".Replace(' ','')
-          $zipPath   = Join-Path $env:OUT_DIR "$artifact.zip"
-          Compress-Archive -Path "$workDir\*" -DestinationPath $zipPath -Force
+          $zipPath   = Join-Path $outRoot "$artifact.zip"
+
+          # Stage a temp folder to control zip root contents
+          $stage = Join-Path $outRoot "__stage"
+          if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+
+          # 1) keep the working folder as a folder
+          Copy-Item $workDir -Destination $stage -Recurse -Force
+
+          # 2) add otaripper.exe (if present)
+          $otaripper = Join-Path $outRoot 'otaripper.exe'
+          if (Test-Path $otaripper) { Copy-Item $otaripper -Destination $stage -Force }
+
+          # 3) add builder .bat (if present)
+          $builder = Join-Path $outRoot $env:BUILDER_BAT
+          if (Test-Path $builder) { Copy-Item $builder -Destination $stage -Force }
+
+          # Create the single zip
+          if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
+          Compress-Archive -Path "$stage\*" -DestinationPath $zipPath -Force
+          Remove-Item $stage -Recurse -Force
 
           "ARTIFACT_NAME=$artifact" | Out-File -FilePath $env:GITHUB_ENV -Append
           "ZIP_FILE=$zipPath"       | Out-File -FilePath $env:GITHUB_ENV -Append
