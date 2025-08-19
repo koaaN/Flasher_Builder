@@ -1,167 +1,90 @@
 @echo off
-setlocal EnableExtensions EnableDelayedExpansion
+setlocal enabledelayedexpansion
 
-echo ==========================================================
-echo   SUPERHYBRID FULL SUPERBUILD  (Dry-Run Compatible)
-echo ==========================================================
+:: Path to dropped ZIP
+set "input_file=%~1"
+set "input_dir=%~dp1"
 
-:: ------------------------------------------------------------
-:: 1) INPUT (drag & drop OTA.zip OR dry-run if none provided)
-:: ------------------------------------------------------------
-if "%~1"=="" (
-  echo [INFO] No OTA zip provided. Running in DRY-RUN mode...
-  set "dry_run=1"
-  set "input_file=DUMMY_OTA.zip"
-  set "input_dir=%~dp0DUMMY_OTA"
-  if "%input_dir:~-1%"=="\" set "input_dir=%input_dir:~0,-1%"
-  if not exist "%input_dir%" mkdir "%input_dir%"
-) else (
-  set "dry_run=0"
-  set "input_file=%~1"
-  set "input_dir=%~dp1"
-  if "%input_dir:~-1%"=="\" set "input_dir=%input_dir:~0,-1%"
+:: Path to otaripper.exe and Super Flasher folder
+set "tool=%~dp0otaripper.exe"
+set "tool_name=otaripper.exe"
+set "super_flasher_src=%~dp0SuperHybrid Flasher"
+set "super_flasher_dest=%input_dir%SuperHybrid Flasher"
+
+:: Copy Super Flasher folder to zip location
+xcopy /E /I /Y "%super_flasher_src%" "%super_flasher_dest%"
+
+:: Copy otaripper.exe to the zip's folder
+copy "%tool%" "%input_dir%" >nul
+
+:: Save list of folders before extraction
+set "before_folders="
+for /d %%D in ("%input_dir%*") do (
+    set "before_folders=!before_folders! %%~nxD"
 )
 
-set "self_dir=%~dp0"
-if "%self_dir:~-1%"=="\" set "self_dir=%self_dir:~0,-1%"
+:: Run otaripper.exe (no --partitions)
+pushd "%input_dir%"
+"%tool_name%" "%input_file%"
+popd
 
-set "flasher_src=%self_dir%\SuperHybrid Flasher"
-set "flasher_dest=%input_dir%\SuperHybrid Flasher"
+:: Delete temporary otaripper.exe
+del "%input_dir%%tool_name%" >nul
 
-:: Path to otaripper.exe
-set "otaripper=%self_dir%\..\..\otaripper\otaripper.exe"
-
-echo [INFO] Mode     : %dry_run% (1=dry-run, 0=real)
-echo [INFO] OTA file : "%input_file%"
-echo [INFO] OTA dir  : "%input_dir%\"
-echo [INFO] Builder  : "%~nx0"
-echo [INFO] Ripper   : "%otaripper%"
-echo [INFO] Template : "%flasher_src%"
-echo.
-
-:: ------------------------------------------------------------
-:: 2) Copy flasher template
-:: ------------------------------------------------------------
-echo [STEP] Copying flasher template...
-echo [DEBUG] flasher_src: [%flasher_src%]
-echo [DEBUG] flasher_dest: [%flasher_dest%]
-if exist "%flasher_dest%" rmdir /s /q "%flasher_dest%"
-xcopy "%flasher_src%" "%flasher_dest%" /E /I /Y >nul
-if errorlevel 1 (
-  echo [ERROR] Failed to copy flasher template.
-  exit /b 1
-)
-
-:: ------------------------------------------------------------
-:: 3) Extract OTA using otaripper
-:: ------------------------------------------------------------
-if "%dry_run%"=="1" (
-  echo [INFO] Skipping OTA extraction (dry-run).
-  goto :organize
-)
-
-echo [STEP] Extracting OTA using otaripper.exe...
-pushd "%input_dir%" >nul
-"%otaripper%" "%input_file%"
-set "rip_rc=%errorlevel%"
-popd >nul
-if not "%rip_rc%"=="0" (
-  echo Error:  otaripper failed with exit code %rip_rc%.
-  exit /b %rip_rc%
-)
-
-:: Detect new folder
+:: Detect the new folder created by extraction
 set "new_folder="
-for /f "delims=" %%D in ('dir /b /ad "%input_dir%"') do (
-  if not exist "%flasher_dest%\%%D" (
-    set "new_folder=%input_dir%\%%D"
-  )
+for /d %%D in ("%input_dir%*") do (
+    echo !before_folders! | find " %%~nxD" >nul
+    if errorlevel 1 (
+        set "new_folder=%%~fD"
+    )
 )
 
-if not defined new_folder (
-  echo [ERROR] Could not detect extracted folder.
-  exit /b 1
-)
-
-echo [INFO] Detected extracted folder: "%new_folder%"
-
-:organize
-:: ------------------------------------------------------------
-:: 4) Organize files
-:: ------------------------------------------------------------
-if not exist "%flasher_dest%\super" md "%flasher_dest%\super"
-if not exist "%flasher_dest%\OOS_FILES_HERE" md "%flasher_dest%\OOS_FILES_HERE"
-
+:: Move files
 if defined new_folder (
-  echo [STEP] Moving logical partitions -> "super\"
-  for %%F in (
-    my_bigball.img my_carrier.img my_engineering.img my_heytap.img
-    my_manifest.img my_product.img my_region.img my_stock.img
-    odm.img product.img system.img system_dlkm.img system_ext.img
-    vendor.img vendor_dlkm.img
-  ) do (
-    if exist "%new_folder%\%%F" move /Y "%new_folder%\%%F" "%flasher_dest%\super\" >nul
-  )
+    :: First move selected .img files to the super folder
+    if not exist "%super_flasher_dest%\super" mkdir "%super_flasher_dest%\super"
 
-  echo [STEP] Moving remaining files -> "OOS_FILES_HERE\"
-  move /Y "%new_folder%\*" "%flasher_dest%\OOS_FILES_HERE\" >nul
-  rd /s /q "%new_folder%" 2>nul
-) else (
-  echo [INFO] Dry-run: created empty folders for layout.
+    echo Moving logical partitions into super folder...
+    for %%F in (
+        my_bigball.img my_carrier.img my_engineering.img my_heytap.img
+        my_manifest.img my_product.img my_region.img my_stock.img
+        odm.img product.img system.img system_dlkm.img system_ext.img
+        vendor.img vendor_dlkm.img
+    ) do (
+        if exist "!new_folder!\%%F" move /Y "!new_folder!\%%F" "%super_flasher_dest%\super\"
+    )
+
+    :: Then move remaining files to OOS_FILES_HERE
+    if not exist "%super_flasher_dest%\OOS_FILES_HERE" mkdir "%super_flasher_dest%\OOS_FILES_HERE"
+    move /Y "!new_folder!\*" "%super_flasher_dest%\OOS_FILES_HERE\" >nul
+
+    
+
+    rd /s /q "!new_folder!"
 )
 
-:: ------------------------------------------------------------
-:: 5) Handle dtbo patching and replacement
-:: ------------------------------------------------------------
-echo [STEP] Handling dtbo.img...
-if exist "%flasher_dest%\OOS_FILES_HERE\dtbo.img" (
-  copy /Y "%flasher_dest%\OOS_FILES_HERE\dtbo.img" "%flasher_dest%" >nul
-  if exist "%flasher_dest%\dtbo_patcher.bat" (
-    echo [STEP] Patching dtbo.img ...
-    call "%flasher_dest%\dtbo_patcher.bat"
-  ) else (
-    echo [WARN] dtbo_patcher.bat not found; skipping patch.
-  )
-) else (
-  echo [WARN] dtbo.img not found; skipping patch.
-)
+echo Done moving files into Super Flasher
+echo Copying and Patching dtbo.img
 
-if exist "%self_dir%\..\..\16DTBO\dtbo.img" (
-  echo [STEP] Replacing dtbo.img with 16DTBO version...
-  copy /Y "%self_dir%\..\..\16DTBO\dtbo.img" "%flasher_dest%\OOS_FILES_HERE\" >nul
-)
+:: Copy extracted dtbo.img from OOS_FILES_HERE to current directory and patch it
+copy /Y "%super_flasher_dest%\OOS_FILES_HERE\dtbo.img" "%super_flasher_dest%"
+call "%super_flasher_dest%\dtbo_patcher.bat"
 
-:: ------------------------------------------------------------
-:: 6) Pack super.img using super_oos.bat
-:: ------------------------------------------------------------
-echo [STEP] Building super.img using super_oos.bat...
-if exist "%flasher_dest%\Super\super_oos.bat" (
-  pushd "%flasher_dest%\Super" >nul
-  call "super_oos.bat"
-  set "super_rc=%errorlevel%"
-  popd >nul
-  if not "%super_rc%"=="0" (
-    echo [ERROR] super_oos.bat failed with code %super_rc%.
-    exit /b %super_rc%
-  )
-  if exist "%flasher_dest%\Super\super.img" (
-    echo [STEP] Moving super.img into flasher root ...
-    move /Y "%flasher_dest%\Super\super.img" "%flasher_dest%\" >nul
-  )
-) else (
-  echo [WARN] super_oos.bat not found in Super folder.
-)
+:: Copy 16.0.0.1 dtbo.img from 16DTBO to OOS_FILES_HERE
+echo Copying 16.0.0.1 dtbo.img into OOS_FILES_HERE...
+copy /Y "%~dp016DTBO\dtbo.img" "%super_flasher_dest%\OOS_FILES_HERE\"
 
-:: ------------------------------------------------------------
-:: 7) Cleanup
-:: ------------------------------------------------------------
-echo [STEP] Cleaning temporary files...
-if exist "%flasher_dest%\Super" rmdir /S /Q "%flasher_dest%\Super"
-if exist "%flasher_dest%\dtbo.img" del /F /Q "%flasher_dest%\dtbo.img"
-if exist "%flasher_dest%\dtbo_patcher.bat" del /F /Q "%flasher_dest%\dtbo_patcher.bat"
+:: Pack super.img and moving it to Super Flasher directory
+echo Packing super.img
+call "SuperHybrid Flasher\Super\super_oos.bat"
+echo Moving super.img into Super Flasher.
+move /Y "SuperHybrid Flasher\Super\super.img" "SuperHybrid Flasher\"
 
-echo.
-echo ==========================================================
-echo   BUILD DONE!  (Dry-run OK if no OTA was given)
-echo ==========================================================
-exit /b 0
+:: Remove unnessesary files used to make the build
+echo Removing scrap files
+rmdir /S /Q "SuperHybrid Flasher\Super"
+del /f /q "%super_flasher_dest%\dtbo.img"
+del /f /q "%super_flasher_dest%\dtbo_patcher.bat"
+echo BUILD DONE!!!
+pause
