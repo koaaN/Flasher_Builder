@@ -82,7 +82,7 @@ jobs:
           function Copy-BloatFiles {
             param(
               [string]$base,
-              [string]$regionCode,
+              [string]$regionCode, # EU | GLO | IN | NA | CN | A5
               [string]$dest
             )
 
@@ -102,9 +102,7 @@ jobs:
             $files = @('my_preload.img','my_company.img')
             foreach ($f in $files) {
               $srcFile = Join-Path $srcDir $f
-              if (Test-Path $srcFile) {
-                Copy-Item $srcFile -Destination $dest -Force
-              }
+              if (Test-Path $srcFile) { Copy-Item $srcFile -Destination $dest -Force }
             }
           }
 
@@ -115,14 +113,19 @@ jobs:
             )
             if (!(Test-Path $templateDir)) { throw "Template not found: $templateDir" }
 
+            # Ensure destination exists first (prevents META-INF copy errors)
+            New-Item -ItemType Directory -Force -Path $destDir | Out-Null
+
             # Copy everything except META-INF
-            Get-ChildItem $templateDir | Where-Object { $_.Name -ne 'META-INF' } | ForEach-Object {
+            Get-ChildItem -LiteralPath $templateDir | Where-Object { $_.Name -ne 'META-INF' } | ForEach-Object {
               Copy-Item $_.FullName -Destination $destDir -Recurse -Force
             }
 
-            # Explicitly copy META-INF only
-            if (Test-Path (Join-Path $templateDir 'META-INF')) {
-              Copy-Item (Join-Path $templateDir 'META-INF') -Destination (Join-Path $destDir 'META-INF') -Recurse -Force
+            # Copy META-INF only if present
+            $metaInfSrc = Join-Path $templateDir 'META-INF'
+            if (Test-Path $metaInfSrc) {
+              $metaInfDst = Join-Path $destDir 'META-INF'
+              Copy-Item $metaInfSrc -Destination $metaInfDst -Recurse -Force
             }
           }
 
@@ -181,9 +184,7 @@ jobs:
           }
 
           $builderPath = Join-Path $builderDir $builderBat
-          if (Test-Path $builderPath) {
-            Copy-Item $builderPath $workRoot -Force
-          }
+          if (Test-Path $builderPath) { Copy-Item $builderPath $workRoot -Force }
 
           # --- Flasher type branching ---
           if ($ftype -in @('SuperHybrid Flasher','SuperHybrid SunOS Flasher','Super Flasher')) {
@@ -198,7 +199,7 @@ jobs:
             } else {
               $flasherFolderName = if ($ftype -eq 'Super Flasher') { 'Super Flasher' } else { 'SuperHybrid Flasher' }
               $templateDir = $tplOOSSuper
-              $packerName = 'super_oos.bat'
+              $packerName = if ($ftype -eq 'SuperHybrid SunOS Flasher') { 'super_sunos.bat' } else { 'super_oos.bat' }
             }
 
             $destDir = Join-Path $workRoot $flasherFolderName
@@ -218,7 +219,7 @@ jobs:
               if ($dev -eq '13R') {
                 Copy-BloatFiles $bloatBase 'A5' $oosHere
               } else {
-                Copy-BloatFiles $bloatBase 'EUGLO' $oosHere
+                Copy-BloatFiles $bloatBase 'GLO' $oosHere   # maps to EUGLO_BLOAT
               }
             } else {
               Copy-BloatFiles $bloatBase $region $superDir
@@ -246,7 +247,7 @@ jobs:
               if ($dev -eq '13R') {
                 Copy-BloatFiles $bloatBase 'A5' $oosHere
               } else {
-                Copy-BloatFiles $bloatBase 'EUGLO' $oosHere
+                Copy-BloatFiles $bloatBase 'GLO' $oosHere   # maps to EUGLO_BLOAT
               }
               $cosHere = Join-Path $destDir 'COS_FILES_HERE'
               New-Item -ItemType Directory -Force -Path $cosHere | Out-Null
@@ -274,5 +275,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.ARTIFACT_NAME }}
-          path: ${{ env.ZIP_FILE }}
-          retention-days: ${{ env.ARTIFACT_RETENTION_DAYS }}
+          path: ${{ env:ZIP_FILE }}
+          retention-days: ${{ env:ARTIFACT_RETENTION_DAYS }}
