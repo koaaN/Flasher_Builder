@@ -46,10 +46,6 @@ if defined new_folder (
     if not exist "%Regional_Hybrid_Flasher_src%\OOS_FILES_HERE" mkdir "%Regional_Hybrid_Flasher_src%\OOS_FILES_HERE"
     move /Y "!new_folder!\*" "%Regional_Hybrid_Flasher_src%\OOS_FILES_HERE\" >nul
 
-    echo Copying my_preload.img ^& my_company.img from EUGLO_BLOAT into OOS_FILES_HERE
-    copy /Y "%~dp0EUGLO_BLOAT\my_preload.img" "%Regional_Hybrid_Flasher_src%\OOS_FILES_HERE\"
-    copy /Y "%~dp0EUGLO_BLOAT\my_company.img" "%Regional_Hybrid_Flasher_src%\OOS_FILES_HERE\"
-
     rd /s /q "!new_folder!"
 )
 
