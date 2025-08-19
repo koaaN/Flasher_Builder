@@ -1,127 +1,187 @@
-name: Build Flasher Package
+name: Build Flasher (with region bloat inside SuperHybrid)
 
 on:
   workflow_dispatch:
     inputs:
-      DEVICE:
-        description: "Device (e.g., Oneplus13, Oneplus13R, Oneplus13S, Oneplus13T)"
+      device:
+        description: "Device"
+        type: choice
         required: true
-        default: Oneplus13
-      DEVICE_DISPLAY:
-        description: "Display name (e.g., Oneplus 13)"
-        required: true
+        options:
+          - Oneplus 13
+          - Oneplus 13R
+          - Oneplus 13S
+          - Oneplus 13T
         default: Oneplus 13
-      FTYPE:
-        description: "Flasher type (e.g., SuperHybridFlasher)"
+      flasher_type:
+        description: "Flasher type"
+        type: choice
         required: true
-        default: SuperHybridFlasher
-      FTYPE_DISPLAY:
-        description: "Flasher display name"
-        required: true
+        options:
+          - SuperHybrid Flasher
+          - RegionalHybrid Flasher
+          - SuperHybrid SunOS Flasher
         default: SuperHybrid Flasher
-      REGION:
-        description: "Region (e.g., EU, GLO, IN, NA)"
+      region:
+        description: "Region"
+        type: choice
         required: true
+        options:
+          - GLO
+          - EU
+          - IN
+          - NA
+          - CN
         default: GLO
-      REGION_FOR_NAME:
-        description: "Region suffix in folder name (blank for NONE)"
+      ota_url:
+        description: "FULL OTA.zip URL (leave empty for placeholder)"
+        type: string
         required: false
-        default: GLO
-      VERSION:
-        description: "Version label"
-        required: true
-        default: ota-placeholder
-      USE_PLACEHOLDER:
-        description: "Use placeholder OTA (1 = yes, 0 = no)"
-        required: true
-        default: "1"
+
+permissions:
+  contents: read
+
+env:
+  OUT_DIR: out
+  ARTIFACT_RETENTION_DAYS: 14
 
 jobs:
-  build-flasher:
+  build:
+    name: Build • ${{ inputs.device }} • ${{ inputs.flasher_type }} • ${{ inputs.region }}
     runs-on: windows-latest
 
-    env:
-      ARTIFACT_RETENTION_DAYS: 14
-      OUT_DIR: out
-
     steps:
-      - name: Checkout repository
+      - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Install tools
-        run: choco install -y aria2 7zip
-
-      - name: Define environment variables
+      - name: Prep OTA (download or placeholder)
+        shell: pwsh
         run: |
-          $env:OTAFILE = if ($env:USE_PLACEHOLDER -eq '1') {
-            "download/ota-placeholder.zip"
+          New-Item -ItemType Directory -Force -Path "download","$env:OUT_DIR" | Out-Null
+          $url = "${{ inputs.ota_url }}".Trim()
+          if ([string]::IsNullOrWhiteSpace($url)) {
+            Set-Content -Path "download\PLACEHOLDER.txt" -Value "Placeholder OTA for dry-run"
+            Compress-Archive -Path "download\PLACEHOLDER.txt" -DestinationPath "download\OTA.zip" -Force
           } else {
-            "download/real-ota.zip"
+            $name = Split-Path $url -Leaf
+            if ([string]::IsNullOrWhiteSpace($name)) { $name = "OTA.zip" }
+            $dst = "download\$name"
+            Invoke-WebRequest -Uri $url -OutFile $dst -UseBasicParsing
+            if ($name -ne "OTA.zip") {
+              if (Test-Path "download\OTA.zip") { Remove-Item "download\OTA.zip" -Force }
+              Rename-Item -Path $dst -NewName "OTA.zip"
+            }
           }
-          echo "OTAFILE=$($env:OTAFILE)" >> $env:GITHUB_ENV
+          "OTA_PATH=$(Resolve-Path 'download\OTA.zip')" | Out-File -FilePath $env:GITHUB_ENV -Append
 
-      - name: Prepare output folder
+      - name: Map device → folder & pick builder
+        shell: pwsh
         run: |
-          $deviceDisp  = "${{ github.event.inputs.DEVICE_DISPLAY }}"
-          $ftypeDisp   = "${{ github.event.inputs.FTYPE_DISPLAY }}"
-          $regionDisp  = "${{ github.event.inputs.REGION }}"
-          $deviceName  = "${{ github.event.inputs.DEVICE }}"
-          $ftypeName   = "${{ github.event.inputs.FTYPE }}"
-          $regionName  = "${{ github.event.inputs.REGION_FOR_NAME }}"
-          $version     = "${{ github.event.inputs.VERSION }}"
-          $outName = if ($regionName) { "$deviceName-$ftypeName-$regionName-$version" } else { "$deviceName-$ftypeName-$version" }
-          echo "ARTIFACT_NAME=$outName" >> $env:GITHUB_ENV
+          $devDisp = "${{ inputs.device }}"
+          $dev = switch ($devDisp) {
+            'Oneplus 13'  { '13'  }
+            'Oneplus 13R' { '13R' }
+            'Oneplus 13S' { '13S' }
+            'Oneplus 13T' { '13T' }
+            default { throw "Unknown device: $devDisp" }
+          }
 
-          $outPath = Join-Path $env:OUT_DIR $outName
-          echo "OUT_PATH=$outPath" >> $env:GITHUB_ENV
+          $ftype  = "${{ inputs.flasher_type }}"
+          $region = "${{ inputs.region }}"
 
-          New-Item -ItemType Directory -Path $outPath -Force | Out-Null
+          $batName = switch ($ftype) {
+            'SuperHybrid Flasher' {
+              if ($region -eq 'CN') { 'SUPERHYBRID_CN_FULL_SUPERBUILD.bat' }
+              else { 'SUPERHYBRID_FULL_SUPERBUILD.bat' }
+            }
+            'RegionalHybrid Flasher' {
+              if ($region -eq 'CN') { 'REGIONALHYBRID_CN_FULL_BUILD.bat' }
+              else { 'REGIONALHYBRID_FULL_BUILD.bat' }
+            }
+            'SuperHybrid SunOS Flasher' { 'SUPERHYBRID_SUNOS_FULL_SUPERBUILD.bat' }
+            default { throw "Unknown flasher type: $ftype" }
+          }
 
-          Copy-Item $env:OTAFILE -Destination (Join-Path $outPath "OTA.zip")
+          "DEV_FOLDER=$dev"   | Out-File -FilePath $env:GITHUB_ENV -Append
+          "BUILDER_BAT=$batName" | Out-File -FilePath $env:GITHUB_ENV -Append
 
-          $note = if ("${{ github.event.inputs.USE_PLACEHOLDER }}" -eq '1') { "`nNOTE: Placeholder OTA used." } else { "" }
-          "Device: $deviceDisp`nType: $ftypeDisp`nRegion: $regionDisp`nVersion: $version$note" |
-            Out-File -FilePath (Join-Path $outPath "README.txt") -Encoding utf8
+      - name: Stage files (template, otaripper, bloat inside SuperHybrid)
+        shell: pwsh
+        run: |
+          $dev = $env:DEV_FOLDER
+          $builderDir = Join-Path $env:GITHUB_WORKSPACE ("build_scripts\" + $dev)
+          if (!(Test-Path $builderDir)) { throw "Missing builder dir: $builderDir" }
 
-      - name: Run build script based on device/region
+          # otaripper.exe next to builder
+          Copy-Item (Join-Path $env:GITHUB_WORKSPACE 'otaripper\otaripper.exe') -Destination $builderDir -Force
+
+          # SuperHybrid Flasher template
+          $templateSrc  = Join-Path $env:GITHUB_WORKSPACE ("flasher_scripts\" + $dev + "\oos\super")
+          $templateDest = Join-Path $builderDir 'SuperHybrid Flasher'
+          if (Test-Path $templateDest) { Remove-Item $templateDest -Recurse -Force }
+          Copy-Item $templateSrc -Destination $templateDest -Recurse -Force
+
+          # platform-tools inside SuperHybrid Flasher if requested
+          if ("${{ inputs.flasher_type }}" -eq "SuperHybrid Flasher") {
+            $ptSrc = Join-Path $env:GITHUB_WORKSPACE 'platform-tools'
+            if (Test-Path $ptSrc) {
+              Copy-Item $ptSrc -Destination $templateDest -Recurse -Force
+            }
+          }
+
+          # 16DTBO next to builder (bat expects %~dp016DTBO)
+          $src16 = Join-Path $templateSrc '16DTBO'
+          if (Test-Path $src16) {
+            Copy-Item $src16 -Destination (Join-Path $builderDir '16DTBO') -Recurse -Force
+          }
+
+          # Region bloat inside SuperHybrid Flasher
+          $region = "${{ inputs.region }}"
+          $bloatFolderName = switch ($region) {
+            'EU'  { 'EUGLO_BLOAT' }
+            'GLO' { 'EUGLO_BLOAT' }
+            'IN'  { 'IN_BLOAT' }
+            'NA'  { 'NA_BLOAT' }
+            default { '' }
+          }
+          if ($bloatFolderName) {
+            $bloatSrc = Join-Path $env:GITHUB_WORKSPACE ("bloat\" + $dev + "\" + $bloatFolderName)
+            if (!(Test-Path $bloatSrc)) { $bloatSrc = Join-Path $env:GITHUB_WORKSPACE ("bloat\13\" + $bloatFolderName) }
+            if (!(Test-Path $bloatSrc)) { throw "Missing bloat source: $bloatSrc" }
+            Copy-Item $bloatSrc -Destination (Join-Path $templateDest $bloatFolderName) -Recurse -Force
+          }
+
+          "BUILDER_DIR=$builderDir"     | Out-File -FilePath $env:GITHUB_ENV -Append
+          "TEMPLATE_DEST=$templateDest" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Run builder .bat
         shell: cmd
+        working-directory: ${{ env.BUILDER_DIR }}
         run: |
-          SETLOCAL ENABLEDELAYEDEXPANSION
-          SET DEVICE=${{ github.event.inputs.DEVICE }}
-          SET REGION=${{ github.event.inputs.REGION }}
-          SET REGION_SUFFIX=${{ github.event.inputs.REGION_FOR_NAME }}
-          SET VERSION=${{ github.event.inputs.VERSION }}
-          SET OUT_NAME=%DEVICE%-%FTYPE%-%REGION_SUFFIX%-%VERSION%
-          SET OUT_DIR=out
-          SET OUT_PATH=%OUT_DIR%\%OUT_NAME%
-          SET ZIP_PATH=%OUT_NAME%.zip
+          echo Running %BUILDER_BAT% with OTA: "%OTA_PATH%"
+          call "%BUILDER_BAT%" "%OTA_PATH%"
 
-          IF "%REGION%"=="EU"  SET BLOAT_DIR=bloat\13\EUGLO_BLOAT
-          IF "%REGION%"=="GLO" SET BLOAT_DIR=bloat\13\EUGLO_BLOAT
-          IF "%REGION%"=="IN"  SET BLOAT_DIR=bloat\13\IN_BLOAT
-          IF "%REGION%"=="NA"  SET BLOAT_DIR=bloat\13\NA_BLOAT
-
-          :: Copy bloat files to Super folder if present
-          IF EXIST "%BLOAT_DIR%\my_preload.img" (
-            COPY /Y "%BLOAT_DIR%\my_preload.img" "%OUT_PATH%\SuperHybrid Flasher\super\"
-          )
-          IF EXIST "%BLOAT_DIR%\my_company.img" (
-            COPY /Y "%BLOAT_DIR%\my_company.img" "%OUT_PATH%\SuperHybrid Flasher\super\"
-          )
-
-          :: Run the correct .bat script
-          IF "%DEVICE%"=="Oneplus13"  CALL build_scripts\13\SUPERHYBRID_FULL_SUPERBUILD.bat
-          IF "%DEVICE%"=="Oneplus13R" CALL build_scripts\13R\SUPERHYBRID_FULL_SUPERBUILD.bat
-          IF "%DEVICE%"=="Oneplus13S" CALL build_scripts\13S\SUPERHYBRID_FULL_SUPERBUILD.bat
-          IF "%DEVICE%"=="Oneplus13T" CALL build_scripts\13T\SUPERHYBRID_FULL_SUPERBUILD.bat
-
-      - name: Zip output
+      - name: Zip built SuperHybrid Flasher
+        shell: pwsh
         run: |
-          7z a -tzip "${{ env.ARTIFACT_NAME }}.zip" "${{ env.OUT_PATH }}\SuperHybrid Flasher\*"
+          $otaDir = Split-Path -Parent $env:OTA_PATH
+          $built = Join-Path $otaDir 'SuperHybrid Flasher'
+          if (!(Test-Path $built)) { throw "Expected built folder not found: $built" }
 
-      - name: Upload build artifact
+          $devName   = "${{ inputs.device }}".Replace(' ','')
+          $ftypeName = "${{ inputs.flasher_type }}".Replace(' ','')
+          $region    = "${{ inputs.region }}"
+          $ts        = Get-Date -Format "yyyyMMdd-HHmmss"
+          $artifact  = "$devName-$ftypeName-$region-$ts"
+          "ARTIFACT_NAME=$artifact" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+          $zip = "$artifact.zip"
+          Compress-Archive -Path "$built\*" -DestinationPath $zip -Force
+          "ZIP_FILE=$zip" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.ARTIFACT_NAME }}
-          path: "${{ env.ARTIFACT_NAME }}.zip"
+          path: ${{ env.ZIP_FILE }}
           retention-days: ${{ env.ARTIFACT_RETENTION_DAYS }}
