@@ -222,7 +222,6 @@ jobs:
             }
 
             # Bloat placement for Super builds → Super/
-            $bloatBase = Join-Path $root ("bloat\" + $dev)
             Copy-BloatFiles $bloatBase $region $superDir
 
             # CN Super extra OOS staging (EUGLO or A5)
@@ -233,13 +232,13 @@ jobs:
               else                { Copy-BloatFiles $bloatBase 'GLO' $oosHere }
             }
 
-            # --- 13T special: Super Flasher OOS (region != CN) must also copy CN_BLOAT\odm.img to COS_FILES_HERE
+            # 13T special: Super Flasher OOS (region != CN) → copy CN_BLOAT files to COS_FILES_HERE
             if ($dev -eq '13T' -and $ftype -eq 'Super Flasher' -and $region -ne 'CN') {
               $cosHere = Join-Path $workDir 'COS_FILES_HERE'
               New-Item -ItemType Directory -Force -Path $cosHere | Out-Null
-              $odmSrc = Join-Path $bloatBase 'CN_BLOAT\odm.img'
-              if (Test-Path $odmSrc) {
-                Copy-Item $odmSrc -Destination $cosHere -Force
+              foreach ($extra in 'odm.img','oplusstanvbk.img','my_region.img') {
+                $srcFile = Join-Path $bloatBase ("CN_BLOAT\" + $extra)
+                if (Test-Path $srcFile) { Copy-Item $srcFile -Destination $cosHere -Force }
               }
             }
           }
