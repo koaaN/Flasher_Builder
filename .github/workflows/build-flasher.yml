@@ -144,7 +144,7 @@ jobs:
           # Put otaripper next to builder (outside flasher folders)
           if (Test-Path $otaripper) { Copy-Item $otaripper $workRoot -Force }
 
-          # ----- Builder script selection (FIXED for 13R non-CN) -----
+          # ----- Builder script selection (13R fixed to SUPER_/REGIONAL_ EUGLO/CN) -----
           $builderBat = switch ($ftype) {
             'SuperHybrid Flasher' {
               if ($region -eq 'CN') { 'SUPERHYBRID_CN_FULL_SUPERBUILD.bat' }
@@ -156,12 +156,21 @@ jobs:
             }
             'SuperHybrid SunOS Flasher' { 'SUPERHYBRID_SUNOS_FULL_SUPERBUILD.bat' }
             'Super Flasher' {
-              if ($region -eq 'CN') { 'SUPER_CN_FULL_SUPERBUILD.bat' }
-              else { 'SUPERHYBRID_FULL_SUPERBUILD.bat' }   # <-- changed
+              if ($dev -eq '13R') {
+                if ($region -eq 'CN') { 'SUPER_CN_FULL_SUPERBUILD.bat' }
+                else { 'SUPER_EUGLO_FULL_SUPERBUILD.bat' }
+              } else {
+                # fallback for non-13R Super Flasher (not typically used)
+                if ($region -eq 'CN') { 'SUPERHYBRID_CN_FULL_SUPERBUILD.bat' } else { 'SUPERHYBRID_FULL_SUPERBUILD.bat' }
+              }
             }
             'Regional Flasher' {
-              if ($region -eq 'CN') { 'REGIONAL_CN_FULL_BUILD.bat' }
-              else { 'REGIONALHYBRID_FULL_BUILD.bat' }      # <-- changed
+              if ($dev -eq '13R') {
+                if ($region -eq 'CN') { 'REGIONAL_CN_FULL_BUILD.bat' }
+                else { 'REGIONAL_EUGLO_FULL_BUILD.bat' }
+              } else {
+                if ($region -eq 'CN') { 'REGIONALHYBRID_CN_FULL_BUILD.bat' } else { 'REGIONALHYBRID_FULL_BUILD.bat' }
+              }
             }
           }
 
@@ -201,7 +210,7 @@ jobs:
               if ($dev -eq '13R') {
                 Copy-BloatFiles $bloatBase 'A5' $oosHere
               } else {
-                Copy-BloatFiles $bloatBase 'GLO' $oosHere   # maps to EUGLO_BLOAT
+                Copy-BloatFiles $bloatBase 'GLO' $oosHere
               }
             } else {
               Copy-BloatFiles $bloatBase $region $superDir
