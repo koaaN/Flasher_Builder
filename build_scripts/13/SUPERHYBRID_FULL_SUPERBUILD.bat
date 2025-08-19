@@ -7,20 +7,21 @@ echo ==========================================================
 
 REM -----------------------------------------------------------
 REM 1) INPUT (drag & drop OTA.zip OR dry-run if none provided)
-REM    Strip any surrounding quotes that the caller may pass.
+REM    -> Use a DRYRUN flag; strip any quotes from args; normalize slashes.
 REM -----------------------------------------------------------
 if "%~1"=="" (
-  echo [INFO] No OTA zip provided. Running in DRY-RUN mode...
+  set "DRYRUN=1"
   set "input_file=DUMMY_OTA.zip"
   set "input_dir=%~dp0DUMMY_OTA"
 ) else (
+  set "DRYRUN=0"
   set "input_file=%~1"
-  set "input_file=%input_file:"=%"
   set "input_dir=%~dp1"
-  set "input_dir=%input_dir:"=%"
 )
 
-REM normalize trailing backslash
+REM remove any embedded quotes and trailing backslashes
+set "input_file=%input_file:"=%"
+set "input_dir=%input_dir:"=%"
 if "%input_dir:~-1%"=="\" set "input_dir=%input_dir:~0,-1%"
 
 if not exist "%input_dir%" mkdir "%input_dir%" >nul 2>&1
@@ -37,7 +38,7 @@ if not exist "%flasher_src%" (
 )
 
 REM -----------------------------------------------------------
-REM 2) Locate otaripper.exe (only required when not dry-run)
+REM 2) Locate otaripper.exe (only required when DRYRUN=0)
 REM -----------------------------------------------------------
 set "otaripper="
 for %%P in (
@@ -52,20 +53,19 @@ if not defined otaripper (
   )
 )
 
-if /I "%input_file%"=="DUMMY_OTA.zip" (
-  REM Dry run: ripper not required
-) else (
+if "%DRYRUN%"=="0" (
   if not defined otaripper (
     echo [ERROR] Could not find otaripper.exe near this script or on PATH.
     exit /b 1
   )
 )
 
-echo [INFO] OTA file : "%input_file%"
-echo [INFO] OTA dir  : "%input_dir%"
-echo [INFO] Builder  : "%~nx0"
-if defined otaripper echo [INFO] Ripper   : "%otaripper%"
-echo [INFO] Template : "%flasher_src%"
+echo [INFO] Mode    : %DRYRUN% (1=dry-run, 0=real)
+echo [INFO] OTA file: "%input_file%"
+echo [INFO] OTA dir : "%input_dir%"
+echo [INFO] Builder : "%~nx0"
+if defined otaripper echo [INFO] Ripper  : "%otaripper%"
+echo [INFO] Template: "%flasher_src%"
 echo.
 
 REM -----------------------------------------------------------
@@ -84,7 +84,7 @@ REM 4) Extract OTA (skip in dry-run) and detect new folder safely
 REM -----------------------------------------------------------
 set "new_folder="
 
-if /I "%input_file%"=="DUMMY_OTA.zip" (
+if "%DRYRUN%"=="1" (
   echo [INFO] Skipping extraction (dry-run).
 ) else (
   set "tmp_before=%temp%\before_%random%%random%.lst"
