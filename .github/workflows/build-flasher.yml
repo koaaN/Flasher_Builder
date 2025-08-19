@@ -1,4 +1,4 @@
-name: Build Flasher (layout-only; correct META-INF + otaripper + bloat)
+name: Build Flasher (layout-only; includes builder scripts, not executed)
 
 on:
   workflow_dispatch:
@@ -21,8 +21,8 @@ on:
           - SuperHybrid Flasher
           - RegionalHybrid Flasher
           - SuperHybrid SunOS Flasher
-          - Super Flasher          # 13R
-          - Regional Flasher       # 13R
+          - Super Flasher
+          - Regional Flasher
         default: SuperHybrid Flasher
       region:
         description: "Region"
@@ -76,7 +76,7 @@ jobs:
           }
           "OTA_PATH=$(Resolve-Path 'download\OTA.zip')" | Out-File -FilePath $env:GITHUB_ENV -Append
 
-      - name: Stage working dir (layout only, no build run)
+      - name: Stage working dir (layout only, builder copied but not executed)
         shell: pwsh
         run: |
           function Copy-BloatFiles {
@@ -150,8 +150,34 @@ jobs:
           New-Item -ItemType Directory -Force -Path $env:OUT_DIR | Out-Null
           $workRoot = $env:OUT_DIR
 
-          # Put otaripper next to builders (outside flasher folders)
+          # Put otaripper next to builder (outside flasher folders)
           if (Test-Path $otaripper) { Copy-Item $otaripper $workRoot -Force }
+
+          # Determine builder script name
+          $builderBat = switch ($ftype) {
+            'SuperHybrid Flasher' {
+              if ($region -eq 'CN') { 'SUPERHYBRID_CN_FULL_SUPERBUILD.bat' }
+              else { 'SUPERHYBRID_FULL_SUPERBUILD.bat' }
+            }
+            'RegionalHybrid Flasher' {
+              if ($region -eq 'CN') { 'REGIONALHYBRID_CN_FULL_BUILD.bat' }
+              else { 'REGIONALHYBRID_FULL_BUILD.bat' }
+            }
+            'SuperHybrid SunOS Flasher' { 'SUPERHYBRID_SUNOS_FULL_SUPERBUILD.bat' }
+            'Super Flasher' {
+              if ($region -eq 'CN') { 'SUPER_CN_FULL_SUPERBUILD.bat' }
+              else { 'Super_Flasher13R.bat' }
+            }
+            'Regional Flasher' {
+              if ($region -eq 'CN') { 'REGIONAL_CN_FULL_BUILD.bat' }
+              else { 'Regional_Flasher13R.bat' }
+            }
+          }
+
+          $builderPath = Join-Path $builderDir $builderBat
+          if (Test-Path $builderPath) {
+            Copy-Item $builderPath $workRoot -Force
+          }
 
           # --- Flasher type branching ---
           if ($ftype -in @('SuperHybrid Flasher','SuperHybrid SunOS Flasher','Super Flasher')) {
