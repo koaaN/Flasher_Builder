@@ -157,15 +157,14 @@ jobs:
               $stubPath = Join-Path $src ([System.IO.Path]::GetFileNameWithoutExtension($f))
               if (Test-Path $stubPath) {
                 try {
-                  $url = Get-Content $stubPath -Raw
-                  $url = $url.Trim()
+                  $url = (Get-Content $stubPath -Raw).Trim()
                   if ($url) {
                     $outFile = Join-Path $dest $f
-                    Write-Host "Downloading missing $f from $url"
+                    Write-Host ("Downloading missing {0} from {1}" -f $f, $url)
                     Invoke-WebRequest -Uri $url -OutFile $outFile
                   }
                 } catch {
-                  Write-Warning "Failed to download $f from stub URL in $stubPath: $($_.Exception.Message)"
+                  Write-Warning ("Failed to download {0} from stub URL in {1}: {2}" -f $f, $stubPath, $_.Exception.Message)
                 }
               }
             }
@@ -272,11 +271,11 @@ jobs:
                       $url = (Get-Content $stub -Raw).Trim()
                       if ($url) {
                         $outFile = Join-Path $cosHere $extra
-                        Write-Host "Downloading missing $extra from $url"
+                        Write-Host ("Downloading missing {0} from {1}" -f $extra, $url)
                         Invoke-WebRequest -Uri $url -OutFile $outFile
                       }
                     } catch {
-                      Write-Warning "Failed to download $extra from stub URL in $stub: $($_.Exception.Message)"
+                      Write-Warning ("Failed to download {0} from stub URL in {1}: {2}" -f $extra, $stub, $_.Exception.Message)
                     }
                   }
                 }
