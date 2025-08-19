@@ -302,4 +302,14 @@ jobs:
           $artifact  = "$devName-$ftypeName-$region-$ts"
 
           $zip = "$artifact.zip"
-          Compress-Archive -Path "$work\*" -Destination
+          Compress-Archive -Path "$work\*" -DestinationPath $zip -Force
+          Move-Item $zip $env:OUT_DIR -Force
+
+          "ARTIFACT_NAME=$artifact" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ARTIFACT_NAME }}
+          path: ${{ env.OUT_DIR }}
+          retention-days: ${{ env.ARTIFACT_RETENTION_DAYS }}
