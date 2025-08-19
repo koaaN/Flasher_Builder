@@ -1,4 +1,4 @@
-name: Build Flasher (with correct bloat file handling)
+name: Build Flasher (layout-only; correct META-INF + otaripper + bloat)
 
 on:
   workflow_dispatch:
@@ -21,8 +21,8 @@ on:
           - SuperHybrid Flasher
           - RegionalHybrid Flasher
           - SuperHybrid SunOS Flasher
-          - Super Flasher
-          - Regional Flasher
+          - Super Flasher          # 13R
+          - Regional Flasher       # 13R
         default: SuperHybrid Flasher
       region:
         description: "Region"
@@ -49,7 +49,7 @@ env:
 
 jobs:
   build:
-    name: Build • ${{ inputs.device }} • ${{ inputs.flasher_type }} • ${{ inputs.region }}
+    name: Stage Layout • ${{ inputs.device }} • ${{ inputs.flasher_type }} • ${{ inputs.region }}
     runs-on: windows-latest
 
     steps:
@@ -81,9 +81,9 @@ jobs:
         run: |
           function Copy-BloatFiles {
             param(
-              [string]$base,        # e.g. bloat\13 or bloat\13R
-              [string]$regionCode,  # 'EU','GLO','IN','NA','CN','A5'
-              [string]$dest         # destination folder
+              [string]$base,
+              [string]$regionCode,
+              [string]$dest
             )
 
             $map = @{
@@ -95,25 +95,28 @@ jobs:
               'A5'  = 'A5_DEBLOAT'
             }
 
-            if (-not $map.ContainsKey($regionCode)) {
-              Write-Warning "Unknown bloat region code: $regionCode"
-              return
-            }
-
+            if (-not $map.ContainsKey($regionCode)) { return }
             $srcDir = Join-Path $base $map[$regionCode]
-            if (!(Test-Path $srcDir)) {
-              Write-Warning "Bloat folder missing: $srcDir"
-              return
-            }
+            if (!(Test-Path $srcDir)) { return }
 
             $files = @('my_preload.img','my_company.img')
             foreach ($f in $files) {
               $srcFile = Join-Path $srcDir $f
               if (Test-Path $srcFile) {
                 Copy-Item $srcFile -Destination $dest -Force
-              } else {
-                Write-Warning "Missing $f in $srcDir"
               }
+            }
+          }
+
+          function Copy-Template {
+            param(
+              [string]$templateDir,
+              [string]$destDir
+            )
+            if (!(Test-Path $templateDir)) { throw "Template not found: $templateDir" }
+            Copy-Item (Join-Path $templateDir '*') -Destination $destDir -Recurse -Force
+            if (Test-Path (Join-Path $templateDir 'META-INF')) {
+              Copy-Item (Join-Path $templateDir 'META-INF') -Destination (Join-Path $destDir 'META-INF') -Recurse -Force
             }
           }
 
@@ -121,7 +124,6 @@ jobs:
           $ftype   = "${{ inputs.flasher_type }}"
           $region  = "${{ inputs.region }}"
 
-          # Device → short code
           $dev = switch ($devDisp) {
             'Oneplus 13'  { '13' }
             'Oneplus 13R' { '13R' }
@@ -130,63 +132,110 @@ jobs:
             default { throw "Unknown device: $devDisp" }
           }
 
-          # Base paths
-          $builderDir = Join-Path $env:GITHUB_WORKSPACE ("build_scripts\" + $dev)
-          $otaripper  = Join-Path $env:GITHUB_WORKSPACE "otaripper\otaripper.exe"
-          $ptSrc      = Join-Path $env:GITHUB_WORKSPACE "platform-tools"
-          $lpmakeExe  = Join-Path $env:GITHUB_WORKSPACE "lpmake\lpmake.exe"
-          $cygwinDll  = Join-Path $env:GITHUB_WORKSPACE "lpmake\cygwin1.dll"
-          $superPacks = Join-Path $env:GITHUB_WORKSPACE ("super_packers\" + $dev)
-          $bloatBase  = Join-Path $env:GITHUB_WORKSPACE ("bloat\" + $dev)
+          $root       = $env:GITHUB_WORKSPACE
+          $builderDir = Join-Path $root ("build_scripts\" + $dev)
+          $otaripper  = Join-Path $root "otaripper\otaripper.exe"
+          $ptSrc      = Join-Path $root "platform-tools"
+          $lpmakeExe  = Join-Path $root "lpmake\lpmake.exe"
+          $cygwinDll  = Join-Path $root "lpmake\cygwin1.dll"
+          $superPacks = Join-Path $root ("super_packers\" + $dev)
+          $bloatBase  = Join-Path $root ("bloat\" + $dev)
 
+          $tplOOSSuper    = Join-Path $root ("flasher_scripts\" + $dev + "\oos\super")
+          $tplOOSRegional = Join-Path $root ("flasher_scripts\" + $dev + "\oos\regional")
+          $tplCOSSuper    = Join-Path $root ("flasher_scripts\" + $dev + "\cos\super")
+          $tplCOSRegional = Join-Path $root ("flasher_scripts\" + $dev + "\cos\regional")
+
+          if (Test-Path $env:OUT_DIR) { Remove-Item $env:OUT_DIR -Recurse -Force }
           New-Item -ItemType Directory -Force -Path $env:OUT_DIR | Out-Null
           $workRoot = $env:OUT_DIR
 
-          # Device-specific rules
-          if ($dev -eq '13') {
-            if ($region -eq 'CN') {
-              if ($ftype -eq 'SuperHybrid Flasher') {
-                $flasherDir = Join-Path $workRoot "SuperHybrid Flasher CN"
-                Copy-Item (Join-Path $env:GITHUB_WORKSPACE "flasher_scripts\13\cos\super\*") $flasherDir -Recurse -Force
-                Copy-Item $otaripper $flasherDir -Force
-                Copy-Item $ptSrc $flasherDir -Recurse -Force
-                $superDir = Join-Path $flasherDir "Super"
-                New-Item -ItemType Directory -Force -Path $superDir | Out-Null
-                Copy-Item $lpmakeExe $superDir -Force
-                Copy-Item $cygwinDll $superDir -Force
-                Copy-Item (Join-Path $superPacks "super_cos.bat") $superDir -Force
-                Copy-BloatFiles -base $bloatBase -regionCode 'CN' -dest $superDir
-                $oosDir = Join-Path $flasherDir "OOS_FILES_HERE"
-                New-Item -ItemType Directory -Force -Path $oosDir | Out-Null
-                Copy-BloatFiles -base $bloatBase -regionCode 'EU' -dest $oosDir
-                Copy-Item (Join-Path $builderDir "SUPERHYBRID_CN_FULL_SUPERBUILD.bat") $workRoot -Force
-              }
-              elseif ($ftype -eq 'RegionalHybrid Flasher') {
-                $flasherDir = Join-Path $workRoot "RegionalHybrid Flasher CN"
-                Copy-Item (Join-Path $env:GITHUB_WORKSPACE "flasher_scripts\13\cos\regional\*") $flasherDir -Recurse -Force
-                Copy-Item $otaripper $flasherDir -Force
-                Copy-Item $ptSrc $flasherDir -Recurse -Force
-                $cosDir = Join-Path $flasherDir "COS_FILES_HERE"
-                New-Item -ItemType Directory -Force -Path $cosDir | Out-Null
-                Copy-BloatFiles -base $bloatBase -regionCode 'CN' -dest $cosDir
-                $oosDir = Join-Path $flasherDir "OOS_FILES_HERE"
-                New-Item -ItemType Directory -Force -Path $oosDir | Out-Null
-                Copy-BloatFiles -base $bloatBase -regionCode 'EU' -dest $oosDir
-                Copy-Item (Join-Path $builderDir "REGIONALHYBRID_CN_FULL_BUILD.bat") $workRoot -Force
-              }
+          # Put otaripper next to builders (outside flasher folders)
+          if (Test-Path $otaripper) { Copy-Item $otaripper $workRoot -Force }
+
+          # --- Flasher type branching ---
+          if ($ftype -in @('SuperHybrid Flasher','SuperHybrid SunOS Flasher','Super Flasher')) {
+            if ($dev -eq '13R' -and $region -eq 'CN') {
+              $flasherFolderName = 'Super Flasher CN'
+              $templateDir = $tplCOSSuper
+              $packerName = 'super_cos.bat'
+            } elseif ($dev -eq '13' -and $region -eq 'CN') {
+              $flasherFolderName = 'SuperHybrid Flasher CN'
+              $templateDir = $tplCOSSuper
+              $packerName = 'super_cos.bat'
+            } else {
+              $flasherFolderName = if ($ftype -eq 'Super Flasher') { 'Super Flasher' } else { 'SuperHybrid Flasher' }
+              $templateDir = $tplOOSSuper
+              $packerName = 'super_oos.bat'
             }
-            # TODO: handle normal (EU/GLO/IN/NA) SuperHybrid + RegionalHybrid + SunOS here
+
+            $destDir = Join-Path $workRoot $flasherFolderName
+            Copy-Template $templateDir $destDir
+            if (Test-Path $ptSrc) { Copy-Item $ptSrc -Destination $destDir -Recurse -Force }
+
+            $superDir = Join-Path $destDir 'Super'
+            New-Item -ItemType Directory -Force -Path $superDir | Out-Null
+            Copy-Item $lpmakeExe $superDir -Force
+            Copy-Item $cygwinDll $superDir -Force
+            Copy-Item (Join-Path $superPacks $packerName) $superDir -Force
+
+            if ($region -eq 'CN') {
+              Copy-BloatFiles $bloatBase 'CN' $superDir
+              $oosHere = Join-Path $destDir 'OOS_FILES_HERE'
+              New-Item -ItemType Directory -Force -Path $oosHere | Out-Null
+              if ($dev -eq '13R') {
+                Copy-BloatFiles $bloatBase 'A5' $oosHere
+              } else {
+                Copy-BloatFiles $bloatBase 'EUGLO' $oosHere
+              }
+            } else {
+              Copy-BloatFiles $bloatBase $region $superDir
+            }
+
+          } elseif ($ftype -in @('RegionalHybrid Flasher','Regional Flasher')) {
+            if ($dev -eq '13R' -and $region -eq 'CN') {
+              $flasherFolderName = 'Regional Flasher CN'
+              $templateDir = $tplCOSRegional
+            } elseif ($dev -eq '13' -and $region -eq 'CN') {
+              $flasherFolderName = 'RegionalHybrid Flasher CN'
+              $templateDir = $tplCOSRegional
+            } else {
+              $flasherFolderName = if ($ftype -eq 'Regional Flasher') { 'Regional Flasher' } else { 'RegionalHybrid Flasher' }
+              $templateDir = $tplOOSRegional
+            }
+
+            $destDir = Join-Path $workRoot $flasherFolderName
+            Copy-Template $templateDir $destDir
+            if (Test-Path $ptSrc) { Copy-Item $ptSrc -Destination $destDir -Recurse -Force }
+
+            $oosHere = Join-Path $destDir 'OOS_FILES_HERE'
+            New-Item -ItemType Directory -Force -Path $oosHere | Out-Null
+            if ($region -eq 'CN') {
+              if ($dev -eq '13R') {
+                Copy-BloatFiles $bloatBase 'A5' $oosHere
+              } else {
+                Copy-BloatFiles $bloatBase 'EUGLO' $oosHere
+              }
+              $cosHere = Join-Path $destDir 'COS_FILES_HERE'
+              New-Item -ItemType Directory -Force -Path $cosHere | Out-Null
+              Copy-BloatFiles $bloatBase 'CN' $cosHere
+            } else {
+              Copy-BloatFiles $bloatBase $region $oosHere
+            }
           }
 
-          # Similar blocks would handle 13R CN (with A5_DEBLOAT), 13R global, etc.
-
-      - name: Zip working dir
+      - name: Zip staged flasher
         shell: pwsh
         run: |
-          $artifact = "LayoutOnly-${{ inputs.device }}-${{ inputs.flasher_type }}-${{ inputs.region }}-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
+          $devName   = "${{ inputs.device }}".Replace(' ','')
+          $ftypeName = "${{ inputs.flasher_type }}".Replace(' ','')
+          $region    = "${{ inputs.region }}"
+          $ts        = Get-Date -Format "yyyyMMdd-HHmmss"
+          $artifact  = "$devName-$ftypeName-$region-$ts"
+          "ARTIFACT_NAME=$artifact" | Out-File -FilePath $env:GITHUB_ENV -Append
+
           $zip = "$artifact.zip"
           Compress-Archive -Path "$env:OUT_DIR\*" -DestinationPath $zip -Force
-          "ARTIFACT_NAME=$artifact" | Out-File -FilePath $env:GITHUB_ENV -Append
           "ZIP_FILE=$zip" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Upload artifact
