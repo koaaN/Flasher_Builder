@@ -126,8 +126,10 @@ jobs:
           $buildScripts= Join-Path $env:GITHUB_WORKSPACE ("build_scripts\" + $dev)
           $otaripper   = Join-Path $env:GITHUB_WORKSPACE "otaripper\otaripper.exe"
           $platform    = Join-Path $env:GITHUB_WORKSPACE "platform-tools"
-          $lpmakeExe   = Join-Path $superPacker "lpmake.exe"
-          $cygwinDll   = Join-Path $superPacker "cygwin1.dll"
+
+          # FIXED: lpmake.exe and cygwin1.dll always from top-level lpmake/
+          $lpmakeExe   = Join-Path $env:GITHUB_WORKSPACE "lpmake\lpmake.exe"
+          $cygwinDll   = Join-Path $env:GITHUB_WORKSPACE "lpmake\cygwin1.dll"
 
           # ---------------- SUPER ----------------
           if ($ftype -in @('SuperHybrid Flasher','SuperHybrid SunOS Flasher','Super Flasher')) {
