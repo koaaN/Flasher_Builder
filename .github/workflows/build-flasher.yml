@@ -1,4 +1,4 @@
-name: Build Flasher (with region bloat inside SuperHybrid)
+name: Build Flasher (layout-only, no build)
 
 on:
   workflow_dispatch:
@@ -47,7 +47,7 @@ env:
 
 jobs:
   build:
-    name: Build • ${{ inputs.device }} • ${{ inputs.flasher_type }} • ${{ inputs.region }}
+    name: Stage Layout • ${{ inputs.device }} • ${{ inputs.flasher_type }} • ${{ inputs.region }}
     runs-on: windows-latest
 
     steps:
@@ -74,7 +74,7 @@ jobs:
           }
           "OTA_PATH=$(Resolve-Path 'download\OTA.zip')" | Out-File -FilePath $env:GITHUB_ENV -Append
 
-      - name: Map device → folder & pick builder
+      - name: Map device and repo paths
         shell: pwsh
         run: |
           $devDisp = "${{ inputs.device }}"
@@ -86,97 +86,121 @@ jobs:
             default { throw "Unknown device: $devDisp" }
           }
 
-          $ftype  = "${{ inputs.flasher_type }}"
-          $region = "${{ inputs.region }}"
+          $root = $env:GITHUB_WORKSPACE
 
-          $batName = switch ($ftype) {
-            'SuperHybrid Flasher' {
-              if ($region -eq 'CN') { 'SUPERHYBRID_CN_FULL_SUPERBUILD.bat' }
-              else { 'SUPERHYBRID_FULL_SUPERBUILD.bat' }
-            }
-            'RegionalHybrid Flasher' {
-              if ($region -eq 'CN') { 'REGIONALHYBRID_CN_FULL_BUILD.bat' }
-              else { 'REGIONALHYBRID_FULL_BUILD.bat' }
-            }
-            'SuperHybrid SunOS Flasher' { 'SUPERHYBRID_SUNOS_FULL_SUPERBUILD.bat' }
-            default { throw "Unknown flasher type: $ftype" }
-          }
+          $flasherSrc   = Join-Path $root ("flasher_scripts\" + $dev + "\oos\super")
+          $superPackers = Join-Path $root ("super_packers\" + $dev)
+          $buildScripts = Join-Path $root ("build_scripts\" + $dev)
+          $lpmakeDir    = Join-Path $root "lpmake"
+          $platTools    = Join-Path $root "platform-tools"
+          $otaripper    = Join-Path $root "otaripper\otaripper.exe"
+          $bloatEuGlo   = Join-Path $root ("bloat\" + $dev + "\EUGLO_BLOAT")
 
-          "DEV_FOLDER=$dev"   | Out-File -FilePath $env:GITHUB_ENV -Append
-          "BUILDER_BAT=$batName" | Out-File -FilePath $env:GITHUB_ENV -Append
+          if (!(Test-Path $flasherSrc))   { throw "Missing flasher source: $flasherSrc" }
+          if (!(Test-Path $superPackers)) { throw "Missing super_packers: $superPackers" }
+          if (!(Test-Path $buildScripts)) { throw "Missing build_scripts: $buildScripts" }
 
-      - name: Stage files (template, otaripper, bloat inside SuperHybrid)
+          "DEV_FOLDER=$dev"             | Out-File -FilePath $env:GITHUB_ENV -Append
+          "FLASHER_SRC=$flasherSrc"     | Out-File -FilePath $env:GITHUB_ENV -Append
+          "SUPER_PACKERS=$superPackers" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "BUILD_SCRIPTS=$buildScripts" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "LPMAKE_DIR=$lpmakeDir"       | Out-File -FilePath $env:GITHUB_ENV -Append
+          "PLATFORM_TOOLS=$platTools"   | Out-File -FilePath $env:GITHUB_ENV -Append
+          "OTARIPPER_EXE=$otaripper"    | Out-File -FilePath $env:GITHUB_ENV -Append
+          "BLOAT_EUGLO=$bloatEuGlo"     | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Stage working dir + SuperHybrid Flasher contents (no build)
         shell: pwsh
         run: |
-          $dev = $env:DEV_FOLDER
-          $builderDir = Join-Path $env:GITHUB_WORKSPACE ("build_scripts\" + $dev)
-          if (!(Test-Path $builderDir)) { throw "Missing builder dir: $builderDir" }
+          # Create parent working dir
+          $workDir = Join-Path $env:OUT_DIR "work"
+          if (Test-Path $workDir) { Remove-Item $workDir -Recurse -Force }
+          New-Item -ItemType Directory -Force -Path $workDir | Out-Null
 
-          # otaripper.exe next to builder
-          Copy-Item (Join-Path $env:GITHUB_WORKSPACE 'otaripper\otaripper.exe') -Destination $builderDir -Force
+          # Create "SuperHybrid Flasher" folder inside working dir
+          $flasherDir = Join-Path $workDir "SuperHybrid Flasher"
+          New-Item -ItemType Directory -Force -Path $flasherDir | Out-Null
 
-          # SuperHybrid Flasher template
-          $templateSrc  = Join-Path $env:GITHUB_WORKSPACE ("flasher_scripts\" + $dev + "\oos\super")
-          $templateDest = Join-Path $builderDir 'SuperHybrid Flasher'
-          if (Test-Path $templateDest) { Remove-Item $templateDest -Recurse -Force }
-          Copy-Item $templateSrc -Destination $templateDest -Recurse -Force
+          # Copy ALL from flasher_scripts/<dev>/oos/super/* (includes 16DTBO, META-INF, Super_Flasher.bat, dtbo_patcher.bat)
+          Copy-Item (Join-Path $env:FLASHER_SRC '*') -Destination $flasherDir -Recurse -Force
 
-          # platform-tools inside SuperHybrid Flasher if requested
-          if ("${{ inputs.flasher_type }}" -eq "SuperHybrid Flasher") {
-            $ptSrc = Join-Path $env:GITHUB_WORKSPACE 'platform-tools'
-            if (Test-Path $ptSrc) {
-              Copy-Item $ptSrc -Destination $templateDest -Recurse -Force
-            }
+          # Copy platform-tools into "SuperHybrid Flasher" if present
+          if (Test-Path $env:PLATFORM_TOOLS) {
+            Copy-Item $env:PLATFORM_TOOLS -Destination $flasherDir -Recurse -Force
           }
 
-          # 16DTBO next to builder (bat expects %~dp016DTBO)
-          $src16 = Join-Path $templateSrc '16DTBO'
-          if (Test-Path $src16) {
-            Copy-Item $src16 -Destination (Join-Path $builderDir '16DTBO') -Recurse -Force
+          # Create "Super" subfolder and place lpmake.exe + cygwin1.dll there
+          $superSub = Join-Path $flasherDir "Super"
+          New-Item -ItemType Directory -Force -Path $superSub | Out-Null
+
+          function Copy-Lpmake-Bits {
+            param([string]$base)
+            $lm = Get-ChildItem -Path $base -Recurse -Filter "lpmake.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+            $cy = Get-ChildItem -Path $base -Recurse -Filter "cygwin1.dll" -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($lm) { Copy-Item $lm.FullName -Destination $superSub -Force }
+            if ($cy) { Copy-Item $cy.FullName -Destination $superSub -Force }
           }
 
-          # Region bloat inside SuperHybrid Flasher
+          if (Test-Path $env:LPMAKE_DIR) { Copy-Lpmake-Bits -base $env:LPMAKE_DIR }
+          if (!(Test-Path (Join-Path $superSub "lpmake.exe"))) {
+            # Fallback: search whole repo
+            Copy-Lpmake-Bits -base $env:GITHUB_WORKSPACE
+          }
+
+          if (!(Test-Path (Join-Path $superSub "lpmake.exe"))) { throw "lpmake.exe not found anywhere in repo" }
+          if (!(Test-Path (Join-Path $superSub "cygwin1.dll"))) { throw "cygwin1.dll not found anywhere in repo" }
+
+          # Copy super_oos.bat into Super/
+          $superOos = Join-Path $env:SUPER_PACKERS "super_oos.bat"
+          if (!(Test-Path $superOos)) { throw "Missing super_oos.bat at $superOos" }
+          Copy-Item $superOos -Destination $superSub -Force
+
+          # Region bloat for GLO/EU → copy into Super/
           $region = "${{ inputs.region }}"
-          $bloatFolderName = switch ($region) {
-            'EU'  { 'EUGLO_BLOAT' }
-            'GLO' { 'EUGLO_BLOAT' }
-            'IN'  { 'IN_BLOAT' }
-            'NA'  { 'NA_BLOAT' }
-            default { '' }
-          }
-          if ($bloatFolderName) {
-            $bloatSrc = Join-Path $env:GITHUB_WORKSPACE ("bloat\" + $dev + "\" + $bloatFolderName)
-            if (!(Test-Path $bloatSrc)) { $bloatSrc = Join-Path $env:GITHUB_WORKSPACE ("bloat\13\" + $bloatFolderName) }
-            if (!(Test-Path $bloatSrc)) { throw "Missing bloat source: $bloatSrc" }
-            Copy-Item $bloatSrc -Destination (Join-Path $templateDest $bloatFolderName) -Recurse -Force
+          if ($region -eq "GLO" -or $region -eq "EU") {
+            if (!(Test-Path $env:BLOAT_EUGLO)) { throw "Missing EUGLO_BLOAT dir: $env:BLOAT_EUGLO" }
+            $preload = Join-Path $env:BLOAT_EUGLO "my_preload.img"
+            $company = Join-Path $env:BLOAT_EUGLO "my_company.img"
+            if (!(Test-Path $preload)) { throw "Missing file: $preload" }
+            if (!(Test-Path $company)) { throw "Missing file: $company" }
+            Copy-Item $preload -Destination $superSub -Force
+            Copy-Item $company -Destination $superSub -Force
           }
 
-          "BUILDER_DIR=$builderDir"     | Out-File -FilePath $env:GITHUB_ENV -Append
-          "TEMPLATE_DEST=$templateDest" | Out-File -FilePath $env:GITHUB_ENV -Append
+          # Place the builder BAT OUTSIDE the "SuperHybrid Flasher" folder (into parent work dir)
+          $builder = Join-Path $env:BUILD_SCRIPTS "SUPERHYBRID_FULL_SUPERBUILD.bat"
+          if (!(Test-Path $builder)) { throw "Missing builder BAT: $builder" }
+          Copy-Item $builder -Destination $workDir -Force
 
-      - name: Run builder .bat
-        shell: cmd
-        working-directory: ${{ env.BUILDER_DIR }}
-        run: |
-          echo Running %BUILDER_BAT% with OTA: "%OTA_PATH%"
-          call "%BUILDER_BAT%" "%OTA_PATH%"
+          # Also place otaripper.exe next to the builder (outside flasher folder)
+          if (Test-Path $env:OTARIPPER_EXE) {
+            Copy-Item $env:OTARIPPER_EXE -Destination $workDir -Force
+          } else {
+            Write-Host "otaripper.exe not found (optional)."
+          }
 
-      - name: Zip built SuperHybrid Flasher
+          "WORK_DIR=$workDir"       | Out-File -FilePath $env:GITHUB_ENV -Append
+          "FLASHER_DIR=$flasherDir" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      # Intentionally skip running any builder .bat — layout-only run
+
+      - name: Zip working directory (includes SuperHybrid Flasher + outer files)
         shell: pwsh
         run: |
-          $otaDir = Split-Path -Parent $env:OTA_PATH
-          $built = Join-Path $otaDir 'SuperHybrid Flasher'
-          if (!(Test-Path $built)) { throw "Expected built folder not found: $built" }
+          $workDir = $env:WORK_DIR
+          if (!(Test-Path $workDir)) { throw "Working dir not found: $workDir" }
+          Write-Host "Contents of working dir:"
+          Get-ChildItem -LiteralPath $workDir -Recurse | ForEach-Object { $_.FullName }
 
           $devName   = "${{ inputs.device }}".Replace(' ','')
           $ftypeName = "${{ inputs.flasher_type }}".Replace(' ','')
           $region    = "${{ inputs.region }}"
           $ts        = Get-Date -Format "yyyyMMdd-HHmmss"
-          $artifact  = "$devName-$ftypeName-$region-$ts"
+          $artifact  = "$devName-$ftypeName-$region-LAYOUT-$ts"
           "ARTIFACT_NAME=$artifact" | Out-File -FilePath $env:GITHUB_ENV -Append
 
           $zip = "$artifact.zip"
-          Compress-Archive -Path "$built\*" -DestinationPath $zip -Force
+          Compress-Archive -Path "$workDir\*" -DestinationPath $zip -Force
           "ZIP_FILE=$zip" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Upload artifact
