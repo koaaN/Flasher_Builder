@@ -10,13 +10,11 @@ echo ==========================================================
 :: ------------------------------------------------------------
 if "%~1"=="" (
   echo [INFO] No OTA zip provided. Running in DRY-RUN mode...
-  set "DRYRUN=1"
   set "input_file=DUMMY_OTA.zip"
   set "input_dir=%~dp0DUMMY_OTA"
   if "%input_dir:~-1%"=="\" set "input_dir=%input_dir:~0,-1%"
   if not exist "%input_dir%" mkdir "%input_dir%"
 ) else (
-  set "DRYRUN=0"
   set "input_file=%~1"
   set "input_dir=%~dp1"
   if "%input_dir:~-1%"=="\" set "input_dir=%input_dir:~0,-1%"
@@ -51,14 +49,14 @@ if not defined otaripper (
   )
 )
 
-if "%DRYRUN%"=="0" (
+:: ✅ FIXED COMPARISON (no syntax error anymore)
+if /I "%input_file%" NEQ "DUMMY_OTA.zip" (
   if not defined otaripper (
     echo [ERROR] Could not find otaripper.exe near this script or on PATH.
     exit /b 1
   )
 )
 
-echo [INFO] Mode     : %DRYRUN% (1=dry-run, 0=real)
 echo [INFO] OTA file : "%input_file%"
 echo [INFO] OTA dir  : "%input_dir%"
 echo [INFO] Builder  : "%~nx0"
@@ -82,7 +80,7 @@ if errorlevel 1 (
 :: ------------------------------------------------------------
 set "new_folder="
 
-if "%DRYRUN%"=="1" (
+if /I "%input_file%"=="DUMMY_OTA.zip" (
   echo [INFO] Skipping extraction (dry-run).
 ) else (
   set "tmp_before=%temp%\before_%random%%random%.lst"
@@ -90,10 +88,10 @@ if "%DRYRUN%"=="1" (
   dir /b /ad "%input_dir%" > "%tmp_before%"
 
   echo [STEP] Extracting OTA with otaripper...
-  if exist "%input_dir%" pushd "%input_dir%" >nul
+  pushd "%input_dir%" >nul
   "%otaripper%" "%input_file%"
   set "rip_rc=%errorlevel%"
-  if exist "%input_dir%" popd >nul
+  popd >nul
   if not "%rip_rc%"=="0" (
     echo [ERROR] otaripper failed with code %rip_rc%.
     if exist "%tmp_before%" del "%tmp_before%" >nul 2>&1
@@ -103,8 +101,8 @@ if "%DRYRUN%"=="1" (
   dir /b /ad "%input_dir%" > "%tmp_after%"
 
   for /f "usebackq delims=" %%N in ("%tmp_after%") do (
-    if not "%%~N"=="" (
-      findstr /ix "%%N" "%tmp_before%" >nul || set "new_folder=%input_dir%\%%N"
+    findstr /ix "%%N" "%tmp_before%" >nul || (
+      set "new_folder=%input_dir%\%%N"
     )
   )
 
