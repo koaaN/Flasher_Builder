@@ -114,7 +114,13 @@ jobs:
               [string]$destDir
             )
             if (!(Test-Path $templateDir)) { throw "Template not found: $templateDir" }
-            Copy-Item (Join-Path $templateDir '*') -Destination $destDir -Recurse -Force
+
+            # Copy everything except META-INF
+            Get-ChildItem $templateDir | Where-Object { $_.Name -ne 'META-INF' } | ForEach-Object {
+              Copy-Item $_.FullName -Destination $destDir -Recurse -Force
+            }
+
+            # Explicitly copy META-INF only
             if (Test-Path (Join-Path $templateDir 'META-INF')) {
               Copy-Item (Join-Path $templateDir 'META-INF') -Destination (Join-Path $destDir 'META-INF') -Recurse -Force
             }
