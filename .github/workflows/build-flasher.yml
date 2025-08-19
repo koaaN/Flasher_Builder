@@ -160,7 +160,7 @@ jobs:
           New-Item -ItemType Directory -Force -Path $env:OUT_DIR | Out-Null
 
           # Put otaripper + builder bat in OUT_DIR
-          if (Test-Path (Join-Path $root 'otaripper\otaripper.exe'))) {
+          if (Test-Path (Join-Path $root 'otaripper\otaripper.exe')) {
             Copy-Item (Join-Path $root 'otaripper\otaripper.exe') -Destination $env:OUT_DIR -Force
           }
           $builderSrc = Join-Path $builderDir $env:BUILDER_BAT
@@ -199,7 +199,7 @@ jobs:
             if (Test-Path $mi) { Copy-Item $mi -Destination (Join-Path $workDir 'META-INF') -Recurse -Force }
           }
 
-          # Platform-tools ONLY for SuperHybrid Flasher (per your earlier rule)
+          # Platform-tools ONLY for SuperHybrid Flasher
           if ($ftype -eq 'SuperHybrid Flasher') {
             $ptSrc = Join-Path $root 'platform-tools'
             if (Test-Path $ptSrc) { Copy-Item $ptSrc -Destination $workDir -Recurse -Force }
