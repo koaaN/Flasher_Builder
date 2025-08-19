@@ -1,4 +1,4 @@
-name: Build Flasher (layout-only, SuperHybrid + RegionalHybrid)
+name: Build Flasher (layout-only; 13 + 13R)
 
 on:
   workflow_dispatch:
@@ -88,25 +88,24 @@ jobs:
 
           $root = $env:GITHUB_WORKSPACE
 
-          # Templates
+          # Templates (device-specific)
           $tplSuper    = Join-Path $root ("flasher_scripts\" + $dev + "\oos\super")
           $tplRegional = Join-Path $root ("flasher_scripts\" + $dev + "\oos\regional")
 
-          # Pack/Build & tools
-          $superPackers = Join-Path $root ("super_packers\" + $dev)  # super_oos.bat, super_cos.bat, super_sunos.bat
-          $buildScripts = Join-Path $root ("build_scripts\" + $dev)  # *_FULL_*.bat
-          $lpmakeDir    = Join-Path $root "lpmake"
+          # Packers / Builders / Tools (device-specific where applicable)
+          $superPackers = Join-Path $root ("super_packers\" + $dev)  # e.g., 13R has super_oos.bat here
+          $buildScripts = Join-Path $root ("build_scripts\" + $dev)  # e.g., REGIONALHYBRID_FULL_BUILD.bat, SUPERHYBRID_FULL_SUPERBUILD.bat
+          $lpmakeDir    = Join-Path $root "lpmake"                   # expected to contain lpmake.exe + cygwin1.dll (or we will search repo)
           $platTools    = Join-Path $root "platform-tools"
           $otaripperExe = Join-Path $root "otaripper\otaripper.exe"
 
-          # Bloat dirs
+          # Bloat dirs (device-specific)
           $bloatEUGLO = Join-Path $root ("bloat\" + $dev + "\EUGLO_BLOAT")
           $bloatIN    = Join-Path $root ("bloat\" + $dev + "\IN_BLOAT")
           $bloatNA    = Join-Path $root ("bloat\" + $dev + "\NA_BLOAT")
           $bloatCN    = Join-Path $root ("bloat\" + $dev + "\CN_BLOAT") # optional
 
-          if (!(Test-Path $tplSuper))    { Write-Host "Note: Super template not found at $tplSuper (only needed for SuperHybrid)." }
-          if (!(Test-Path $tplRegional)) { Write-Host "Note: Regional template not found at $tplRegional (only needed for RegionalHybrid)." }
+          # We don't hard-fail on missing templates for other modes; we check later by type.
           if (!(Test-Path $buildScripts)) { throw "Missing build_scripts: $buildScripts" }
 
           "DEV_FOLDER=$dev"                 | Out-File -FilePath $env:GITHUB_ENV -Append
@@ -129,126 +128,147 @@ jobs:
           if (Test-Path $workDir) { Remove-Item $workDir -Recurse -Force }
           New-Item -ItemType Directory -Force -Path $workDir | Out-Null
 
+          $dev    = $env:DEV_FOLDER
           $ftype  = "${{ inputs.flasher_type }}"
           $region = "${{ inputs.region }}"
 
-          if ($ftype -eq 'SuperHybrid Flasher' -or $ftype -eq 'SuperHybrid SunOS Flasher') {
-            # ---------- SuperHybrid ----------
-            if (!(Test-Path $env:TPL_SUPER)) { throw "SuperHybrid template missing: $env:TPL_SUPER" }
+          # Helpers
+          function Copy-Lpmake-Bits {
+            param([string]$dest)
+            $lm = Get-ChildItem -Path $env:LPMAKE_DIR -Recurse -Filter "lpmake.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+            $cy = Get-ChildItem -Path $env:LPMAKE_DIR -Recurse -Filter "cygwin1.dll" -ErrorAction SilentlyContinue | Select-Object -First 1
+            if (-not $lm) { $lm = Get-ChildItem -Path $env:GITHUB_WORKSPACE -Recurse -Filter "lpmake.exe" -ErrorAction SilentlyContinue | Select-Object -First 1 }
+            if (-not $cy) { $cy = Get-ChildItem -Path $env:GITHUB_WORKSPACE -Recurse -Filter "cygwin1.dll" -ErrorAction SilentlyContinue | Select-Object -First 1 }
+            if (-not $lm) { throw "lpmake.exe not found anywhere in repo" }
+            if (-not $cy) { throw "cygwin1.dll not found anywhere in repo" }
+            Copy-Item $lm.FullName -Destination $dest -Force
+            Copy-Item $cy.FullName -Destination $dest -Force
+          }
 
-            $flasherDir = Join-Path $workDir "SuperHybrid Flasher"
+          function Copy-Bloat {
+            param([string]$bloatDir, [string]$dest)
+            if (!(Test-Path $bloatDir)) { throw "Missing bloat dir: $bloatDir" }
+            Copy-Item (Join-Path $bloatDir "my_preload.img") -Destination $dest -Force
+            Copy-Item (Join-Path $bloatDir "my_company.img") -Destination $dest -Force
+          }
+
+          # ---------- SUPER path ----------
+          if ($ftype -eq 'SuperHybrid Flasher' -or $ftype -eq 'SuperHybrid SunOS Flasher') {
+            if (!(Test-Path $env:TPL_SUPER)) { throw "Super template missing: $env:TPL_SUPER" }
+
+            # Device-specific flasher folder name
+            $flasherFolderName = if ($dev -eq '13R') { 'Super Flasher' } else { 'SuperHybrid Flasher' }
+            $flasherDir = Join-Path $workDir $flasherFolderName
             New-Item -ItemType Directory -Force -Path $flasherDir | Out-Null
 
-            # Copy template contents (16DTBO, META-INF, Super_Flasher.bat, dtbo_patcher.bat)
+            # Copy template contents (includes META-INF & device-specific flasher .bat)
             Copy-Item (Join-Path $env:TPL_SUPER '*') -Destination $flasherDir -Recurse -Force
+
+            # platform-tools inside flasher folder (optional)
+            if (Test-Path $env:PLATFORM_TOOLS) {
+              Copy-Item $env:PLATFORM_TOOLS -Destination $flasherDir -Recurse -Force
+            }
+
+            # Super/ subfolder with lpmake + cygwin1 + packer (always for SUPER path)
+            $superSub = Join-Path $flasherDir "Super"
+            New-Item -ItemType Directory -Force -Path $superSub | Out-Null
+            Copy-Lpmake-Bits -dest $superSub
+
+            # Choose packer:
+            # - 13R uses super_packers/13R/super_oos.bat
+            # - others: CN -> super_cos.bat, SunOS -> super_sunos.bat, else super_oos.bat
+            if ($dev -eq '13R') {
+              $packerName = 'super_oos.bat'
+            } elseif ($ftype -eq 'SuperHybrid SunOS Flasher') {
+              $packerName = 'super_sunos.bat'
+            } elseif ($region -eq 'CN') {
+              $packerName = 'super_cos.bat'
+            } else {
+              $packerName = 'super_oos.bat'
+            }
+
+            $packerPath = Join-Path $env:SUPER_PACKERS $packerName
+            if (!(Test-Path $packerPath)) { throw "Missing packer: $packerPath" }
+            Copy-Item $packerPath -Destination $superSub -Force
+
+            # Bloat location for SUPER builds (goes into Super/)
+            if ($region -in @('EU','GLO')) {
+              Copy-Bloat -bloatDir $env:BLOAT_EUGLO -dest $superSub
+            } elseif ($region -eq 'IN' -and (Test-Path $env:BLOAT_IN)) {
+              Copy-Bloat -bloatDir $env:BLOAT_IN -dest $superSub
+            } elseif ($region -eq 'NA' -and (Test-Path $env:BLOAT_NA)) {
+              Copy-Bloat -bloatDir $env:BLOAT_NA -dest $superSub
+            } elseif ($region -eq 'CN' -and (Test-Path $env:BLOAT_CN)) {
+              Copy-Bloat -bloatDir $env:BLOAT_CN -dest $superSub
+            }
+
+            # Select builder (outside flasher folder)
+            if ($dev -eq '13R') {
+              # For 13R you didn’t specify a new builder name; reusing the standard SUPERHYBRID builder path.
+              $builderName = if ($ftype -eq 'SuperHybrid SunOS Flasher') {
+                'SUPERHYBRID_SUNOS_FULL_SUPERBUILD.bat'
+              } elseif ($region -eq 'CN') {
+                'SUPERHYBRID_CN_FULL_SUPERBUILD.bat'
+              } else {
+                'SUPERHYBRID_FULL_SUPERBUILD.bat'
+              }
+            } else {
+              $builderName = if ($ftype -eq 'SuperHybrid SunOS Flasher') {
+                'SUPERHYBRID_SUNOS_FULL_SUPERBUILD.bat'
+              } elseif ($region -eq 'CN') {
+                'SUPERHYBRID_CN_FULL_SUPERBUILD.bat'
+              } else {
+                'SUPERHYBRID_FULL_SUPERBUILD.bat'
+              }
+            }
+
+            $builderPath = Join-Path $env:BUILD_SCRIPTS $builderName
+            if (!(Test-Path $builderPath)) { throw "Missing builder: $builderPath" }
+            Copy-Item $builderPath -Destination $workDir -Force
+
+            if (Test-Path $env:OTARIPPER_EXE) { Copy-Item $env:OTARIPPER_EXE -Destination $workDir -Force }
+
+            "FLASHER_DIR=$flasherDir" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+          # ---------- REGIONAL path ----------
+          } elseif ($ftype -eq 'RegionalHybrid Flasher') {
+            if (!(Test-Path $env:TPL_REGIONAL)) { throw "Regional template missing: $env:TPL_REGIONAL" }
+
+            # Device-specific flasher folder name
+            $flasherFolderName = if ($dev -eq '13R') { 'Regional Flasher' } else { 'RegionalHybrid Flasher' }
+            $flasherDir = Join-Path $workDir $flasherFolderName
+            New-Item -ItemType Directory -Force -Path $flasherDir | Out-Null
+
+            # Copy template contents
+            #  - For 13R, template contains Regional_Flasher13R.bat + META-INF
+            #  - For others, template contains Regional_Flasher.bat + META-INF
+            Copy-Item (Join-Path $env:TPL_REGIONAL '*') -Destination $flasherDir -Recurse -Force
 
             # platform-tools (optional)
             if (Test-Path $env:PLATFORM_TOOLS) {
               Copy-Item $env:PLATFORM_TOOLS -Destination $flasherDir -Recurse -Force
             }
 
-            # Super/ folder with lpmake + cygwin1 + packer
-            $superSub = Join-Path $flasherDir "Super"
-            New-Item -ItemType Directory -Force -Path $superSub | Out-Null
-
-            function Copy-Lpmake-Bits {
-              param([string]$base)
-              $lm = Get-ChildItem -Path $base -Recurse -Filter "lpmake.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
-              $cy = Get-ChildItem -Path $base -Recurse -Filter "cygwin1.dll" -ErrorAction SilentlyContinue | Select-Object -First 1
-              if ($lm) { Copy-Item $lm.FullName -Destination $superSub -Force }
-              if ($cy) { Copy-Item $cy.FullName -Destination $superSub -Force }
-            }
-
-            if (Test-Path $env:LPMAKE_DIR) { Copy-Lpmake-Bits -base $env:LPMAKE_DIR }
-            if (!(Test-Path (Join-Path $superSub "lpmake.exe"))) { Copy-Lpmake-Bits -base $env:GITHUB_WORKSPACE }
-            if (!(Test-Path (Join-Path $superSub "lpmake.exe"))) { throw "lpmake.exe not found" }
-            if (!(Test-Path (Join-Path $superSub "cygwin1.dll"))) { throw "cygwin1.dll not found" }
-
-            # Choose packer
-            if ($ftype -eq 'SuperHybrid SunOS Flasher') {
-              $packer = 'super_sunos.bat'
-            } elseif ($region -eq 'CN') {
-              $packer = 'super_cos.bat'
-            } else {
-              $packer = 'super_oos.bat'
-            }
-            $packerPath = Join-Path $env:SUPER_PACKERS $packer
-            if (!(Test-Path $packerPath)) { throw "Missing packer: $packerPath" }
-            Copy-Item $packerPath -Destination $superSub -Force
-
-            # EU/GLO bloat goes into Super/
-            if ($region -in @('EU','GLO')) {
-              if (!(Test-Path $env:BLOAT_EUGLO)) { throw "Missing EUGLO_BLOAT: $env:BLOAT_EUGLO" }
-              Copy-Item (Join-Path $env:BLOAT_EUGLO 'my_preload.img') -Destination $superSub -Force
-              Copy-Item (Join-Path $env:BLOAT_EUGLO 'my_company.img') -Destination $superSub -Force
-            } elseif ($region -eq 'IN' -and (Test-Path $env:BLOAT_IN)) {
-              Copy-Item (Join-Path $env:BLOAT_IN 'my_preload.img') -Destination $superSub -Force -ErrorAction SilentlyContinue
-              Copy-Item (Join-Path $env:BLOAT_IN 'my_company.img') -Destination $superSub -Force -ErrorAction SilentlyContinue
-            } elseif ($region -eq 'NA' -and (Test-Path $env:BLOAT_NA)) {
-              Copy-Item (Join-Path $env:BLOAT_NA 'my_preload.img') -Destination $superSub -Force -ErrorAction SilentlyContinue
-              Copy-Item (Join-Path $env:BLOAT_NA 'my_company.img') -Destination $superSub -Force -ErrorAction SilentlyContinue
-            } elseif ($region -eq 'CN' -and (Test-Path $env:BLOAT_CN)) {
-              Copy-Item (Join-Path $env:BLOAT_CN 'my_preload.img') -Destination $superSub -Force -ErrorAction SilentlyContinue
-              Copy-Item (Join-Path $env:BLOAT_CN 'my_company.img') -Destination $superSub -Force -ErrorAction SilentlyContinue
-            }
-
-            # Builder outside folder
-            $builder = if ($ftype -eq 'SuperHybrid SunOS Flasher') {
-              'SUPERHYBRID_SUNOS_FULL_SUPERBUILD.bat'
-            } elseif ($region -eq 'CN') {
-              'SUPERHYBRID_CN_FULL_SUPERBUILD.bat'
-            } else {
-              'SUPERHYBRID_FULL_SUPERBUILD.bat'
-            }
-            $builderPath = Join-Path $env:BUILD_SCRIPTS $builder
-            if (!(Test-Path $builderPath)) { throw "Missing builder: $builderPath" }
-            Copy-Item $builderPath -Destination $workDir -Force
-
-            # optional tools next to builder
-            if (Test-Path $env:OTARIPPER_EXE) { Copy-Item $env:OTARIPPER_EXE -Destination $workDir -Force }
-
-            "FLASHER_DIR=$flasherDir" | Out-File -FilePath $env:GITHUB_ENV -Append
-
-          } elseif ($ftype -eq 'RegionalHybrid Flasher') {
-            # ---------- RegionalHybrid ----------
-            if (!(Test-Path $env:TPL_REGIONAL)) { throw "Regional template missing: $env:TPL_REGIONAL" }
-
-            $flasherDir = Join-Path $workDir "RegionalHybrid Flasher"
-            New-Item -ItemType Directory -Force -Path $flasherDir | Out-Null
-
-            # Copy template contents (contains META-INF/com/google/android + Regional_Flasher.bat)
-            Copy-Item (Join-Path $env:TPL_REGIONAL '*') -Destination $flasherDir -Recurse -Force
-
-            # platform-tools into flasher folder (optional)
-            if (Test-Path $env:PLATFORM_TOOLS) {
-              Copy-Item $env:PLATFORM_TOOLS -Destination $flasherDir -Recurse -Force
-            }
-
-            # Create OOS_FILES_HERE and place region bloat there (NOT in Super)
+            # No Super/ for Regional. Use OOS_FILES_HERE/ for bloat.
             $oosDir = Join-Path $flasherDir "OOS_FILES_HERE"
             New-Item -ItemType Directory -Force -Path $oosDir | Out-Null
 
             if ($region -in @('EU','GLO')) {
-              if (!(Test-Path $env:BLOAT_EUGLO)) { throw "Missing EUGLO_BLOAT: $env:BLOAT_EUGLO" }
-              Copy-Item (Join-Path $env:BLOAT_EUGLO 'my_preload.img') -Destination $oosDir -Force
-              Copy-Item (Join-Path $env:BLOAT_EUGLO 'my_company.img') -Destination $oosDir -Force
+              Copy-Bloat -bloatDir $env:BLOAT_EUGLO -dest $oosDir
             } elseif ($region -eq 'IN' -and (Test-Path $env:BLOAT_IN)) {
-              Copy-Item (Join-Path $env:BLOAT_IN 'my_preload.img') -Destination $oosDir -Force -ErrorAction SilentlyContinue
-              Copy-Item (Join-Path $env:BLOAT_IN 'my_company.img') -Destination $oosDir -Force -ErrorAction SilentlyContinue
+              Copy-Bloat -bloatDir $env:BLOAT_IN -dest $oosDir
             } elseif ($region -eq 'NA' -and (Test-Path $env:BLOAT_NA)) {
-              Copy-Item (Join-Path $env:BLOAT_NA 'my_preload.img') -Destination $oosDir -Force -ErrorAction SilentlyContinue
-              Copy-Item (Join-Path $env:BLOAT_NA 'my_company.img') -Destination $oosDir -Force -ErrorAction SilentlyContinue
+              Copy-Bloat -bloatDir $env:BLOAT_NA -dest $oosDir
             } elseif ($region -eq 'CN' -and (Test-Path $env:BLOAT_CN)) {
-              Copy-Item (Join-Path $env:BLOAT_CN 'my_preload.img') -Destination $oosDir -Force -ErrorAction SilentlyContinue
-              Copy-Item (Join-Path $env:BLOAT_CN 'my_company.img') -Destination $oosDir -Force -ErrorAction SilentlyContinue
+              Copy-Bloat -bloatDir $env:BLOAT_CN -dest $oosDir
             }
 
-            # Builder outside folder (one name per your instruction)
-            $builderName = 'REGIONALHYBRID_FULL_BUILD.bat'
-            # If you later add a CN-specific builder, uncomment the next two lines:
-            # if ($region -eq 'CN' -and (Test-Path (Join-Path $env:BUILD_SCRIPTS 'REGIONALHYBRID_CN_FULL_BUILD.bat'))) {
-            #   $builderName = 'REGIONALHYBRID_CN_FULL_BUILD.bat'
-            # }
+            # Regional builder outside flasher folder
+            $builderName = if ($region -eq 'CN' -and (Test-Path (Join-Path $env:BUILD_SCRIPTS 'REGIONALHYBRID_CN_FULL_BUILD.bat'))) {
+              'REGIONALHYBRID_CN_FULL_BUILD.bat'
+            } else {
+              'REGIONALHYBRID_FULL_BUILD.bat'
+            }
             $builderPath = Join-Path $env:BUILD_SCRIPTS $builderName
             if (!(Test-Path $builderPath)) { throw "Missing builder: $builderPath" }
             Copy-Item $builderPath -Destination $workDir -Force
@@ -263,7 +283,7 @@ jobs:
 
           "WORK_DIR=$workDir" | Out-File -FilePath $env:GITHUB_ENV -Append
 
-      # Layout-only: do not run any .bat scripts
+      # Layout-only: do NOT execute any .bat scripts
 
       - name: Zip working directory (includes flasher folder + outer files)
         shell: pwsh
