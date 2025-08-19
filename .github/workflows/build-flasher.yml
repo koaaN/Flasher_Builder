@@ -128,6 +128,8 @@ jobs:
         shell: pwsh
         run: |
           function Copy-BloatFiles($base, $region, $dest) {
+            # Copy required bloat images if present; if missing but a stub (no extension) exists with a direct URL,
+            # download it and save as the .img into $dest.
             $map = @{
               'EU'  = 'EUGLO_BLOAT'
               'GLO' = 'EUGLO_BLOAT'
@@ -136,13 +138,35 @@ jobs:
               'CN'  = 'CN_BLOAT'
               'A5'  = 'A5_DEBLOAT'
             }
+            $needed = @('my_preload.img','my_company.img','odm.img','oplusstanvbk.img','my_region.img')
+
             $folder = $map[$region]
             if (-not $folder) { return }
             $src = Join-Path $base $folder
-            if (Test-Path $src) {
-              foreach ($f in 'my_preload.img','my_company.img') {
-                $p = Join-Path $src $f
-                if (Test-Path $p) { Copy-Item $p -Destination $dest -Force }
+            if (-not (Test-Path $src)) { return }
+
+            if (-not (Test-Path $dest)) { New-Item -ItemType Directory -Force -Path $dest | Out-Null }
+
+            foreach ($f in $needed) {
+              $imgPath  = Join-Path $src $f
+              if (Test-Path $imgPath) {
+                Copy-Item $imgPath -Destination $dest -Force
+                continue
+              }
+              # try stub (same name without extension)
+              $stubPath = Join-Path $src ([System.IO.Path]::GetFileNameWithoutExtension($f))
+              if (Test-Path $stubPath) {
+                try {
+                  $url = Get-Content $stubPath -Raw
+                  $url = $url.Trim()
+                  if ($url) {
+                    $outFile = Join-Path $dest $f
+                    Write-Host "Downloading missing $f from $url"
+                    Invoke-WebRequest -Uri $url -OutFile $outFile
+                  }
+                } catch {
+                  Write-Warning "Failed to download $f from stub URL in $stubPath: $($_.Exception.Message)"
+                }
               }
             }
           }
@@ -238,7 +262,24 @@ jobs:
               New-Item -ItemType Directory -Force -Path $cosHere | Out-Null
               foreach ($extra in 'odm.img','oplusstanvbk.img','my_region.img') {
                 $srcFile = Join-Path $bloatBase ("CN_BLOAT\" + $extra)
-                if (Test-Path $srcFile) { Copy-Item $srcFile -Destination $cosHere -Force }
+                if (Test-Path $srcFile) {
+                  Copy-Item $srcFile -Destination $cosHere -Force
+                } else {
+                  # Try stub download for each of the three extras
+                  $stub = Join-Path $bloatBase ("CN_BLOAT\" + ([System.IO.Path]::GetFileNameWithoutExtension($extra)))
+                  if (Test-Path $stub) {
+                    try {
+                      $url = (Get-Content $stub -Raw).Trim()
+                      if ($url) {
+                        $outFile = Join-Path $cosHere $extra
+                        Write-Host "Downloading missing $extra from $url"
+                        Invoke-WebRequest -Uri $url -OutFile $outFile
+                      }
+                    } catch {
+                      Write-Warning "Failed to download $extra from stub URL in $stub: $($_.Exception.Message)"
+                    }
+                  }
+                }
               }
             }
           }
