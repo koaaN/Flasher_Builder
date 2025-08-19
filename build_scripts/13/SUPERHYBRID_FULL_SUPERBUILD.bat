@@ -12,15 +12,19 @@ if "%~1"=="" (
   echo [INFO] No OTA zip provided. Running in DRY-RUN mode...
   set "input_file=DUMMY_OTA.zip"
   set "input_dir=%~dp0DUMMY_OTA"
+  if "%input_dir:~-1%"=="\" set "input_dir=%input_dir:~0,-1%"
   if not exist "%input_dir%" mkdir "%input_dir%"
 ) else (
   set "input_file=%~1"
   set "input_dir=%~dp1"
+  if "%input_dir:~-1%"=="\" set "input_dir=%input_dir:~0,-1%"
 )
 
 set "self_dir=%~dp0"
-set "flasher_src=%self_dir%SuperHybrid Flasher"
-set "flasher_dest=%input_dir%SuperHybrid Flasher"
+if "%self_dir:~-1%"=="\" set "self_dir=%self_dir:~0,-1%"
+
+set "flasher_src=%self_dir%\SuperHybrid Flasher"
+set "flasher_dest=%input_dir%\SuperHybrid Flasher"
 
 if not exist "%flasher_src%" (
   echo [ERROR] Template not found: "%flasher_src%"
@@ -32,9 +36,9 @@ if not exist "%flasher_src%" (
 :: ------------------------------------------------------------
 set "otaripper="
 for %%P in (
-  "%self_dir%otaripper.exe"
-  "%self_dir%otaripper\otaripper.exe"
-  "%self_dir%..\otaripper\otaripper.exe"
+  "%self_dir%\otaripper.exe"
+  "%self_dir%\otaripper\otaripper.exe"
+  "%self_dir%\..\otaripper\otaripper.exe"
 ) do (
   if exist "%%~fP" set "otaripper=%%~fP"
 )
@@ -47,10 +51,6 @@ if not defined otaripper (
 
 if /I not "%input_file%"=="DUMMY_OTA.zip" if not defined otaripper (
   echo [ERROR] Could not find otaripper.exe near this script or on PATH.
-  echo         Checked:
-  echo           "%self_dir%otaripper.exe"
-  echo           "%self_dir%otaripper\otaripper.exe"
-  echo           "%self_dir%..\otaripper\otaripper.exe"
   exit /b 1
 )
 
@@ -99,7 +99,7 @@ if /I "%input_file%"=="DUMMY_OTA.zip" (
 
   for /f "usebackq delims=" %%N in ("%tmp_after%") do (
     findstr /ix "%%N" "%tmp_before%" >nul || (
-      set "new_folder=%input_dir%%%N"
+      set "new_folder=%input_dir%\%%N"
     )
   )
 
@@ -153,11 +153,11 @@ if exist "%flasher_dest%\OOS_FILES_HERE\dtbo.img" (
   echo [WARN] No dtbo.img in OOS_FILES_HERE; skipping patch.
 )
 
-if exist "%self_dir%16DTBO\dtbo.img" (
+if exist "%self_dir%\16DTBO\dtbo.img" (
   echo [STEP] Replacing "OOS_FILES_HERE\dtbo.img" with "16DTBO\dtbo.img" ...
-  copy /Y "%self_dir%16DTBO\dtbo.img" "%flasher_dest%\OOS_FILES_HERE\" >nul
+  copy /Y "%self_dir%\16DTBO\dtbo.img" "%flasher_dest%\OOS_FILES_HERE\" >nul
 ) else (
-  echo [WARN] "%self_dir%16DTBO\dtbo.img" not found; leaving OTA dtbo as-is.
+  echo [WARN] "%self_dir%\16DTBO\dtbo.img" not found; leaving OTA dtbo as-is.
 )
 
 :: ------------------------------------------------------------
