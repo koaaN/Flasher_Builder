@@ -1,4 +1,4 @@
-name: Build Flasher (layout-only; 13 + 13R with CN rules)
+name: Build Flasher (layout-only; 13 + 13R with CN rules + A5_DEBLOAT)
 
 on:
   workflow_dispatch:
@@ -169,11 +169,12 @@ jobs:
               'IN'  = 'IN_BLOAT'
               'NA'  = 'NA_BLOAT'
               'CN'  = 'CN_BLOAT'
+              'A5'  = 'A5_DEBLOAT'   # special case for 13R CN → OOS_FILES_HERE
             }
             if (-not $map.ContainsKey($regionCode)) { return }
             $dir = Join-Path $base $map[$regionCode]
             if (!(Test-Path $dir)) {
-              if ($regionCode -in @('IN','NA','CN')) { Write-Host "Bloat dir missing (skipping): $dir"; return }
+              if ($regionCode -in @('IN','NA','CN','A5')) { Write-Host "Bloat dir missing (skipping): $dir"; return }
               throw "Missing bloat dir: $dir"
             }
             $pre = Join-Path $dir "my_preload.img"
@@ -191,9 +192,9 @@ jobs:
             if (!(Test-Path $tplSuper)) { throw "Super template missing: $tplSuper" }
 
             # folder name logic (CN-suffixed)
-            if ($region -eq 'CN')       { $flasherFolderName = 'Super Flasher CN' }
-            elseif ($ftype -eq 'Super Flasher') { $flasherFolderName = 'Super Flasher' }
-            else                        { $flasherFolderName = 'SuperHybrid Flasher' }
+            if ($region -eq 'CN')                    { $flasherFolderName = 'Super Flasher CN' }
+            elseif ($ftype -eq 'Super Flasher')      { $flasherFolderName = 'Super Flasher' }
+            else                                      { $flasherFolderName = 'SuperHybrid Flasher' }
 
             $flasherDir = Join-Path $workDir $flasherFolderName
             New-Item -ItemType Directory -Force -Path $flasherDir | Out-Null
@@ -228,10 +229,10 @@ jobs:
             if ($dev -eq '13R' -and $region -eq 'CN') {
               # CN_BLOAT -> Super
               Copy-Bloat -base $env:BLOAT_BASE -regionCode 'CN' -dest $superDir
-              # EUGLO_BLOAT -> OOS_FILES_HERE
+              # A5_DEBLOAT -> OOS_FILES_HERE
               $oosDir = Join-Path $flasherDir "OOS_FILES_HERE"
               New-Item -ItemType Directory -Force -Path $oosDir | Out-Null
-              Copy-Bloat -base $env:BLOAT_BASE -regionCode 'GLO' -dest $oosDir
+              Copy-Bloat -base $env:BLOAT_BASE -regionCode 'A5' -dest $oosDir
             } else {
               # normal: bloat into Super
               Copy-Bloat -base $env:BLOAT_BASE -regionCode $region -dest $superDir
@@ -258,9 +259,9 @@ jobs:
             if (!(Test-Path $tplRegional)) { throw "Regional template missing: $tplRegional" }
 
             # folder name logic (CN-suffixed)
-            if ($region -eq 'CN')              { $flasherFolderName = 'Regional Flasher CN' }
-            elseif ($ftype -eq 'Regional Flasher') { $flasherFolderName = 'Regional Flasher' }
-            else                               { $flasherFolderName = 'RegionalHybrid Flasher' }
+            if ($region -eq 'CN')                         { $flasherFolderName = 'Regional Flasher CN' }
+            elseif ($ftype -eq 'Regional Flasher')        { $flasherFolderName = 'Regional Flasher' }
+            else                                           { $flasherFolderName = 'RegionalHybrid Flasher' }
 
             $flasherDir = Join-Path $workDir $flasherFolderName
             New-Item -ItemType Directory -Force -Path $flasherDir | Out-Null
@@ -277,10 +278,10 @@ jobs:
               New-Item -ItemType Directory -Force -Path $cosDir | Out-Null
               Copy-Bloat -base $env:BLOAT_BASE -regionCode 'CN' -dest $cosDir
 
-              # CN: OOS_FILES_HERE <- EUGLO_BLOAT
+              # CN: OOS_FILES_HERE <- A5_DEBLOAT
               $oosDir = Join-Path $flasherDir "OOS_FILES_HERE"
               New-Item -ItemType Directory -Force -Path $oosDir | Out-Null
-              Copy-Bloat -base $env:BLOAT_BASE -regionCode 'GLO' -dest $oosDir
+              Copy-Bloat -base $env:BLOAT_BASE -regionCode 'A5' -dest $oosDir
             } else {
               # non-CN: OOS_FILES_HERE <- region bloat
               $oosDir = Join-Path $flasherDir "OOS_FILES_HERE"
