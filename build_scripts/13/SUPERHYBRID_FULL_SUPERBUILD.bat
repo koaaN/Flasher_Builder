@@ -5,20 +5,21 @@ echo ==========================================================
 echo   SUPERHYBRID FULL SUPERBUILD  (Dry-Run Compatible)
 echo ==========================================================
 
-:: ------------------------------------------------------------
-:: 1) INPUT (drag & drop OTA.zip OR dry-run if none provided)
-:: ------------------------------------------------------------
+REM -----------------------------------------------------------
+REM 1) INPUT (drag & drop OTA.zip OR dry-run if none provided)
+REM -----------------------------------------------------------
 if "%~1"=="" (
   echo [INFO] No OTA zip provided. Running in DRY-RUN mode...
   set "input_file=DUMMY_OTA.zip"
   set "input_dir=%~dp0DUMMY_OTA"
-  if "%input_dir:~-1%"=="\" set "input_dir=%input_dir:~0,-1%"
-  if not exist "%input_dir%" mkdir "%input_dir%"
 ) else (
   set "input_file=%~1"
   set "input_dir=%~dp1"
-  if "%input_dir:~-1%"=="\" set "input_dir=%input_dir:~0,-1%"
 )
+REM strip trailing backslash if present
+if "%input_dir:~-1%"=="\" set "input_dir=%input_dir:~0,-1%"
+
+if not exist "%input_dir%" mkdir "%input_dir%"
 
 set "self_dir=%~dp0"
 if "%self_dir:~-1%"=="\" set "self_dir=%self_dir:~0,-1%"
@@ -31,17 +32,15 @@ if not exist "%flasher_src%" (
   exit /b 1
 )
 
-:: ------------------------------------------------------------
-:: 2) Locate otaripper.exe (only required when not dry-run)
-:: ------------------------------------------------------------
+REM -----------------------------------------------------------
+REM 2) Locate otaripper.exe (only required when not dry-run)
+REM -----------------------------------------------------------
 set "otaripper="
 for %%P in (
   "%self_dir%\otaripper.exe"
   "%self_dir%\otaripper\otaripper.exe"
   "%self_dir%\..\otaripper\otaripper.exe"
-) do (
-  if exist "%%~fP" set "otaripper=%%~fP"
-)
+) do if exist "%%~fP" set "otaripper=%%~fP"
 
 if not defined otaripper (
   for /f "delims=" %%A in ('where otaripper.exe 2^>nul') do (
@@ -49,7 +48,10 @@ if not defined otaripper (
   )
 )
 
-if /I not "%input_file%"=="DUMMY_OTA.zip" (
+REM Avoid IF /I NOT chaining to prevent syntax faults
+if /I "%input_file%"=="DUMMY_OTA.zip" (
+  REM dry run: ripper not required
+) else (
   if not defined otaripper (
     echo [ERROR] Could not find otaripper.exe near this script or on PATH.
     exit /b 1
@@ -63,9 +65,9 @@ if defined otaripper echo [INFO] Ripper   : "%otaripper%"
 echo [INFO] Template : "%flasher_src%"
 echo.
 
-:: ------------------------------------------------------------
-:: 3) Copy template into the OTA directory
-:: ------------------------------------------------------------
+REM -----------------------------------------------------------
+REM 3) Copy template into the OTA directory
+REM -----------------------------------------------------------
 echo [STEP] Copy template -> "%flasher_dest%"
 if exist "%flasher_dest%" rmdir /s /q "%flasher_dest%"
 xcopy "%flasher_src%" "%flasher_dest%" /E /I /Y >nul
@@ -74,9 +76,9 @@ if errorlevel 1 (
   exit /b 1
 )
 
-:: ------------------------------------------------------------
-:: 4) Extract OTA (skipped in dry-run). Detect new folder safely.
-:: ------------------------------------------------------------
+REM -----------------------------------------------------------
+REM 4) Extract OTA (skip in dry-run) and detect new folder safely
+REM -----------------------------------------------------------
 set "new_folder="
 
 if /I "%input_file%"=="DUMMY_OTA.zip" (
@@ -115,9 +117,9 @@ if /I "%input_file%"=="DUMMY_OTA.zip" (
   echo [INFO] Detected extracted folder: "%new_folder%"
 )
 
-:: ------------------------------------------------------------
-:: 5) Organize files (selected partitions -> \super, rest -> \OOS_FILES_HERE)
-:: ------------------------------------------------------------
+REM -----------------------------------------------------------
+REM 5) Organize files (partitions -> \super, rest -> \OOS_FILES_HERE)
+REM -----------------------------------------------------------
 if not exist "%flasher_dest%\super" md "%flasher_dest%\super"
 if not exist "%flasher_dest%\OOS_FILES_HERE" md "%flasher_dest%\OOS_FILES_HERE"
 
@@ -139,9 +141,9 @@ if defined new_folder (
   echo [INFO] Dry-run: created empty "super\" and "OOS_FILES_HERE\" to verify layout.
 )
 
-:: ------------------------------------------------------------
-:: 6) dtbo: patch in root, then replace OTA dtbo with 16DTBO\dtbo.img (if present)
-:: ------------------------------------------------------------
+REM -----------------------------------------------------------
+REM 6) dtbo: patch in root, then replace with 16DTBO\dtbo.img
+REM -----------------------------------------------------------
 echo [STEP] Handling dtbo.img...
 if exist "%flasher_dest%\OOS_FILES_HERE\dtbo.img" (
   copy /Y "%flasher_dest%\OOS_FILES_HERE\dtbo.img" "%flasher_dest%" >nul
@@ -162,9 +164,9 @@ if exist "%self_dir%\16DTBO\dtbo.img" (
   echo [WARN] "%self_dir%\16DTBO\dtbo.img" not found; leaving OTA dtbo as-is.
 )
 
-:: ------------------------------------------------------------
-:: 7) Build super.img
-:: ------------------------------------------------------------
+REM -----------------------------------------------------------
+REM 7) Build super.img
+REM -----------------------------------------------------------
 echo [STEP] Packing super.img...
 if exist "%flasher_dest%\Super\super.bat" (
   pushd "%flasher_dest%\Super" >nul
@@ -185,9 +187,9 @@ if exist "%flasher_dest%\Super\super.bat" (
   echo [WARN] "%flasher_dest%\Super\super.bat" not found; skipping super image packing.
 )
 
-:: ------------------------------------------------------------
-:: 8) Cleanup temporary items
-:: ------------------------------------------------------------
+REM -----------------------------------------------------------
+REM 8) Cleanup temporary items
+REM -----------------------------------------------------------
 echo [STEP] Cleaning temporary files...
 if exist "%flasher_dest%\Super" rmdir /S /Q "%flasher_dest%\Super"
 if exist "%flasher_dest%\dtbo.img" del /F /Q "%flasher_dest%\dtbo.img"
