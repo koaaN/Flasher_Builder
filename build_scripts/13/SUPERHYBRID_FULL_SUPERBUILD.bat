@@ -7,6 +7,7 @@ echo ==========================================================
 
 REM -----------------------------------------------------------
 REM 1) INPUT (drag & drop OTA.zip OR dry-run if none provided)
+REM    Strip any surrounding quotes that the caller may pass.
 REM -----------------------------------------------------------
 if "%~1"=="" (
   echo [INFO] No OTA zip provided. Running in DRY-RUN mode...
@@ -14,12 +15,15 @@ if "%~1"=="" (
   set "input_dir=%~dp0DUMMY_OTA"
 ) else (
   set "input_file=%~1"
+  set "input_file=%input_file:"=%"
   set "input_dir=%~dp1"
+  set "input_dir=%input_dir:"=%"
 )
-REM strip trailing backslash if present
+
+REM normalize trailing backslash
 if "%input_dir:~-1%"=="\" set "input_dir=%input_dir:~0,-1%"
 
-if not exist "%input_dir%" mkdir "%input_dir%"
+if not exist "%input_dir%" mkdir "%input_dir%" >nul 2>&1
 
 set "self_dir=%~dp0"
 if "%self_dir:~-1%"=="\" set "self_dir=%self_dir:~0,-1%"
@@ -48,9 +52,8 @@ if not defined otaripper (
   )
 )
 
-REM Avoid IF /I NOT chaining to prevent syntax faults
 if /I "%input_file%"=="DUMMY_OTA.zip" (
-  REM dry run: ripper not required
+  REM Dry run: ripper not required
 ) else (
   if not defined otaripper (
     echo [ERROR] Could not find otaripper.exe near this script or on PATH.
@@ -102,9 +105,7 @@ if /I "%input_file%"=="DUMMY_OTA.zip" (
   dir /b /ad "%input_dir%" > "%tmp_after%"
 
   for /f "usebackq delims=" %%N in ("%tmp_after%") do (
-    findstr /ix "%%N" "%tmp_before%" >nul || (
-      set "new_folder=%input_dir%\%%N"
-    )
+    findstr /ix "%%N" "%tmp_before%" >nul || set "new_folder=%input_dir%\%%N"
   )
 
   if exist "%tmp_before%" del "%tmp_before%" >nul 2>&1
