@@ -49,9 +49,11 @@ if not defined otaripper (
   )
 )
 
-if /I not "%input_file%"=="DUMMY_OTA.zip" if not defined otaripper (
-  echo [ERROR] Could not find otaripper.exe near this script or on PATH.
-  exit /b 1
+if /I not "%input_file%"=="DUMMY_OTA.zip" (
+  if not defined otaripper (
+    echo [ERROR] Could not find otaripper.exe near this script or on PATH.
+    exit /b 1
+  )
 )
 
 echo [INFO] OTA file : "%input_file%"
