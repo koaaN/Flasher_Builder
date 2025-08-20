@@ -66,7 +66,7 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      # 1) Prepare dirs; if no URL, create a placeholder OTA.zip
+      # Prepare dirs; if no URL, create a placeholder OTA.zip
       - name: Prep dirs and placeholder
         shell: pwsh
         run: |
@@ -78,7 +78,7 @@ jobs:
             Compress-Archive -Path "download\PLACEHOLDER.txt" -DestinationPath "download\OTA.zip" -Force
           }
 
-      # 2) Download with aria2 (fallback to curl) only when URL is provided
+      # OTA download (aria2 -> curl)
       - name: Download OTA zip (aria2 → curl fallback)
         if: ${{ inputs.ota_url != '' }}
         shell: cmd
@@ -92,7 +92,6 @@ jobs:
             curl -L -o download\OTA.zip "${{ inputs.ota_url }}"
           )
 
-      # 3) Export OTA_PATH and OTA_DIR for later steps
       - name: Export OTA env
         shell: pwsh
         run: |
@@ -102,7 +101,7 @@ jobs:
           "OTA_PATH=$ota"    | Out-File -FilePath $env:GITHUB_ENV -Append
           "OTA_DIR=$otaDir"  | Out-File -FilePath $env:GITHUB_ENV -Append
 
-      # 4) Decide which builder .bat to use
+      # Map device -> builder
       - name: Map device → pick builder
         shell: pwsh
         run: |
@@ -150,7 +149,7 @@ jobs:
           "REGION=$region"       | Out-File -FilePath $env:GITHUB_ENV -Append
           "BUILDER_BAT=$batName" | Out-File -FilePath $env:GITHUB_ENV -Append
 
-      # 5) Stage builder + template source folders in OUT_DIR
+      # Stage files + special tweaks
       - name: Stage files (with Oneplus 13 SuperHybrid tweaks)
         shell: pwsh
         run: |
@@ -172,26 +171,26 @@ jobs:
               }
             }
           }
-          
+
           $dev     = $env:DEV
           $ftype   = $env:FTYPE
           $region  = $env:REGION
-          
+
           $root = $env:GITHUB_WORKSPACE
           $builderDir = Join-Path $root ("build_scripts\" + $dev)
           $bloatBase  = Join-Path $root ("bloat\" + $dev)
-          
+
           # Fresh OUT_DIR
           if (Test-Path $env:OUT_DIR) { Remove-Item $env:OUT_DIR -Recurse -Force }
           New-Item -ItemType Directory -Force -Path $env:OUT_DIR | Out-Null
-          
-          # Main folder: put otaripper + builder here (batch uses %~dp0)
+
+          # Main folder: otaripper + builder (batch uses %~dp0)
           if (Test-Path (Join-Path $root 'otaripper\otaripper.exe')) {
             Copy-Item (Join-Path $root 'otaripper\otaripper.exe') -Destination $env:OUT_DIR -Force
           }
           $builderSrc = Join-Path $builderDir $env:BUILDER_BAT
           if (Test-Path $builderSrc) { Copy-Item $builderSrc -Destination $env:OUT_DIR -Force }
-          
+
           # Working folder (exact name the batch expects)
           $workName = switch ($ftype) {
             'SuperHybrid Flasher'       { 'SuperHybrid Flasher' }
@@ -202,7 +201,7 @@ jobs:
           }
           $workDir = Join-Path $env:OUT_DIR $workName
           New-Item -ItemType Directory -Force -Path $workDir | Out-Null
-          
+
           # Template root
           $tplBase = Join-Path $root ("flasher_scripts\" + $dev)
           if ($ftype -like '*Hybrid*') {
@@ -213,22 +212,22 @@ jobs:
           } elseif ($ftype -eq 'Regional Flasher') {
             if ($dev -eq '13R' -and $region -eq 'CN') { $tplBase = Join-Path $tplBase 'cos\regional' } else { $tplBase = Join-Path $tplBase 'oos\regional' }
           }
-          
+
           Copy-Item "$tplBase\*" -Destination $workDir -Recurse -Force
-          
+
           # META-INF only for Hybrid builds
           if ($ftype -like '*Hybrid*') {
             $mi = Join-Path $tplBase 'META-INF'
             if (Test-Path $mi) { Copy-Item $mi -Destination (Join-Path $workDir 'META-INF') -Recurse -Force }
           }
-          
-          # Super builds: stage tools and bloat
+
+          # Super builds: stage tools + bloat
           if ($ftype -match 'Super') {
             $superDir = Join-Path $workDir 'Super'
             New-Item -ItemType Directory -Force -Path $superDir | Out-Null
             Copy-Item (Join-Path $root 'lpmake\lpmake.exe') -Destination $superDir -Force
             Copy-Item (Join-Path $root 'lpmake\cygwin1.dll') -Destination $superDir -Force
-          
+
             if ($dev -eq '13T') {
               $pdir = Join-Path $root 'super_packers\13T'
               Copy-Item (Join-Path $pdir ($(if ($region -eq 'CN') { 'super_cos.bat' } else { 'super_oos.bat' }))) -Destination $superDir -Force
@@ -236,17 +235,17 @@ jobs:
               $p = Join-Path $root ("super_packers\" + $dev + "\super_oos.bat")
               if (Test-Path $p) { Copy-Item $p -Destination $superDir -Force }
             }
-          
+
             Copy-BloatFiles $bloatBase $region $superDir
-          
+
             if ($region -eq 'CN') {
               $oosHere = Join-Path $workDir 'OOS_FILES_HERE'
               New-Item -ItemType Directory -Force -Path $oosHere | Out-Null
               if ($dev -eq '13R') { Copy-BloatFiles $bloatBase 'A5' $oosHere } else { Copy-BloatFiles $bloatBase 'GLO' $oosHere }
             }
           }
-          
-          # === Oneplus 13 + SuperHybrid: special handling ===
+
+          # --- Oneplus 13 + SuperHybrid extras ---
           if ($dev -eq '13' -and $ftype -eq 'SuperHybrid Flasher') {
             # Ensure 16DTBO is in the MAIN folder (same as otaripper & .bat)
             $repo16  = Join-Path $root '16DTBO'
@@ -257,15 +256,13 @@ jobs:
             } else {
               Write-Warning "16DTBO folder not found at repo root."
             }
-          
-            # If template accidentally brought 16DTBO into the working folder, move it back to MAIN
+            # If template dropped 16DTBO into working folder, move it back up
             $work16 = Join-Path $workDir '16DTBO'
             if (Test-Path $work16) {
               if (Test-Path $main16) { Remove-Item $main16 -Recurse -Force }
               Move-Item $work16 $main16
               Write-Host "Moved stray 16DTBO from working folder to MAIN."
             }
-          
             # Inject bloat/13/COS_FILES_HERE into the working folder
             $cosBloat = Join-Path $bloatBase 'COS_FILES_HERE'
             if (Test-Path $cosBloat) {
@@ -275,22 +272,20 @@ jobs:
               Write-Warning "COS_FILES_HERE not found under $bloatBase"
             }
           }
-          
+
           "WORK_DIR=$workDir" | Out-File -FilePath $env:GITHUB_ENV -Append
 
-
-      # 6) TRUE drag&drop: run builder with CWD = OTA_DIR, pass OTA path as %1
+      # Run builder like drag-and-drop
       - name: Run builder (Explorer-style drag & drop)
         shell: cmd
         working-directory: ${{ env.OTA_DIR }}
         run: |
           echo CWD is %CD%
           echo Calling builder: "%GITHUB_WORKSPACE%\%OUT_DIR%\%BUILDER_BAT%" "%OTA_PATH%"
-          rem Feed a newline so 'pause' in the script doesn't hang CI
           (echo.| call "%GITHUB_WORKSPACE%\%OUT_DIR%\%BUILDER_BAT%" "%OTA_PATH%") || exit /b 1
 
-      # 7) Package ONLY the folder produced next to the ZIP using tar -a (fast, large-file safe)
-      - name: Package final output (tar -a, absolute path)
+      # Package builder output with tar -a (no './' paths)
+      - name: Package final output (tar -a, absolute path, clean paths)
         shell: pwsh
         run: |
           $otaDir = $env:OTA_DIR
@@ -305,18 +300,19 @@ jobs:
           }
           $fallback   = @('SuperHybrid Flasher','RegionalHybrid Flasher','SuperHybrid SunOS Flasher','Super Flasher','Regional Flasher')
           $candidates = @() + $byFtype + $fallback | Select-Object -Unique
-          
+
           $resultDir = $null
           foreach ($name in $candidates) {
             $p = Join-Path $otaDir $name
             if (Test-Path $p) { $resultDir = $p; break }
           }
-          if (-not $resultDir) { throw "Could not find builder output folder next to OTA in '$otaDir'. Looked for: $($candidates -join ', ')" }
-          
-          # Absolute output under workspace\out
+          if (-not $resultDir) {
+            throw "Could not find builder output folder next to OTA in '$otaDir'. Looked for: $($candidates -join ', ')"
+          }
+
           $zipRoot  = Join-Path $env:GITHUB_WORKSPACE $env:OUT_DIR
           New-Item -ItemType Directory -Force -Path $zipRoot | Out-Null
-          
+
           $devName   = "${{ inputs.device }}".Replace(' ','')
           $ftypeName = "${{ inputs.flasher_type }}".Replace(' ','')
           $regionStr = "${{ inputs.region }}"
@@ -324,22 +320,22 @@ jobs:
           $artifact  = "$devName-$ftypeName-$regionStr-$ts".Replace(' ','')
           $zipPath   = Join-Path $zipRoot "$artifact.zip"
           if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
-          
+
           $tar = Get-Command tar -ErrorAction Stop
-          
-          # Build argument list: tar -a -c -f <zip> -C <resultDir> <all top-level entries>
+
+          # Build file list to avoid './' entries
           $items = Get-ChildItem -LiteralPath $resultDir -Force | ForEach-Object { $_.Name }
           if ($items.Count -eq 0) { throw "Nothing to archive in $resultDir" }
-          
+
           $args = @('-a','-c','-f',"$zipPath",'-C',"$resultDir") + $items
           & $tar.Path @args
-          
+
           if (-not (Test-Path $zipPath)) { throw "Packaging failed: ZIP not created at $zipPath" }
-          
+
           "ARTIFACT_NAME=$artifact" | Out-File -FilePath $env:GITHUB_ENV -Append
           "ZIP_FILE=$zipPath"       | Out-File -FilePath $env:GITHUB_ENV -Append
 
-      # ========= Artifact upload =========
+      # Upload artifact (optional)
       - name: Upload artifact (single zip only)
         if: ${{ inputs.upload_to == 'Artifact Only' }}
         uses: actions/upload-artifact@v4
@@ -348,7 +344,7 @@ jobs:
           path: ${{ env.ZIP_FILE }}
           retention-days: ${{ env.ARTIFACT_RETENTION_DAYS }}
 
-      # ========= Compute remote paths =========
+      # Compute remote paths
       - name: Compute upload paths
         shell: pwsh
         run: |
@@ -380,12 +376,10 @@ jobs:
           if (-not $rel.EndsWith('/')) { $rel += '/' }
           "REL_UPLOAD_DIR=$rel" | Out-File -FilePath $env:GITHUB_ENV -Append
 
-          # DS FTP base ("/" means login root)
           $ftpBase = "${{ secrets.DS_FTP_PATH }}".Trim('/')
           $ftpAbs  = ($ftpBase.Length -gt 0) ? "$ftpBase/$rel" : $rel
           "FTP_UPLOAD_DIR=$ftpAbs" | Out-File -FilePath $env:GITHUB_ENV -Append
 
-          # SourceForge absolute base path must be provided
           $sfBaseAbs = "${{ secrets.SF_PROJECT_PATH }}".Trim()
           if ([string]::IsNullOrWhiteSpace($sfBaseAbs) -or -not $sfBaseAbs.StartsWith('/')) {
             throw "SF_PROJECT_PATH must be an absolute path like /home/frs/project/oneplus13flashers"
@@ -393,9 +387,7 @@ jobs:
           $sfBaseAbs = ($sfBaseAbs -replace '\\','/').TrimEnd('/')
           "SF_UPLOAD_DIR=$sfBaseAbs/$rel" | Out-File -FilePath $env:GITHUB_ENV -Append
 
-      # =========================
-      # DS_FTP Upload (streamed)
-      # =========================
+      # DS_FTP upload (streamed, big-file safe) with curl fallback
       - name: Upload to DS_FTP (streamed, large-file safe)
         if: ${{ inputs.upload_to == 'DS_FTP' || inputs.upload_to == 'Both DS_FTP & Sourceforge' }}
         shell: pwsh
@@ -417,7 +409,6 @@ jobs:
 
           if (-not (Test-Path $zipPath)) { throw "ZIP not found: $zipPath" }
 
-          # URL-encode each path segment
           $encPath = ($remoteDir.Split('/') | Where-Object { $_ -ne '' } | ForEach-Object { [System.Uri]::EscapeDataString($_) }) -join '/'
 
           function New-FtpRequest([string]$uri,[string]$method){
@@ -430,7 +421,6 @@ jobs:
             return $r
           }
 
-          # Preflight: verify remote folder exists
           $dirUri = if ($encPath) { "ftp://$ftpHost/$encPath" } else { "ftp://$ftpHost/" }
           try {
             (New-FtpRequest $dirUri ([System.Net.WebRequestMethods+Ftp]::ListDirectory)).GetResponse().Close()
@@ -439,7 +429,6 @@ jobs:
             throw "Target folder does not exist or is not accessible: $dirUri ($detail)"
           }
 
-          # Stream the upload in chunks (no 2GB ReadAllBytes limit)
           $uploadUri = if ($encPath) {
             "ftp://$ftpHost/$encPath/$([System.Uri]::EscapeDataString($fileName))"
           } else {
@@ -479,9 +468,7 @@ jobs:
             & $curlExe.Path --ftp-pasv --disable-eprt --user $userPwd -T "$zipPath" "$urlFull" --fail --show-error --silent
           }
 
-      # -------------------------------
-      # SourceForge: setup SSH
-      # -------------------------------
+      # SourceForge SSH setup
       - name: Setup SSH for SourceForge
         if: ${{ inputs.upload_to == 'Sourceforge' || inputs.upload_to == 'Both DS_FTP & Sourceforge' }}
         shell: pwsh
@@ -515,9 +502,7 @@ jobs:
             "  IdentityFile $keyPath"
           ) | Set-Content -Path $cfgPath -Encoding ascii
 
-      # ------------------------------------------------
-      # SourceForge: upload
-      # ------------------------------------------------
+      # SourceForge upload
       - name: Upload to SourceForge (SCP)
         if: ${{ inputs.upload_to == 'Sourceforge' || inputs.upload_to == 'Both DS_FTP & Sourceforge' }}
         shell: pwsh
