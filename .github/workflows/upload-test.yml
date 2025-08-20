@@ -365,7 +365,6 @@ jobs:
             default { 'Regional Flashers' }
           }
       
-          # 13S / 13T have no region folder
           $needsRegion = ($device -ne 'Oneplus 13S' -and $device -ne 'Oneplus 13T')
           if ($needsRegion) {
             $regionFolder = switch ($region) {
@@ -390,18 +389,18 @@ jobs:
           $ftpAbs  = ($ftpBase.Length -gt 0) ? "$ftpBase/$rel" : $rel
           "FTP_UPLOAD_DIR=$ftpAbs" | Out-File -FilePath $env:GITHUB_ENV -Append
       
-          # SourceForge — use absolute base from secret (MUST be /home/frs/project/<project>)
+          # ---- SourceForge: MUST be absolute /home/frs/project/<project> ----
           $sfBaseAbs = "${{ secrets.SF_PROJECT_PATH }}".Trim()
-          if (-not $sfBaseAbs.StartsWith('/')) {
-            throw "SF_PROJECT_PATH must be an absolute path like /home/frs/project/<project>"
+          if ([string]::IsNullOrWhiteSpace($sfBaseAbs) -or -not $sfBaseAbs.StartsWith('/')) {
+            throw "SF_PROJECT_PATH must be an absolute path like /home/frs/project/oneplus13flashers"
           }
           $sfBaseAbs = ($sfBaseAbs -replace '\\','/').TrimEnd('/')
       
-          $sfAbs = "$sfBaseAbs/$rel"         # e.g. /home/frs/project/oneplus13flashers/Oneplus 13/Super Flashers/Global/
+          # IMPORTANT: folders under $rel must ALREADY exist on SF (restricted shell)
+          $sfAbs = "$sfBaseAbs/$rel"   # e.g. /home/frs/project/oneplus13flashers/Oneplus 13/Super Flashers/Global/
           "SF_UPLOAD_DIR=$sfAbs" | Out-File -FilePath $env:GITHUB_ENV -Append
       
-          Write-Host "SF upload dir: $sfAbs"
-
+          Write-Host "SF_UPLOAD_DIR = $sfAbs"
 
       # =========================
       # DS_FTP Upload (no mkdirs)
@@ -532,9 +531,12 @@ jobs:
           $zip = $env:ZIP_FILE
           if (-not (Test-Path $zip)) { throw "ZIP file not found: $zip" }
       
-          $destDir = ($env:SF_UPLOAD_DIR -replace '\\','/').TrimEnd('/')   # absolute dir
+          # Use real forward slashes and trim trailing /
+          $destDir = ($env:SF_UPLOAD_DIR -replace '\\','/').TrimEnd('/')
           $dest    = "$destDir/$($env:ARTIFACT_NAME).zip"
           $key     = "$env:USERPROFILE\.ssh\id_ed25519"
       
           Write-Host "Uploading to SourceForge: $dest"
+          # NOTE: SourceForge restricted shell won't create directories; ensure $destDir exists in the SF web UI
           scp -i "$key" -o StrictHostKeyChecking=yes "$zip" "$($env:SF_USERNAME)@frs.sourceforge.net:`"$dest`""
+
