@@ -541,9 +541,14 @@ jobs:
           $zip = $env:ZIP_FILE
           if (-not (Test-Path $zip)) { throw "ZIP file not found: $zip" }
       
-          $destDir = ($env:SF_UPLOAD_DIR -replace '\\','/').TrimEnd('/')
-          $dest    = "$destDir/$($env:ARTIFACT_NAME).zip"
-          $key     = "$env:USERPROFILE\.ssh\id_ed25519"
+          # Convert any *** (masked) or backslashes to forward slashes, then trim trailing /
+          $destDir = ($env:SF_UPLOAD_DIR -replace '\*{3}','/' -replace '\\','/').TrimEnd('/')
+      
+          # Build final remote file path
+          $dest = "$destDir/$($env:ARTIFACT_NAME).zip"
+      
+          # Local key path on runner
+          $key  = "$env:USERPROFILE\.ssh\id_ed25519"
       
           Write-Host "Uploading to SourceForge: $dest"
           ssh -i "$key" -o StrictHostKeyChecking=yes "$($env:SF_USERNAME)@frs.sourceforge.net" "mkdir -p `"$destDir`""
