@@ -66,7 +66,6 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      # Prepare dirs; if no URL, create a placeholder OTA.zip
       - name: Prep dirs and placeholder
         shell: pwsh
         run: |
@@ -78,7 +77,6 @@ jobs:
             Compress-Archive -Path "download\PLACEHOLDER.txt" -DestinationPath "download\OTA.zip" -Force
           }
 
-      # OTA download (aria2 -> curl)
       - name: Download OTA zip (aria2 → curl fallback)
         if: ${{ inputs.ota_url != '' }}
         shell: cmd
@@ -101,7 +99,6 @@ jobs:
           "OTA_PATH=$ota"    | Out-File -FilePath $env:GITHUB_ENV -Append
           "OTA_DIR=$otaDir"  | Out-File -FilePath $env:GITHUB_ENV -Append
 
-      # Map device -> builder
       - name: Map device → pick builder
         shell: pwsh
         run: |
@@ -118,14 +115,8 @@ jobs:
           $region = "${{ inputs.region }}"
 
           $batName = switch ($ftype) {
-            'SuperHybrid Flasher' {
-              if ($region -eq 'CN') { 'SUPERHYBRID_CN_FULL_SUPERBUILD.bat' }
-              else { 'SUPERHYBRID_FULL_SUPERBUILD.bat' }
-            }
-            'RegionalHybrid Flasher' {
-              if ($region -eq 'CN') { 'REGIONALHYBRID_CN_FULL_BUILD.bat' }
-              else { 'REGIONALHYBRID_FULL_BUILD.bat' }
-            }
+            'SuperHybrid Flasher'       { if ($region -eq 'CN') { 'SUPERHYBRID_CN_FULL_SUPERBUILD.bat' } else { 'SUPERHYBRID_FULL_SUPERBUILD.bat' } }
+            'RegionalHybrid Flasher'    { if ($region -eq 'CN') { 'REGIONALHYBRID_CN_FULL_BUILD.bat' } else { 'REGIONALHYBRID_FULL_BUILD.bat' } }
             'SuperHybrid SunOS Flasher' { 'SUPERHYBRID_SUNOS_FULL_SUPERBUILD.bat' }
             'Super Flasher' {
               if     ($dev -eq '13R' -and $region -eq 'CN') { 'SUPER_CN_FULL_SUPERBUILD.bat' }
@@ -149,7 +140,6 @@ jobs:
           "REGION=$region"       | Out-File -FilePath $env:GITHUB_ENV -Append
           "BUILDER_BAT=$batName" | Out-File -FilePath $env:GITHUB_ENV -Append
 
-      # Stage files + special tweaks
       - name: Stage files (with Oneplus 13 SuperHybrid tweaks)
         shell: pwsh
         run: |
@@ -167,7 +157,9 @@ jobs:
                 try {
                   $url = (Get-Content $stubPath -Raw).Trim()
                   if ($url) { Invoke-WebRequest -Uri $url -OutFile (Join-Path $dest $f) }
-                } catch { Write-Warning "Failed to download $f from $stubPath: $($_.Exception.Message)" }
+                } catch {
+                  Write-Warning ("Failed to download {0} from {1}: {2}" -f $f, $stubPath, $_.Exception.Message)
+                }
               }
             }
           }
@@ -180,18 +172,15 @@ jobs:
           $builderDir = Join-Path $root ("build_scripts\" + $dev)
           $bloatBase  = Join-Path $root ("bloat\" + $dev)
 
-          # Fresh OUT_DIR
           if (Test-Path $env:OUT_DIR) { Remove-Item $env:OUT_DIR -Recurse -Force }
           New-Item -ItemType Directory -Force -Path $env:OUT_DIR | Out-Null
 
-          # Main folder: otaripper + builder (batch uses %~dp0)
           if (Test-Path (Join-Path $root 'otaripper\otaripper.exe')) {
             Copy-Item (Join-Path $root 'otaripper\otaripper.exe') -Destination $env:OUT_DIR -Force
           }
           $builderSrc = Join-Path $builderDir $env:BUILDER_BAT
           if (Test-Path $builderSrc) { Copy-Item $builderSrc -Destination $env:OUT_DIR -Force }
 
-          # Working folder (exact name the batch expects)
           $workName = switch ($ftype) {
             'SuperHybrid Flasher'       { 'SuperHybrid Flasher' }
             'RegionalHybrid Flasher'    { 'RegionalHybrid Flasher' }
@@ -202,7 +191,6 @@ jobs:
           $workDir = Join-Path $env:OUT_DIR $workName
           New-Item -ItemType Directory -Force -Path $workDir | Out-Null
 
-          # Template root
           $tplBase = Join-Path $root ("flasher_scripts\" + $dev)
           if ($ftype -like '*Hybrid*') {
             $tplBase = Join-Path $tplBase ($(if ($region -eq 'CN') { 'cos' } else { 'oos' }))
@@ -215,13 +203,11 @@ jobs:
 
           Copy-Item "$tplBase\*" -Destination $workDir -Recurse -Force
 
-          # META-INF only for Hybrid builds
           if ($ftype -like '*Hybrid*') {
             $mi = Join-Path $tplBase 'META-INF'
             if (Test-Path $mi) { Copy-Item $mi -Destination (Join-Path $workDir 'META-INF') -Recurse -Force }
           }
 
-          # Super builds: stage tools + bloat
           if ($ftype -match 'Super') {
             $superDir = Join-Path $workDir 'Super'
             New-Item -ItemType Directory -Force -Path $superDir | Out-Null
@@ -245,9 +231,8 @@ jobs:
             }
           }
 
-          # --- Oneplus 13 + SuperHybrid extras ---
+          # Oneplus 13 + SuperHybrid extras
           if ($dev -eq '13' -and $ftype -eq 'SuperHybrid Flasher') {
-            # Ensure 16DTBO is in the MAIN folder (same as otaripper & .bat)
             $repo16  = Join-Path $root '16DTBO'
             $main16  = Join-Path $env:OUT_DIR '16DTBO'
             if (Test-Path $repo16) {
@@ -256,26 +241,23 @@ jobs:
             } else {
               Write-Warning "16DTBO folder not found at repo root."
             }
-            # If template dropped 16DTBO into working folder, move it back up
             $work16 = Join-Path $workDir '16DTBO'
             if (Test-Path $work16) {
               if (Test-Path $main16) { Remove-Item $main16 -Recurse -Force }
               Move-Item $work16 $main16
               Write-Host "Moved stray 16DTBO from working folder to MAIN."
             }
-            # Inject bloat/13/COS_FILES_HERE into the working folder
             $cosBloat = Join-Path $bloatBase 'COS_FILES_HERE'
             if (Test-Path $cosBloat) {
               Copy-Item $cosBloat -Destination (Join-Path $workDir 'COS_FILES_HERE') -Recurse -Force
               Write-Host "Injected COS_FILES_HERE into $workDir"
             } else {
-              Write-Warning "COS_FILES_HERE not found under $bloatBase"
+              Write-Warning ("COS_FILES_HERE not found under {0}" -f $bloatBase)
             }
           }
 
           "WORK_DIR=$workDir" | Out-File -FilePath $env:GITHUB_ENV -Append
 
-      # Run builder like drag-and-drop
       - name: Run builder (Explorer-style drag & drop)
         shell: cmd
         working-directory: ${{ env.OTA_DIR }}
@@ -284,7 +266,6 @@ jobs:
           echo Calling builder: "%GITHUB_WORKSPACE%\%OUT_DIR%\%BUILDER_BAT%" "%OTA_PATH%"
           (echo.| call "%GITHUB_WORKSPACE%\%OUT_DIR%\%BUILDER_BAT%" "%OTA_PATH%") || exit /b 1
 
-      # Package builder output with tar -a (no './' paths)
       - name: Package final output (tar -a, absolute path, clean paths)
         shell: pwsh
         run: |
@@ -307,7 +288,7 @@ jobs:
             if (Test-Path $p) { $resultDir = $p; break }
           }
           if (-not $resultDir) {
-            throw "Could not find builder output folder next to OTA in '$otaDir'. Looked for: $($candidates -join ', ')"
+            throw ("Could not find builder output folder next to OTA in '{0}'. Looked for: {1}" -f $otaDir, ($candidates -join ', '))
           }
 
           $zipRoot  = Join-Path $env:GITHUB_WORKSPACE $env:OUT_DIR
@@ -323,19 +304,17 @@ jobs:
 
           $tar = Get-Command tar -ErrorAction Stop
 
-          # Build file list to avoid './' entries
           $items = Get-ChildItem -LiteralPath $resultDir -Force | ForEach-Object { $_.Name }
-          if ($items.Count -eq 0) { throw "Nothing to archive in $resultDir" }
+          if ($items.Count -eq 0) { throw ("Nothing to archive in {0}" -f $resultDir) }
 
           $args = @('-a','-c','-f',"$zipPath",'-C',"$resultDir") + $items
           & $tar.Path @args
 
-          if (-not (Test-Path $zipPath)) { throw "Packaging failed: ZIP not created at $zipPath" }
+          if (-not (Test-Path $zipPath)) { throw ("Packaging failed: ZIP not created at {0}" -f $zipPath) }
 
           "ARTIFACT_NAME=$artifact" | Out-File -FilePath $env:GITHUB_ENV -Append
           "ZIP_FILE=$zipPath"       | Out-File -FilePath $env:GITHUB_ENV -Append
 
-      # Upload artifact (optional)
       - name: Upload artifact (single zip only)
         if: ${{ inputs.upload_to == 'Artifact Only' }}
         uses: actions/upload-artifact@v4
@@ -344,7 +323,6 @@ jobs:
           path: ${{ env.ZIP_FILE }}
           retention-days: ${{ env.ARTIFACT_RETENTION_DAYS }}
 
-      # Compute remote paths
       - name: Compute upload paths
         shell: pwsh
         run: |
@@ -387,7 +365,6 @@ jobs:
           $sfBaseAbs = ($sfBaseAbs -replace '\\','/').TrimEnd('/')
           "SF_UPLOAD_DIR=$sfBaseAbs/$rel" | Out-File -FilePath $env:GITHUB_ENV -Append
 
-      # DS_FTP upload (streamed, big-file safe) with curl fallback
       - name: Upload to DS_FTP (streamed, large-file safe)
         if: ${{ inputs.upload_to == 'DS_FTP' || inputs.upload_to == 'Both DS_FTP & Sourceforge' }}
         shell: pwsh
@@ -407,7 +384,7 @@ jobs:
           $fileName  = "$($env:ARTIFACT_NAME).zip"
           $zipPath   = $env:ZIP_FILE
 
-          if (-not (Test-Path $zipPath)) { throw "ZIP not found: $zipPath" }
+          if (-not (Test-Path $zipPath)) { throw ("ZIP not found: {0}" -f $zipPath) }
 
           $encPath = ($remoteDir.Split('/') | Where-Object { $_ -ne '' } | ForEach-Object { [System.Uri]::EscapeDataString($_) }) -join '/'
 
@@ -426,7 +403,7 @@ jobs:
             (New-FtpRequest $dirUri ([System.Net.WebRequestMethods+Ftp]::ListDirectory)).GetResponse().Close()
           } catch {
             $detail = $_.Exception.Response?.StatusDescription
-            throw "Target folder does not exist or is not accessible: $dirUri ($detail)"
+            throw ("Target folder does not exist or is not accessible: {0} ({1})" -f $dirUri, $detail)
           }
 
           $uploadUri = if ($encPath) {
@@ -456,7 +433,7 @@ jobs:
             Write-Host ("FTP server response: {0}" -f $resp.StatusDescription)
             $resp.Close()
           } catch {
-            Write-Warning "Streaming FTP upload failed: $($_.Exception.Message)"
+            Write-Warning ("Streaming FTP upload failed: {0}" -f $_.Exception.Message)
             Write-Warning "Falling back to curl…"
 
             $curlExe = Get-Command curl -ErrorAction SilentlyContinue
@@ -468,7 +445,6 @@ jobs:
             & $curlExe.Path --ftp-pasv --disable-eprt --user $userPwd -T "$zipPath" "$urlFull" --fail --show-error --silent
           }
 
-      # SourceForge SSH setup
       - name: Setup SSH for SourceForge
         if: ${{ inputs.upload_to == 'Sourceforge' || inputs.upload_to == 'Both DS_FTP & Sourceforge' }}
         shell: pwsh
@@ -502,7 +478,6 @@ jobs:
             "  IdentityFile $keyPath"
           ) | Set-Content -Path $cfgPath -Encoding ascii
 
-      # SourceForge upload
       - name: Upload to SourceForge (SCP)
         if: ${{ inputs.upload_to == 'Sourceforge' || inputs.upload_to == 'Both DS_FTP & Sourceforge' }}
         shell: pwsh
@@ -514,7 +489,7 @@ jobs:
           }
 
           $zip = $env:ZIP_FILE
-          if (-not (Test-Path $zip)) { throw "ZIP file not found: $zip" }
+          if (-not (Test-Path $zip)) { throw ("ZIP file not found: {0}" -f $zip) }
 
           $destDir = ($env:SF_UPLOAD_DIR -replace '\\','/').TrimEnd('/')
           $dest    = "$destDir/$($env:ARTIFACT_NAME).zip"
@@ -522,5 +497,5 @@ jobs:
 
           ssh -i "$key" -o StrictHostKeyChecking=yes "$($env:SF_USERNAME)@frs.sourceforge.net" "test -d `"$destDir`" || { echo 'ERROR: Destination folder does not exist on SourceForge: ' `"$destDir`"; exit 66; }"
 
-          Write-Host "Uploading to SourceForge: $dest"
+          Write-Host ("Uploading to SourceForge: {0}" -f $dest)
           scp -i "$key" -o StrictHostKeyChecking=yes "$zip" "$($env:SF_USERNAME)@frs.sourceforge.net:`"$dest`""
