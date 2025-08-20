@@ -172,15 +172,18 @@ jobs:
           $builderDir = Join-Path $root ("build_scripts\" + $dev)
           $bloatBase  = Join-Path $root ("bloat\" + $dev)
 
+          # Fresh OUT_DIR
           if (Test-Path $env:OUT_DIR) { Remove-Item $env:OUT_DIR -Recurse -Force }
           New-Item -ItemType Directory -Force -Path $env:OUT_DIR | Out-Null
 
+          # Main folder: otaripper + builder (batch uses %~dp0)
           if (Test-Path (Join-Path $root 'otaripper\otaripper.exe')) {
             Copy-Item (Join-Path $root 'otaripper\otaripper.exe') -Destination $env:OUT_DIR -Force
           }
           $builderSrc = Join-Path $builderDir $env:BUILDER_BAT
           if (Test-Path $builderSrc) { Copy-Item $builderSrc -Destination $env:OUT_DIR -Force }
 
+          # Working folder (exact name the batch expects)
           $workName = switch ($ftype) {
             'SuperHybrid Flasher'       { 'SuperHybrid Flasher' }
             'RegionalHybrid Flasher'    { 'RegionalHybrid Flasher' }
@@ -191,6 +194,7 @@ jobs:
           $workDir = Join-Path $env:OUT_DIR $workName
           New-Item -ItemType Directory -Force -Path $workDir | Out-Null
 
+          # Template root
           $tplBase = Join-Path $root ("flasher_scripts\" + $dev)
           if ($ftype -like '*Hybrid*') {
             $tplBase = Join-Path $tplBase ($(if ($region -eq 'CN') { 'cos' } else { 'oos' }))
@@ -201,13 +205,24 @@ jobs:
             if ($dev -eq '13R' -and $region -eq 'CN') { $tplBase = Join-Path $tplBase 'cos\regional' } else { $tplBase = Join-Path $tplBase 'oos\regional' }
           }
 
+          # Copy whole template (brings META-INF once)
           Copy-Item "$tplBase\*" -Destination $workDir -Recurse -Force
 
+          # ONLY if META-INF wasn't in the template, copy its contents (prevents META-INF\META-INF)
           if ($ftype -like '*Hybrid*') {
             $mi = Join-Path $tplBase 'META-INF'
-            if (Test-Path $mi) { Copy-Item $mi -Destination (Join-Path $workDir 'META-INF') -Recurse -Force }
+            if (Test-Path $mi) {
+              $miDest = Join-Path $workDir 'META-INF'
+              if (-not (Test-Path $miDest)) {
+                New-Item -ItemType Directory -Force -Path $miDest | Out-Null
+                Copy-Item "$mi\*" -Destination $miDest -Recurse -Force
+              } else {
+                Write-Host ("META-INF already present in {0} — skipping duplicate copy." -f $miDest)
+              }
+            }
           }
 
+          # Super builds: tools + bloat
           if ($ftype -match 'Super') {
             $superDir = Join-Path $workDir 'Super'
             New-Item -ItemType Directory -Force -Path $superDir | Out-Null
@@ -233,24 +248,28 @@ jobs:
 
           # Oneplus 13 + SuperHybrid extras
           if ($dev -eq '13' -and $ftype -eq 'SuperHybrid Flasher') {
+            # Ensure 16DTBO in MAIN folder (same as otaripper.exe and builder .bat)
             $repo16  = Join-Path $root '16DTBO'
             $main16  = Join-Path $env:OUT_DIR '16DTBO'
             if (Test-Path $repo16) {
-              Copy-Item $repo16 -Destination $main16 -Recurse -Force
-              Write-Host "Placed 16DTBO in MAIN folder: $main16"
+              New-Item -ItemType Directory -Force -Path $main16 | Out-Null
+              Copy-Item "$repo16\*" -Destination $main16 -Recurse -Force
             } else {
               Write-Warning "16DTBO folder not found at repo root."
             }
+            # Move stray 16DTBO out of working folder if the template placed it there
             $work16 = Join-Path $workDir '16DTBO'
             if (Test-Path $work16) {
               if (Test-Path $main16) { Remove-Item $main16 -Recurse -Force }
               Move-Item $work16 $main16
               Write-Host "Moved stray 16DTBO from working folder to MAIN."
             }
+            # Inject COS_FILES_HERE contents into working folder
             $cosBloat = Join-Path $bloatBase 'COS_FILES_HERE'
             if (Test-Path $cosBloat) {
-              Copy-Item $cosBloat -Destination (Join-Path $workDir 'COS_FILES_HERE') -Recurse -Force
-              Write-Host "Injected COS_FILES_HERE into $workDir"
+              $cosDest = Join-Path $workDir 'COS_FILES_HERE'
+              New-Item -ItemType Directory -Force -Path $cosDest | Out-Null
+              Copy-Item "$cosBloat\*" -Destination $cosDest -Recurse -Force
             } else {
               Write-Warning ("COS_FILES_HERE not found under {0}" -f $bloatBase)
             }
@@ -304,6 +323,7 @@ jobs:
 
           $tar = Get-Command tar -ErrorAction Stop
 
+          # Avoid './' by passing explicit top-level entries
           $items = Get-ChildItem -LiteralPath $resultDir -Force | ForEach-Object { $_.Name }
           if ($items.Count -eq 0) { throw ("Nothing to archive in {0}" -f $resultDir) }
 
