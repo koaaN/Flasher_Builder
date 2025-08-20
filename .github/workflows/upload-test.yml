@@ -66,24 +66,37 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Prep OTA (download or placeholder)
+      # 1) Prepare dirs; if no URL, create a placeholder OTA.zip
+      - name: Prep dirs and placeholder
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path "download","$env:OUT_DIR" | Out-Null
           $url = "${{ inputs.ota_url }}".Trim()
           if ([string]::IsNullOrWhiteSpace($url)) {
             Set-Content -Path "download\PLACEHOLDER.txt" -Value "Placeholder OTA for dry-run"
+            if (Test-Path "download\OTA.zip") { Remove-Item "download\OTA.zip" -Force }
             Compress-Archive -Path "download\PLACEHOLDER.txt" -DestinationPath "download\OTA.zip" -Force
-          } else {
-            $name = Split-Path $url -Leaf
-            if ([string]::IsNullOrWhiteSpace($name)) { $name = "OTA.zip" }
-            $dst = "download\$name"
-            Invoke-WebRequest -Uri $url -OutFile $dst -UseBasicParsing
-            if ($name -ne "OTA.zip") {
-              if (Test-Path "download\OTA.zip") { Remove-Item "download\OTA.zip" -Force }
-              Rename-Item -Path $dst -NewName "OTA.zip"
-            }
           }
+
+      # 2) Your aria2/curl command (runs ONLY when a URL is provided)
+      - name: Download OTA zip (aria2 → curl fallback)
+        if: ${{ inputs.ota_url != '' }}
+        shell: cmd
+        run: |
+          mkdir download
+          if exist aria2\aria2c.exe (
+            echo Using aria2c for OTA download...
+            aria2\aria2c.exe -x 8 -s 8 -c --file-allocation=none --retry-wait=5 --max-tries=10 --timeout=30 -o download\OTA.zip "${{ inputs.ota_url }}"
+          ) else (
+            echo aria2c.exe not found, falling back to curl...
+            curl -L -o download\OTA.zip "${{ inputs.ota_url }}"
+          )
+
+      # 3) Export OTA_PATH for later steps (works for either placeholder or real download)
+      - name: Export OTA_PATH
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "download\OTA.zip")) { throw "OTA.zip not found in download\" }
           "OTA_PATH=$(Resolve-Path 'download\OTA.zip')" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Map device → pick builder
@@ -259,7 +272,7 @@ jobs:
               else                { Copy-BloatFiles $bloatBase 'GLO' $oosHere }
             }
 
-            # 13T special: Super Flasher OOS (region != CN) → copy CN_BLOAT files to COS_FILES_HERE
+            # 13T special: Super Flasher OOS (!CN) → copy CN_BLOAT files to COS_FILES_HERE
             if ($dev -eq '13T' -and $ftype -eq 'Super Flasher' -and $region -ne 'CN') {
               $cosHere = Join-Path $workDir 'COS_FILES_HERE'
               New-Item -ItemType Directory -Force -Path $cosHere | Out-Null
@@ -268,7 +281,6 @@ jobs:
                 if (Test-Path $srcFile) {
                   Copy-Item $srcFile -Destination $cosHere -Force
                 } else {
-                  # Try stub download for each of the three extras
                   $stub = Join-Path $bloatBase ("CN_BLOAT\" + ([System.IO.Path]::GetFileNameWithoutExtension($extra)))
                   if (Test-Path $stub) {
                     try {
@@ -302,7 +314,6 @@ jobs:
             }
           }
 
-          # Expose for packaging step
           "WORK_DIR=$workDir" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Package output (include folder + otaripper + builder)
@@ -317,23 +328,18 @@ jobs:
           $artifact  = "$devName-$ftypeName-$regionStr-$ts".Replace(' ','')
           $zipPath   = Join-Path $outRoot "$artifact.zip"
 
-          # Stage a temp folder to control zip root contents
           $stage = Join-Path $outRoot "__stage"
           if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
           New-Item -ItemType Directory -Force -Path $stage | Out-Null
 
-          # 1) keep the working folder as a folder
           Copy-Item $workDir -Destination $stage -Recurse -Force
 
-          # 2) add otaripper.exe (if present)
           $otaripper = Join-Path $outRoot 'otaripper.exe'
           if (Test-Path $otaripper) { Copy-Item $otaripper -Destination $stage -Force }
 
-          # 3) add builder .bat (if present)
           $builder = Join-Path $outRoot $env:BUILDER_BAT
           if (Test-Path $builder) { Copy-Item $builder -Destination $stage -Force }
 
-          # Create the single zip
           if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
           Compress-Archive -Path "$stage\*" -DestinationPath $zipPath -Force
           Remove-Item $stage -Recurse -Force
@@ -341,18 +347,14 @@ jobs:
           "ARTIFACT_NAME=$artifact" | Out-File -FilePath $env:GITHUB_ENV -Append
           "ZIP_FILE=$zipPath"       | Out-File -FilePath $env:GITHUB_ENV -Append
 
-      # Artifact upload ONLY when selected
       - name: Upload artifact (single zip only)
         if: ${{ inputs.upload_to == 'Artifact Only' }}
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.ARTIFACT_NAME }}
-          path: ${{ env.ZIP_FILE }}
-          retention-days: ${{ env.ARTIFACT_RETENTION_DAYS }}
+          path: ${{ env:ZIP_FILE }}
+          retention-days: ${{ env:ARTIFACT_RETENTION_DAYS }}
 
-      # ============
-      # Path compute
-      # ============
       - name: Compute upload paths
         shell: pwsh
         run: |
@@ -360,13 +362,11 @@ jobs:
           $ftype  = "${{ inputs.flasher_type }}"
           $region = "${{ inputs.region }}"
       
-          # Category
           $category = switch -Regex ($ftype) {
             '^(SuperHybrid Flasher|SuperHybrid SunOS Flasher|Super Flasher)$' { 'Super Flashers'; break }
             default { 'Regional Flashers' }
           }
       
-          # 13S / 13T have no region folder
           $needsRegion = ($device -ne 'Oneplus 13S' -and $device -ne 'Oneplus 13T')
           if ($needsRegion) {
             $regionFolder = switch ($region) {
@@ -382,31 +382,24 @@ jobs:
             $rel = Join-Path $device $category
           }
       
-          # Normalize to forward slashes and ensure trailing slash
           $rel = ($rel -replace '\\','/')
           if (-not $rel.EndsWith('/')) { $rel += '/' }
           "REL_UPLOAD_DIR=$rel" | Out-File -FilePath $env:GITHUB_ENV -Append
       
-          # DS FTP base ("/" means login root)
           $ftpBase = "${{ secrets.DS_FTP_PATH }}".Trim('/')
           $ftpAbs  = ($ftpBase.Length -gt 0) ? "$ftpBase/$rel" : $rel
           "FTP_UPLOAD_DIR=$ftpAbs" | Out-File -FilePath $env:GITHUB_ENV -Append
       
-          # ---- SourceForge absolute base REQUIRED (set secret to /home/frs/project/oneplus13flashers) ----
           $sfBaseAbs = "${{ secrets.SF_PROJECT_PATH }}".Trim()
           if ([string]::IsNullOrWhiteSpace($sfBaseAbs) -or -not $sfBaseAbs.StartsWith('/')) {
             throw "SF_PROJECT_PATH must be an absolute path like /home/frs/project/oneplus13flashers"
           }
           $sfBaseAbs = ($sfBaseAbs -replace '\\','/').TrimEnd('/')
       
-          $sfAbs = "$sfBaseAbs/$rel"   # e.g. /home/frs/project/oneplus13flashers/Oneplus 13/Super Flashers/Global/
+          $sfAbs = "$sfBaseAbs/$rel"
           "SF_UPLOAD_DIR=$sfAbs" | Out-File -FilePath $env:GITHUB_ENV -Append
-      
           Write-Host "Computed SF_UPLOAD_DIR (will be masked in logs)."
 
-      # =========================
-      # DS_FTP Upload (no mkdirs)
-      # =========================
       - name: Upload to DS_FTP
         if: ${{ inputs.upload_to == 'DS_FTP' || inputs.upload_to == 'Both DS_FTP & Sourceforge' }}
         shell: pwsh
@@ -421,7 +414,7 @@ jobs:
 
           $ftpHost    = $env:DS_FTP_HOST
           $cred       = New-Object System.Net.NetworkCredential($env:DS_FTP_USER, $env:DS_FTP_PASS)
-          $remoteDir  = "$env:FTP_UPLOAD_DIR".Trim('/')  # e.g. "Oneplus 13/Super Flashers/Global" or "Oneplus 13S/Super Flashers"
+          $remoteDir  = "$env:FTP_UPLOAD_DIR".Trim('/')
           $fileName   = "$($env:ARTIFACT_NAME).zip"
           $zipPath    = $env:ZIP_FILE
 
@@ -440,8 +433,7 @@ jobs:
           Write-Host "Checking remote folder: $dirUri"
           try {
             $req = New-FtpRequest $dirUri ([System.Net.WebRequestMethods+Ftp]::ListDirectory)
-            $resp = $req.GetResponse()
-            $resp.Close()
+            $resp = $req.GetResponse(); $resp.Close()
             Write-Host "OK: remote folder exists."
           } catch {
             $detail = ""
@@ -467,9 +459,6 @@ jobs:
           Write-Host ("FTP server response: {0}" -f $resp.StatusDescription)
           $resp.Close()
 
-      # -------------------------------
-      # SourceForge: setup SSH correctly (no new secret)
-      # -------------------------------
       - name: Setup SSH for SourceForge
         if: ${{ inputs.upload_to == 'Sourceforge' || inputs.upload_to == 'Both DS_FTP & Sourceforge' }}
         shell: pwsh
@@ -477,38 +466,30 @@ jobs:
           SF_SSH_PRIVATE_KEY: ${{ secrets.SF_SSH_PRIVATE_KEY }}
         run: |
           if (-not $env:SF_SSH_PRIVATE_KEY) { throw "Missing SF_SSH_PRIVATE_KEY secret." }
-      
           $sshDir  = Join-Path $env:USERPROFILE ".ssh"
           New-Item -ItemType Directory -Force -Path $sshDir | Out-Null
-      
           $keyPath = Join-Path $sshDir "id_ed25519"
-      
-          # --- Normalize key for Windows runner ---
+
           $key = $env:SF_SSH_PRIVATE_KEY
-          $key = $key -replace "`r",""                  # remove CR so we have LF-only
-          $key = $key -replace '^\s*"',""               # strip accidental leading double-quote
-          $key = $key -replace '"\s*$',""               # strip accidental trailing double-quote
-          $key = $key -replace "^\s*'",""               # strip accidental leading single-quote
-          $key = $key -replace "'\s*$",""               # strip accidental trailing single-quote
-          $key = $key.Trim() + "`n"                     # ensure trailing newline
-      
-          # Optional sanity check: header must look right
+          $key = $key -replace "`r",""
+          $key = $key -replace '^\s*"',""
+          $key = $key -replace '"\s*$',""
+          $key = $key -replace "^\s*'",""
+          $key = $key -replace "'\s*$",""
+          $key = $key.Trim() + "`n"
+
           $first = ($key -split "`n")[0]
           if ($first -notmatch "BEGIN OPENSSH PRIVATE KEY|BEGIN RSA PRIVATE KEY") {
             throw "SF_SSH_PRIVATE_KEY doesn't look like an OpenSSH private key (bad header)."
           }
-      
-          # Write with LF; Set-Content adds final newline (we already enforced one too)
+
           Set-Content -Path $keyPath -Value $key -Encoding ascii
-      
-          # Tighten permissions for OpenSSH on Windows
           icacls $keyPath /inheritance:r | Out-Null
           icacls $keyPath /grant:r "$($env:USERNAME):(R)" | Out-Null
-      
-          # Host key + SSH config
+
           $kh = Join-Path $sshDir "known_hosts"
           ssh-keyscan -t rsa frs.sourceforge.net | Out-File -FilePath $kh -Encoding ascii
-      
+
           $cfgPath  = Join-Path $sshDir "config"
           @(
             "Host frs.sourceforge.net"
@@ -517,9 +498,6 @@ jobs:
             "  IdentityFile $keyPath"
           ) | Set-Content -Path $cfgPath -Encoding ascii
 
-      # ------------------------------------------------
-      # SourceForge: upload (uses absolute base from secret)
-      # ------------------------------------------------
       - name: Upload to SourceForge (SCP)
         if: ${{ inputs.upload_to == 'Sourceforge' || inputs.upload_to == 'Both DS_FTP & Sourceforge' }}
         shell: pwsh
@@ -529,20 +507,14 @@ jobs:
           if (-not $env:SF_USERNAME -or -not $env:SF_UPLOAD_DIR) {
             throw "Missing SourceForge config at runtime. Need SF_USERNAME and computed SF_UPLOAD_DIR."
           }
-      
           $zip = $env:ZIP_FILE
           if (-not (Test-Path $zip)) { throw "ZIP file not found: $zip" }
-      
-          # Use forward slashes and trim trailing /
           $destDir = ($env:SF_UPLOAD_DIR -replace '\\','/').TrimEnd('/')
           $dest    = "$destDir/$($env:ARTIFACT_NAME).zip"
           $key     = "$env:USERPROFILE\.ssh\id_ed25519"
-      
-          # Preflight: SF restricted shell can't create folders — ensure it exists
-          ssh -i "$key" -o StrictHostKeyChecking=yes "$($env:SF_USERNAME)@frs.sourceforge.net" `
+
+          ssh -i "$key" -o StrictHostKeyChecking=yes "$($env:SF_USERNAME)@frs.sourceforge.net" ^
             "test -d `"$destDir`" || { echo 'ERROR: Destination folder does not exist on SourceForge: ' `"$destDir`"; exit 66; }"
-      
+
           Write-Host "Uploading to SourceForge: $dest"
           scp -i "$key" -o StrictHostKeyChecking=yes "$zip" "$($env:SF_USERNAME)@frs.sourceforge.net:`"$dest`""
-
-
