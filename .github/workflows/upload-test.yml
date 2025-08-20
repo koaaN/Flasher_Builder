@@ -447,62 +447,85 @@ jobs:
       # ==============================
       # SourceForge (optional later)
       # ==============================
-      - name: Setup SSH for SourceForge
-        if: ${{ inputs.upload_to == 'Sourceforge' || inputs.upload_to == 'Both DS_FTP & Sourceforge' }}
-        shell: pwsh
-        env:
-          SF_SSH_PRIVATE_KEY: ${{ secrets.SF_SSH_PRIVATE_KEY }}
-        run: |
-          if (-not $env:SF_SSH_PRIVATE_KEY) { throw "Missing SF_SSH_PRIVATE_KEY secret." }
-          $sshDir = Join-Path $env:USERPROFILE ".ssh"
-          New-Item -ItemType Directory -Force -Path $sshDir | Out-Null
+      # -------------------------------
+# SourceForge: setup SSH correctly
+# -------------------------------
+- name: Setup SSH for SourceForge
+  if: ${{ inputs.upload_to == 'Sourceforge' || inputs.upload_to == 'Both DS_FTP & Sourceforge' }}
+  shell: pwsh
+  env:
+    SF_SSH_PRIVATE_KEY: ${{ secrets.SF_SSH_PRIVATE_KEY }}
+  run: |
+    if (-not $env:SF_SSH_PRIVATE_KEY) { throw "Missing SF_SSH_PRIVATE_KEY secret." }
 
-          $keyPath = Join-Path $sshDir "id_rsa"
-          Set-Content -Path $keyPath -Value $env:SF_SSH_PRIVATE_KEY -Encoding ascii -NoNewline
-          & icacls $keyPath /inheritance:r | Out-Null
-          & icacls $keyPath /grant:r "$($env:USERNAME):(R)" | Out-Null
+    $sshDir = Join-Path $env:USERPROFILE ".ssh"
+    New-Item -ItemType Directory -Force -Path $sshDir | Out-Null
 
-          $kh = Join-Path $sshDir "known_hosts"
-          ssh-keyscan -t rsa frs.sourceforge.net | Out-File -FilePath $kh -Encoding ascii
+    # Save the private key as id_ed25519 (name is arbitrary, but we will use -i explicitly)
+    $keyPath = Join-Path $sshDir "id_ed25519"
+    # Use ASCII to avoid BOM; DO NOT strip newlines
+    Set-Content -Path $keyPath -Value $env:SF_SSH_PRIVATE_KEY -Encoding ascii
 
-      - name: Upload to SourceForge (SCP)
-        if: ${{ inputs.upload_to == 'Sourceforge' || inputs.upload_to == 'Both DS_FTP & Sourceforge' }}
-        shell: pwsh
-        env:
-          SF_USERNAME: ${{ secrets.SF_USERNAME }}
-          SF_PROJECT_PATH: ${{ secrets.SF_PROJECT_PATH }}
-        run: |
-          if (-not $env:SF_USERNAME -or -not $env:SF_PROJECT_PATH) {
-            throw "Missing SourceForge secrets. Required: SF_USERNAME, SF_PROJECT_PATH"
-          }
-          $zip = $env:ZIP_FILE
-          if (-not (Test-Path $zip)) { throw "ZIP file not found: $zip" }
+    # Lock down permissions (OpenSSH on Windows is picky)
+    & icacls $keyPath /inheritance:r | Out-Null
+    & icacls $keyPath /grant:r "$($env:USERNAME):(R)" | Out-Null
 
-          $device = "${{ inputs.device }}"
-          $ftype  = "${{ inputs.flasher_type }}"
-          $region = "${{ inputs.region }}"
+    # Known hosts for frs
+    $kh = Join-Path $sshDir "known_hosts"
+    ssh-keyscan -t rsa frs.sourceforge.net | Out-File -FilePath $kh -Encoding ascii
 
-          $category = switch -Regex ($ftype) {
-            '^(SuperHybrid Flasher|SuperHybrid SunOS Flasher|Super Flasher)$' { 'Super Flashers'; break }
-            default { 'Regional Flashers' }
-          }
-          $needsRegion = ($device -ne 'Oneplus 13S' -and $device -ne 'Oneplus 13T')
-          if ($needsRegion) {
-            $regionFolder = switch ($region) {
-              'CN'  { 'COS' }
-              'GLO' { 'Global' }
-              'EU'  { 'EU' }
-              'IN'  { 'IN' }
-              'NA'  { 'NA' }
-              default { $region }
-            }
-            $rel = "$device/$category/$regionFolder/"
-          } else {
-            $rel = "$device/$category/"
-          }
+    # Optional: SSH config to always use our key for frs
+    $cfg = @"
+Host frs.sourceforge.net
+  UserKnownHostsFile $kh
+  IdentitiesOnly yes
+  IdentityFile $keyPath
+"@
+    $cfgPath = Join-Path $sshDir "config"
+    Set-Content -Path $cfgPath -Value $cfg -Encoding ascii
 
-          $destDir = "/home/frs/project/$($env:SF_PROJECT_PATH)/$rel"
-          $dest    = "$destDir$($env:ARTIFACT_NAME).zip"
-          Write-Host "Uploading to SourceForge: $dest"
-          ssh -o StrictHostKeyChecking=yes "$($env:SF_USERNAME)@frs.sourceforge.net" "mkdir -p `"$destDir`""
-          scp -o StrictHostKeyChecking=yes "$zip" "$($env:SF_USERNAME)@frs.sourceforge.net:`"$dest`""
+# ------------------------------------------------
+# SourceForge: upload (FRS with PFS fallback, -i)
+# ------------------------------------------------
+- name: Upload to SourceForge (SCP)
+  if: ${{ inputs.upload_to == 'Sourceforge' || inputs.upload_to == 'Both DS_FTP & Sourceforge' }}
+  shell: pwsh
+  env:
+    SF_USERNAME: ${{ secrets.SF_USERNAME }}
+    SF_PROJECT_PATH: ${{ secrets.SF_PROJECT_PATH }}
+  run: |
+    if (-not $env:SF_USERNAME -or -not $env:SF_PROJECT_PATH) {
+      throw "Missing SourceForge secrets. Required: SF_USERNAME, SF_PROJECT_PATH"
+    }
+
+    $zip = $env:ZIP_FILE
+    if (-not (Test-Path $zip)) { throw "ZIP file not found: $zip" }
+
+    # REL_UPLOAD_DIR was computed earlier (e.g. "Oneplus 13/Super Flashers/Global/")
+    $rel = "$env:REL_UPLOAD_DIR".TrimStart('/')
+    $key = "$env:USERPROFILE\.ssh\id_ed25519"
+
+    $baseA = "/home/frs/project/$($env:SF_PROJECT_PATH)"
+    $baseB = "/home/pfs/project/$($env:SF_PROJECT_PATH)"
+
+    function Test-RemoteDir($dir) {
+      $cmd = "test -d `"$dir`" && echo OK || echo NO"
+      $res = ssh -i "$key" -o StrictHostKeyChecking=yes "$($env:SF_USERNAME)@frs.sourceforge.net" $cmd
+      return ($res -match 'OK')
+    }
+
+    $destBase = if (Test-RemoteDir $baseA) { $baseA } elseif (Test-RemoteDir $baseB) { $baseB } else {
+      throw "Neither '$baseA' nor '$baseB' exists. Check SF_PROJECT_PATH and permissions."
+    }
+
+    $destDir = "$destBase/$rel"
+    $dest    = "$destDir$($env:ARTIFACT_NAME).zip"
+
+    Write-Host "Uploading to SourceForge: $dest"
+
+    # Ensure directory exists (quotes keep spaces intact)
+    ssh -i "$key" -o StrictHostKeyChecking=yes "$($env:SF_USERNAME)@frs.sourceforge.net" "mkdir -p `"$destDir`""
+
+    # Upload with explicit identity file
+    scp -i "$key" -o StrictHostKeyChecking=yes "$zip" "$($env:SF_USERNAME)@frs.sourceforge.net:`"$dest`""
+
