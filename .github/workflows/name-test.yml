@@ -332,7 +332,7 @@ jobs:
         shell: pwsh
         run: |
           $otaDir = $env:OTA_DIR
-
+      
           $byFtype = switch ($env:FTYPE) {
             'SuperHybrid Flasher'       { @('SuperHybrid Flasher') }
             'RegionalHybrid Flasher'    { @('RegionalHybrid Flasher') }
@@ -352,7 +352,7 @@ jobs:
             'Regional Flasher'
           )
           $candidates = @() + $byFtype + $fallback | Select-Object -Unique
-
+      
           $resultDir = $null
           foreach ($name in $candidates) {
             $p = Join-Path $otaDir $name
@@ -361,22 +361,21 @@ jobs:
           if (-not $resultDir) {
             throw ("Could not find builder output folder next to OTA in '{0}'. Looked for: {1}" -f $otaDir, ($candidates -join ', '))
           }
-
+      
           $zipRoot  = Join-Path $env:GITHUB_WORKSPACE $env:OUT_DIR
-          New-Item -ItemType Directory -Force -Path $zipRoot | Out-Item | Out-Null  # harmless; ensures exists
           New-Item -ItemType Directory -Force -Path $zipRoot | Out-Null
-
+      
           # Versioned, human-readable name with optional 13R/13S/13T suffix
           $ftypeName   = $env:FTYPE
           $regionCode  = $env:REGION
           $regionDisp  = switch ($regionCode) { 'CN'{'COS'} 'GLO'{'Global'} 'EU'{'EU'} 'IN'{'IN'} 'NA'{'NA'} default {$regionCode} }
           $ver         = $env:OTA_VERSION
           if ([string]::IsNullOrWhiteSpace($ver)) { $ver = 'UNKNOWN' }
-
+      
           $devCode     = $env:DEV        # '13','13R','13S','13T'
           $devTag      = switch ($devCode) { '13R'{'13R'} '13S'{'13S'} '13T'{'13T'} default { '' } }
           $includeRegion = ($devCode -ne '13S' -and $devCode -ne '13T')
-
+      
           if ($devTag) {
             if ($includeRegion) {
               $artifactBase = "{0} {1} {2} {3}" -f $ftypeName, $devTag, $regionDisp, $ver
@@ -386,20 +385,20 @@ jobs:
           } else {
             $artifactBase = "{0} {1} {2}" -f $ftypeName, $regionDisp, $ver
           }
-
+      
           $zipPath = Join-Path $zipRoot ($artifactBase + '.zip')
           if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
-
+      
           $tar = Get-Command tar -ErrorAction Stop
-
+      
           $items = Get-ChildItem -LiteralPath $resultDir -Force | ForEach-Object { $_.Name }
           if ($items.Count -eq 0) { throw ("Nothing to archive in {0}" -f $resultDir) }
-
+      
           $args = @('-a','-c','-f',"$zipPath",'-C',"$resultDir") + $items
           & $tar.Path @args
-
+      
           if (-not (Test-Path $zipPath)) { throw ("Packaging failed: ZIP not created at {0}" -f $zipPath) }
-
+      
           "ARTIFACT_NAME=$artifactBase" | Out-File -FilePath $env:GITHUB_ENV -Append
           "ZIP_FILE=$zipPath"           | Out-File -FilePath $env:GITHUB_ENV -Append
 
