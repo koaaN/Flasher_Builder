@@ -360,11 +360,13 @@ jobs:
           $ftype  = "${{ inputs.flasher_type }}"
           $region = "${{ inputs.region }}"
       
+          # Category
           $category = switch -Regex ($ftype) {
             '^(SuperHybrid Flasher|SuperHybrid SunOS Flasher|Super Flasher)$' { 'Super Flashers'; break }
             default { 'Regional Flashers' }
           }
       
+          # 13S / 13T have no region folder
           $needsRegion = ($device -ne 'Oneplus 13S' -and $device -ne 'Oneplus 13T')
           if ($needsRegion) {
             $regionFolder = switch ($region) {
@@ -380,7 +382,7 @@ jobs:
             $rel = Join-Path $device $category
           }
       
-          # normalize to forward slashes and ensure trailing slash
+          # Normalize to forward slashes and ensure trailing slash
           $rel = ($rel -replace '\\','/')
           if (-not $rel.EndsWith('/')) { $rel += '/' }
           "REL_UPLOAD_DIR=$rel" | Out-File -FilePath $env:GITHUB_ENV -Append
@@ -390,7 +392,7 @@ jobs:
           $ftpAbs  = ($ftpBase.Length -gt 0) ? "$ftpBase/$rel" : $rel
           "FTP_UPLOAD_DIR=$ftpAbs" | Out-File -FilePath $env:GITHUB_ENV -Append
       
-          # SourceForge absolute base (set secret to: /home/frs/project/oneplus13flashers)
+          # ---- SourceForge absolute base REQUIRED (set secret to /home/frs/project/oneplus13flashers) ----
           $sfBaseAbs = "${{ secrets.SF_PROJECT_PATH }}".Trim()
           if ([string]::IsNullOrWhiteSpace($sfBaseAbs) -or -not $sfBaseAbs.StartsWith('/')) {
             throw "SF_PROJECT_PATH must be an absolute path like /home/frs/project/oneplus13flashers"
@@ -400,7 +402,7 @@ jobs:
           $sfAbs = "$sfBaseAbs/$rel"   # e.g. /home/frs/project/oneplus13flashers/Oneplus 13/Super Flashers/Global/
           "SF_UPLOAD_DIR=$sfAbs" | Out-File -FilePath $env:GITHUB_ENV -Append
       
-          Write-Host "SF_UPLOAD_DIR (masked in logs) computed."
+          Write-Host "Computed SF_UPLOAD_DIR (will be masked in logs)."
 
       # =========================
       # DS_FTP Upload (no mkdirs)
@@ -531,14 +533,16 @@ jobs:
           $zip = $env:ZIP_FILE
           if (-not (Test-Path $zip)) { throw "ZIP file not found: $zip" }
       
-          $destDir = ($env:SF_UPLOAD_DIR -replace '\\','/').TrimEnd('/')  # absolute dir
+          # Use forward slashes and trim trailing /
+          $destDir = ($env:SF_UPLOAD_DIR -replace '\\','/').TrimEnd('/')
           $dest    = "$destDir/$($env:ARTIFACT_NAME).zip"
           $key     = "$env:USERPROFILE\.ssh\id_ed25519"
       
-          # Optional preflight: fail clearly if folder doesn't exist on SF (restricted shell can't mkdir)
+          # Preflight: SF restricted shell can't create folders — ensure it exists
           ssh -i "$key" -o StrictHostKeyChecking=yes "$($env:SF_USERNAME)@frs.sourceforge.net" `
             "test -d `"$destDir`" || { echo 'ERROR: Destination folder does not exist on SourceForge: ' `"$destDir`"; exit 66; }"
       
           Write-Host "Uploading to SourceForge: $dest"
           scp -i "$key" -o StrictHostKeyChecking=yes "$zip" "$($env:SF_USERNAME)@frs.sourceforge.net:`"$dest`""
+
 
