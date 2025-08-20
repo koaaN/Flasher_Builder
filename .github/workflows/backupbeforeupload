@@ -1,0 +1,345 @@
+name: Build Flasher
+
+on:
+  workflow_dispatch:
+    inputs:
+      device:
+        description: "Device"
+        type: choice
+        required: true
+        options:
+          - Oneplus 13
+          - Oneplus 13R
+          - Oneplus 13S
+          - Oneplus 13T
+        default: Oneplus 13
+      flasher_type:
+        description: "Flasher type"
+        type: choice
+        required: true
+        options:
+          - SuperHybrid Flasher
+          - RegionalHybrid Flasher
+          - SuperHybrid SunOS Flasher
+          - Super Flasher
+          - Regional Flasher
+        default: SuperHybrid Flasher
+      region:
+        description: "Region"
+        type: choice
+        required: true
+        options:
+          - GLO
+          - EU
+          - IN
+          - NA
+          - CN
+        default: GLO
+      ota_url:
+        description: "FULL OTA.zip URL (leave empty for placeholder)"
+        type: string
+        required: false
+
+permissions:
+  contents: read
+
+env:
+  OUT_DIR: out
+  ARTIFACT_RETENTION_DAYS: 14
+
+jobs:
+  build:
+    name: Build • ${{ inputs.device }} • ${{ inputs.flasher_type }} • ${{ inputs.region }}
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Prep OTA (download or placeholder)
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path "download","$env:OUT_DIR" | Out-Null
+          $url = "${{ inputs.ota_url }}".Trim()
+          if ([string]::IsNullOrWhiteSpace($url)) {
+            Set-Content -Path "download\PLACEHOLDER.txt" -Value "Placeholder OTA for dry-run"
+            Compress-Archive -Path "download\PLACEHOLDER.txt" -DestinationPath "download\OTA.zip" -Force
+          } else {
+            $name = Split-Path $url -Leaf
+            if ([string]::IsNullOrWhiteSpace($name)) { $name = "OTA.zip" }
+            $dst = "download\$name"
+            Invoke-WebRequest -Uri $url -OutFile $dst -UseBasicParsing
+            if ($name -ne "OTA.zip") {
+              if (Test-Path "download\OTA.zip") { Remove-Item "download\OTA.zip" -Force }
+              Rename-Item -Path $dst -NewName "OTA.zip"
+            }
+          }
+          "OTA_PATH=$(Resolve-Path 'download\OTA.zip')" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Map device → pick builder
+        shell: pwsh
+        run: |
+          $devDisp = "${{ inputs.device }}"
+          $dev = switch ($devDisp) {
+            'Oneplus 13'  { '13' }
+            'Oneplus 13R' { '13R' }
+            'Oneplus 13S' { '13S' }
+            'Oneplus 13T' { '13T' }
+            default { throw "Unknown device: $devDisp" }
+          }
+
+          $ftype  = "${{ inputs.flasher_type }}"
+          $region = "${{ inputs.region }}"
+
+          # Device-specific builder selection
+          $batName = switch ($ftype) {
+            'SuperHybrid Flasher' {
+              if ($region -eq 'CN') { 'SUPERHYBRID_CN_FULL_SUPERBUILD.bat' }
+              else { 'SUPERHYBRID_FULL_SUPERBUILD.bat' }
+            }
+            'RegionalHybrid Flasher' {
+              if ($region -eq 'CN') { 'REGIONALHYBRID_CN_FULL_BUILD.bat' }
+              else { 'REGIONALHYBRID_FULL_BUILD.bat' }
+            }
+            'SuperHybrid SunOS Flasher' { 'SUPERHYBRID_SUNOS_FULL_SUPERBUILD.bat' }
+            'Super Flasher' {
+              if     ($dev -eq '13R' -and $region -eq 'CN') { 'SUPER_CN_FULL_SUPERBUILD.bat' }
+              elseif ($dev -eq '13R')                        { 'SUPER_EUGLO_FULL_SUPERBUILD.bat' }
+              elseif ($dev -eq '13S')                        { 'SUPER_IN_FULL_SUPERBUILD.bat' }
+              elseif ($dev -eq '13T' -and $region -eq 'CN') { 'SUPER_CN_FULL_SUPERBUILD.bat' }
+              elseif ($dev -eq '13T')                        { 'SUPER_IN_FULL_SUPERBUILD.bat' }
+              else                                           { 'SUPERHYBRID_FULL_SUPERBUILD.bat' }
+            }
+            'Regional Flasher' {
+              if     ($dev -eq '13R' -and $region -eq 'CN') { 'REGIONAL_CN_FULL_BUILD.bat' }
+              elseif ($dev -eq '13R')                        { 'REGIONAL_EUGLO_FULL_BUILD.bat' }
+              elseif ($dev -eq '13S')                        { 'REGIONAL_IN_FULL_BUILD.bat' }
+              else                                           { 'REGIONALHYBRID_FULL_BUILD.bat' }
+            }
+            default { throw "Unknown flasher type: $ftype" }
+          }
+
+          "DEV=$dev"                 | Out-File -FilePath $env:GITHUB_ENV -Append
+          "FTYPE=$ftype"             | Out-File -FilePath $env:GITHUB_ENV -Append
+          "REGION=$region"           | Out-File -FilePath $env:GITHUB_ENV -Append
+          "BUILDER_BAT=$batName"     | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Stage files
+        shell: pwsh
+        run: |
+          function Copy-BloatFiles($base, $region, $dest) {
+            # Copy required bloat images if present; if missing but a stub (no extension) exists with a direct URL,
+            # download it and save as the .img into $dest.
+            $map = @{
+              'EU'  = 'EUGLO_BLOAT'
+              'GLO' = 'EUGLO_BLOAT'
+              'IN'  = 'IN_BLOAT'
+              'NA'  = 'NA_BLOAT'
+              'CN'  = 'CN_BLOAT'
+              'A5'  = 'A5_DEBLOAT'
+            }
+            $needed = @('my_preload.img','my_company.img','odm.img','oplusstanvbk.img','my_region.img')
+
+            $folder = $map[$region]
+            if (-not $folder) { return }
+            $src = Join-Path $base $folder
+            if (-not (Test-Path $src)) { return }
+
+            if (-not (Test-Path $dest)) { New-Item -ItemType Directory -Force -Path $dest | Out-Null }
+
+            foreach ($f in $needed) {
+              $imgPath  = Join-Path $src $f
+              if (Test-Path $imgPath) {
+                Copy-Item $imgPath -Destination $dest -Force
+                continue
+              }
+              # try stub (same name without extension)
+              $stubPath = Join-Path $src ([System.IO.Path]::GetFileNameWithoutExtension($f))
+              if (Test-Path $stubPath) {
+                try {
+                  $url = (Get-Content $stubPath -Raw).Trim()
+                  if ($url) {
+                    $outFile = Join-Path $dest $f
+                    Write-Host ("Downloading missing {0} from {1}" -f $f, $url)
+                    Invoke-WebRequest -Uri $url -OutFile $outFile
+                  }
+                } catch {
+                  Write-Warning ("Failed to download {0} from stub URL in {1}: {2}" -f $f, $stubPath, $_.Exception.Message)
+                }
+              }
+            }
+          }
+
+          $dev     = $env:DEV
+          $ftype   = $env:FTYPE
+          $region  = $env:REGION
+
+          $root = $env:GITHUB_WORKSPACE
+          $builderDir = Join-Path $root ("build_scripts\" + $dev)
+          $bloatBase  = Join-Path $root ("bloat\" + $dev)
+
+          # Prepare OUT_DIR fresh
+          if (Test-Path $env:OUT_DIR) { Remove-Item $env:OUT_DIR -Recurse -Force }
+          New-Item -ItemType Directory -Force -Path $env:OUT_DIR | Out-Null
+
+          # Put otaripper + builder bat in OUT_DIR (root of final zip)
+          if (Test-Path (Join-Path $root 'otaripper\otaripper.exe')) {
+            Copy-Item (Join-Path $root 'otaripper\otaripper.exe') -Destination $env:OUT_DIR -Force
+          }
+          $builderSrc = Join-Path $builderDir $env:BUILDER_BAT
+          if (Test-Path $builderSrc) { Copy-Item $builderSrc -Destination $env:OUT_DIR -Force }
+
+          # Working folder name
+          $workName = switch ($ftype) {
+            'SuperHybrid Flasher'       { if ($region -eq 'CN') { 'SuperHybrid Flasher CN' } else { 'SuperHybrid Flasher' } }
+            'RegionalHybrid Flasher'    { if ($region -eq 'CN') { 'RegionalHybrid Flasher CN' } else { 'RegionalHybrid Flasher' } }
+            'SuperHybrid SunOS Flasher' { 'SuperHybrid SunOS Flasher' }
+            'Super Flasher'             { 'Super Flasher' }
+            'Regional Flasher'          { 'Regional Flasher' }
+          }
+          $workDir = Join-Path $env:OUT_DIR $workName
+          New-Item -ItemType Directory -Force -Path $workDir | Out-Null
+
+          # Choose template root
+          $tplBase = Join-Path $root ("flasher_scripts\" + $dev)
+          if ($ftype -like '*Hybrid*') {
+            $tplBase = Join-Path $tplBase ($(if ($region -eq 'CN') { 'cos' } else { 'oos' }))
+            $tplBase = Join-Path $tplBase ($(if ($ftype -like '*Super*') { 'super' } else { 'regional' }))
+          } elseif ($ftype -eq 'Super Flasher') {
+            if ($dev -eq '13T' -and $region -eq 'CN') { $tplBase = Join-Path $tplBase 'cos\super' }
+            else                                      { $tplBase = Join-Path $tplBase 'oos\super' }
+          } elseif ($ftype -eq 'Regional Flasher') {
+            if ($dev -eq '13R' -and $region -eq 'CN') { $tplBase = Join-Path $tplBase 'cos\regional' }
+            else                                      { $tplBase = Join-Path $tplBase 'oos\regional' }
+          }
+
+          # Copy template files
+          Copy-Item "$tplBase\*" -Destination $workDir -Recurse -Force
+
+          # META-INF → ONLY for Hybrid builds
+          if ($ftype -like '*Hybrid*') {
+            $mi = Join-Path $tplBase 'META-INF'
+            if (Test-Path $mi) { Copy-Item $mi -Destination (Join-Path $workDir 'META-INF') -Recurse -Force }
+          }
+
+          # Platform-tools ONLY for SuperHybrid Flasher
+          if ($ftype -eq 'SuperHybrid Flasher') {
+            $ptSrc = Join-Path $root 'platform-tools'
+            if (Test-Path $ptSrc) { Copy-Item $ptSrc -Destination $workDir -Recurse -Force }
+          }
+
+          # Super folder setup (Super builds of any kind)
+          if ($ftype -match 'Super') {
+            $superDir = Join-Path $workDir 'Super'
+            New-Item -ItemType Directory -Force -Path $superDir | Out-Null
+            Copy-Item (Join-Path $root 'lpmake\lpmake.exe') -Destination $superDir -Force
+            Copy-Item (Join-Path $root 'lpmake\cygwin1.dll') -Destination $superDir -Force
+
+            # packer scripts
+            if ($dev -eq '13T') {
+              $pdir = Join-Path $root 'super_packers\13T'
+              Copy-Item (Join-Path $pdir ($(if ($region -eq 'CN') { 'super_cos.bat' } else { 'super_oos.bat' }))) -Destination $superDir -Force
+            } else {
+              $p = Join-Path $root ("super_packers\" + $dev + "\super_oos.bat")
+              if (Test-Path $p) { Copy-Item $p -Destination $superDir -Force }
+            }
+
+            # Bloat placement for Super builds → Super/
+            Copy-BloatFiles $bloatBase $region $superDir
+
+            # CN Super extra OOS staging (EUGLO or A5)
+            if ($region -eq 'CN') {
+              $oosHere = Join-Path $workDir 'OOS_FILES_HERE'
+              New-Item -ItemType Directory -Force -Path $oosHere | Out-Null
+              if ($dev -eq '13R') { Copy-BloatFiles $bloatBase 'A5' $oosHere }
+              else                { Copy-BloatFiles $bloatBase 'GLO' $oosHere }
+            }
+
+            # 13T special: Super Flasher OOS (region != CN) → copy CN_BLOAT files to COS_FILES_HERE
+            if ($dev -eq '13T' -and $ftype -eq 'Super Flasher' -and $region -ne 'CN') {
+              $cosHere = Join-Path $workDir 'COS_FILES_HERE'
+              New-Item -ItemType Directory -Force -Path $cosHere | Out-Null
+              foreach ($extra in 'odm.img','oplusstanvbk.img','my_region.img') {
+                $srcFile = Join-Path $bloatBase ("CN_BLOAT\" + $extra)
+                if (Test-Path $srcFile) {
+                  Copy-Item $srcFile -Destination $cosHere -Force
+                } else {
+                  # Try stub download for each of the three extras
+                  $stub = Join-Path $bloatBase ("CN_BLOAT\" + ([System.IO.Path]::GetFileNameWithoutExtension($extra)))
+                  if (Test-Path $stub) {
+                    try {
+                      $url = (Get-Content $stub -Raw).Trim()
+                      if ($url) {
+                        $outFile = Join-Path $cosHere $extra
+                        Write-Host ("Downloading missing {0} from {1}" -f $extra, $url)
+                        Invoke-WebRequest -Uri $url -OutFile $outFile
+                      }
+                    } catch {
+                      Write-Warning ("Failed to download {0} from stub URL in {1}: {2}" -f $extra, $stub, $_.Exception.Message)
+                    }
+                  }
+                }
+              }
+            }
+          }
+
+          # Regional builds → bloat in OOS_FILES_HERE/ (+ CN extras)
+          if ($ftype -eq 'Regional Flasher' -or $ftype -eq 'RegionalHybrid Flasher') {
+            $oosHere = Join-Path $workDir 'OOS_FILES_HERE'
+            New-Item -ItemType Directory -Force -Path $oosHere | Out-Null
+            Copy-BloatFiles $bloatBase $region $oosHere
+
+            if ($region -eq 'CN') {
+              $cosHere = Join-Path $workDir 'COS_FILES_HERE'
+              New-Item -ItemType Directory -Force -Path $cosHere | Out-Null
+              Copy-BloatFiles $bloatBase 'CN' $cosHere
+              if ($dev -eq '13R') { Copy-BloatFiles $bloatBase 'A5' $oosHere }
+              else                { Copy-BloatFiles $bloatBase 'GLO' $oosHere }
+            }
+          }
+
+          # Expose for packaging step
+          "WORK_DIR=$workDir" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Package output (include folder + otaripper + builder)
+        shell: pwsh
+        run: |
+          $workDir   = $env:WORK_DIR
+          $outRoot   = $env:OUT_DIR
+          $devName   = "${{ inputs.device }}".Replace(' ','')
+          $ftypeName = "${{ inputs.flasher_type }}".Replace(' ','')
+          $regionStr = "${{ inputs.region }}"
+          $ts        = Get-Date -Format "yyyyMMdd-HHmmss"
+          $artifact  = "$devName-$ftypeName-$regionStr-$ts".Replace(' ','')
+          $zipPath   = Join-Path $outRoot "$artifact.zip"
+
+          # Stage a temp folder to control zip root contents
+          $stage = Join-Path $outRoot "__stage"
+          if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+
+          # 1) keep the working folder as a folder
+          Copy-Item $workDir -Destination $stage -Recurse -Force
+
+          # 2) add otaripper.exe (if present)
+          $otaripper = Join-Path $outRoot 'otaripper.exe'
+          if (Test-Path $otaripper) { Copy-Item $otaripper -Destination $stage -Force }
+
+          # 3) add builder .bat (if present)
+          $builder = Join-Path $outRoot $env:BUILDER_BAT
+          if (Test-Path $builder) { Copy-Item $builder -Destination $stage -Force }
+
+          # Create the single zip
+          if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
+          Compress-Archive -Path "$stage\*" -DestinationPath $zipPath -Force
+          Remove-Item $stage -Recurse -Force
+
+          "ARTIFACT_NAME=$artifact" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "ZIP_FILE=$zipPath"       | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Upload artifact (single zip only)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ARTIFACT_NAME }}
+          path: ${{ env.ZIP_FILE }}
+          retention-days: ${{ env.ARTIFACT_RETENTION_DAYS }}
