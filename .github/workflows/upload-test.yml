@@ -359,16 +359,14 @@ jobs:
           $device = "${{ inputs.device }}"
           $ftype  = "${{ inputs.flasher_type }}"
           $region = "${{ inputs.region }}"
-
-          # Category from flasher type
+      
           $category = switch -Regex ($ftype) {
             '^(SuperHybrid Flasher|SuperHybrid SunOS Flasher|Super Flasher)$' { 'Super Flashers'; break }
             default { 'Regional Flashers' }
           }
-
-          # 13S / 13T have no region subfolder
+      
           $needsRegion = ($device -ne 'Oneplus 13S' -and $device -ne 'Oneplus 13T')
-
+      
           if ($needsRegion) {
             $regionFolder = switch ($region) {
               'CN'  { 'COS' }
@@ -382,24 +380,26 @@ jobs:
           } else {
             $rel = Join-Path $device $category
           }
-
+      
           $rel = ($rel -replace '\\','/')
           if (-not $rel.EndsWith('/')) { $rel += '/' }
-
+      
           "REL_UPLOAD_DIR=$rel" | Out-File -FilePath $env:GITHUB_ENV -Append
-
+      
+          # DS FTP
           $ftpBase = "${{ secrets.DS_FTP_PATH }}".Trim('/')
-          $sfBase  = "${{ secrets.SF_PROJECT_PATH }}".TrimEnd('/')
-
-          $ftpAbs = ($ftpBase.Length -gt 0) ? "$ftpBase/$rel" : $rel
-          $sfAbs  = "$sfBase/$rel"   # secret MUST be absolute, e.g. /home/pfs/project/oneplus13flashers
-
+          $ftpAbs  = ($ftpBase.Length -gt 0) ? "$ftpBase/$rel" : $rel
           "FTP_UPLOAD_DIR=$ftpAbs" | Out-File -FilePath $env:GITHUB_ENV -Append
-          "SF_UPLOAD_DIR=$sfAbs"   | Out-File -FilePath $env:GITHUB_ENV -Append
-
+      
+          # SourceForge (ABSOLUTE base in secret, e.g. /home/pfs/project/oneplus13flashers)
+          $sfBaseAbs = "${{ secrets.SF_PROJECT_PATH }}".TrimEnd('/')
+          $sfAbs     = "$sfBaseAbs/$rel"
+          "SF_UPLOAD_DIR=$sfAbs" | Out-File -FilePath $env:GITHUB_ENV -Append
+      
           Write-Host "Relative upload dir: $rel"
           Write-Host "FTP upload dir: $ftpAbs"
           Write-Host "SF  upload dir: $sfAbs"
+
 
       # =========================
       # DS_FTP Upload (no mkdirs)
@@ -526,15 +526,17 @@ jobs:
           if (-not $env:SF_USERNAME -or -not $env:SF_UPLOAD_DIR) {
             throw "Missing SourceForge config. Need SF_USERNAME and SF_UPLOAD_DIR."
           }
-
+      
           $zip = $env:ZIP_FILE
           if (-not (Test-Path $zip)) { throw "ZIP file not found: $zip" }
-
-          # Use absolute destination dir computed earlier (ends with /)
-          $destDir = "$($env:SF_UPLOAD_DIR)".TrimEnd('/')
+      
+          # Use absolute destination dir computed earlier (like /home/pfs/project/oneplus13flashers/Oneplus 13/Super Flashers/Global)
+          $destDir = "$($env:SF_UPLOAD_DIR)".TrimEnd('/')   # <-- trim /, not ***
           $dest    = "$destDir/$($env:ARTIFACT_NAME).zip"
-          $key     = "$env:USERPROFILE\.ssh\id_ed25519"
-
+          $key     = "$env:USERPROFILE\.ssh\id_ed25519"     # <-- runner’s local key path
+      
           Write-Host "Uploading to SourceForge: $dest"
           ssh -i "$key" -o StrictHostKeyChecking=yes "$($env:SF_USERNAME)@frs.sourceforge.net" "mkdir -p `"$destDir`""
           scp -i "$key" -o StrictHostKeyChecking=yes "$zip" "$($env:SF_USERNAME)@frs.sourceforge.net:`"$dest`""
+
+
