@@ -347,8 +347,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.ARTIFACT_NAME }}
-          path: ${{ env.ZIP_FILE }}
-          retention-days: ${{ env.ARTIFACT_RETENTION_DAYS }}
+          path: ${{ env:ZIP_FILE }}
+          retention-days: ${{ env:ARTIFACT_RETENTION_DAYS }}
 
       # ============
       # Path compute
@@ -392,7 +392,7 @@ jobs:
           $sfBase  = "${{ secrets.SF_PROJECT_PATH }}".TrimEnd('/')
 
           $ftpAbs = ($ftpBase.Length -gt 0) ? "$ftpBase/$rel" : $rel
-          $sfAbs  = "$sfBase/$rel"   # secret MUST be absolute, e.g. /home/frs/project/oneplus13flashers
+          $sfAbs  = "$sfBase/$rel"   # secret MUST be absolute, e.g. /home/pfs/project/oneplus13flashers
 
           "FTP_UPLOAD_DIR=$ftpAbs" | Out-File -FilePath $env:GITHUB_ENV -Append
           "SF_UPLOAD_DIR=$sfAbs"   | Out-File -FilePath $env:GITHUB_ENV -Append
@@ -465,7 +465,7 @@ jobs:
           $resp.Close()
 
       # -------------------------------
-      # SourceForge: setup SSH correctly
+      # SourceForge: setup SSH correctly (no new secret)
       # -------------------------------
       - name: Setup SSH for SourceForge
         if: ${{ inputs.upload_to == 'Sourceforge' || inputs.upload_to == 'Both DS_FTP & Sourceforge' }}
@@ -474,25 +474,29 @@ jobs:
           SF_SSH_PRIVATE_KEY: ${{ secrets.SF_SSH_PRIVATE_KEY }}
         run: |
           if (-not $env:SF_SSH_PRIVATE_KEY) { throw "Missing SF_SSH_PRIVATE_KEY secret." }
-          $sshDir = Join-Path $env:USERPROFILE ".ssh"
+
+          $sshDir  = Join-Path $env:USERPROFILE ".ssh"
           New-Item -ItemType Directory -Force -Path $sshDir | Out-Null
 
           $keyPath = Join-Path $sshDir "id_ed25519"
-          Set-Content -Path $keyPath -Value $env:SF_SSH_PRIVATE_KEY -Encoding ascii -NoNewline
-          & icacls $keyPath /inheritance:r | Out-Null
-          & icacls $keyPath /grant:r "$($env:USERNAME):(R)" | Out-Null
+
+          # Strip CR to avoid OpenSSH 'invalid format' on Windows; write raw bytes without extra newline
+          $keyClean = ($env:SF_SSH_PRIVATE_KEY -replace "`r","")
+          [System.IO.File]::WriteAllBytes($keyPath, [Text.Encoding]::ASCII.GetBytes($keyClean))
+
+          icacls $keyPath /inheritance:r | Out-Null
+          icacls $keyPath /grant:r "$($env:USERNAME):(R)" | Out-Null
 
           $kh = Join-Path $sshDir "known_hosts"
           ssh-keyscan -t rsa frs.sourceforge.net | Out-File -FilePath $kh -Encoding ascii
 
           $cfgPath  = Join-Path $sshDir "config"
-          $cfgLines = @(
-            "Host frs.sourceforge.net",
-            "  UserKnownHostsFile $kh",
-            "  IdentitiesOnly yes",
+          @(
+            "Host frs.sourceforge.net"
+            "  UserKnownHostsFile $kh"
+            "  IdentitiesOnly yes"
             "  IdentityFile $keyPath"
-          )
-          $cfgLines | Set-Content -Path $cfgPath -Encoding ascii
+          ) | Set-Content -Path $cfgPath -Encoding ascii
 
       # ------------------------------------------------
       # SourceForge: upload (uses absolute base from secret)
@@ -506,6 +510,7 @@ jobs:
           if (-not $env:SF_USERNAME -or -not $env:SF_UPLOAD_DIR) {
             throw "Missing SourceForge config. Need SF_USERNAME and SF_UPLOAD_DIR."
           }
+
           $zip = $env:ZIP_FILE
           if (-not (Test-Path $zip)) { throw "ZIP file not found: $zip" }
 
