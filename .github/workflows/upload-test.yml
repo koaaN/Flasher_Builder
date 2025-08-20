@@ -334,6 +334,7 @@ jobs:
           $ftype  = "${{ inputs.flasher_type }}"
           $region = "${{ inputs.region }}"
 
+          # Category from flasher type
           $category = switch -Regex ($ftype) {
             '^(SuperHybrid Flasher|SuperHybrid SunOS Flasher|Super Flasher)$' { 'Super Flashers'; break }
             default { 'Regional Flashers' }
@@ -471,21 +472,18 @@ jobs:
         shell: pwsh
         env:
           SF_USERNAME: ${{ secrets.SF_USERNAME }}
-          SF_PROJECT_PATH: ${{ secrets.SF_PROJECT_PATH }}   # e.g. /home/pfs/project/oneplus13flashers
         run: |
-          if (-not $env:SF_USERNAME -or -not $env:SF_PROJECT_PATH) {
-            throw "Missing SourceForge secrets. Required: SF_USERNAME, SF_PROJECT_PATH"
+          if (-not $env:SF_USERNAME -or -not $env:SF_UPLOAD_DIR) {
+            throw "Missing SourceForge config. Need SF_USERNAME and SF_UPLOAD_DIR."
           }
 
           $zip = $env:ZIP_FILE
           if (-not (Test-Path $zip)) { throw "ZIP file not found: $zip" }
 
-          $rel = "$env:REL_UPLOAD_DIR".TrimStart('/')  # e.g. "Oneplus 13/Super Flashers/Global/"
-          $key = "$env:USERPROFILE\.ssh\id_ed25519"
-
-          $base    = "$($env:SF_PROJECT_PATH)".TrimEnd('/')   # absolute base path
-          $destDir = "$base/$rel"
-          $dest    = "$destDir$($env:ARTIFACT_NAME).zip"
+          # Absolute destination path computed earlier
+          $destDir = "$($env:SF_UPLOAD_DIR)".TrimEnd('/')
+          $dest    = "$destDir/$($env:ARTIFACT_NAME).zip"
+          $key     = "$env:USERPROFILE\.ssh\id_ed25519"
 
           Write-Host "Uploading to SourceForge: $dest"
           ssh -i "$key" -o StrictHostKeyChecking=yes "$($env:SF_USERNAME)@frs.sourceforge.net" "mkdir -p `"$destDir`""
