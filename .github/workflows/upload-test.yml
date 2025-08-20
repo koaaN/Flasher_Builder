@@ -534,10 +534,12 @@ jobs:
           $zip = $env:ZIP_FILE
           if (-not (Test-Path $zip)) { throw "ZIP file not found: $zip" }
       
-          # Use absolute destination dir computed earlier (like /home/pfs/project/<project>/Oneplus 13/Super Flashers/Global)
-          $destDir = "$($env:SF_UPLOAD_DIR)".TrimEnd('/')   # <-- trim / only
+          # FIX: replace any accidental *** with /, then trim trailing slash
+          $destDir = ($env:SF_UPLOAD_DIR -replace '\*{3}','/').TrimEnd('/')
+      
+          # Compose full destination file path
           $dest    = "$destDir/$($env:ARTIFACT_NAME).zip"
-          $key     = "$env:USERPROFILE\.ssh\id_ed25519"     # runner’s local key path
+          $key     = "$env:USERPROFILE\.ssh\id_ed25519"  # runner’s local key path
       
           Write-Host "Uploading to SourceForge: $dest"
           ssh -i "$key" -o StrictHostKeyChecking=yes "$($env:SF_USERNAME)@frs.sourceforge.net" "mkdir -p `"$destDir`""
