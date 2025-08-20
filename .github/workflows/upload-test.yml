@@ -444,88 +444,114 @@ jobs:
           Write-Host ("FTP server response: {0}" -f $resp.StatusDescription)
           $resp.Close()
 
-      # ==============================
-      # SourceForge (optional later)
-      # ==============================
-      # -------------------------------
-      # SourceForge: setup SSH correctly
-      # -------------------------------
-      - name: Setup SSH for SourceForge
-        if: ${{ inputs.upload_to == 'Sourceforge' || inputs.upload_to == 'Both DS_FTP & Sourceforge' }}
-        shell: pwsh
-        env:
-          SF_SSH_PRIVATE_KEY: ${{ secrets.SF_SSH_PRIVATE_KEY }}
-        run: |
-          if (-not $env:SF_SSH_PRIVATE_KEY) { throw "Missing SF_SSH_PRIVATE_KEY secret." }
-      
-          $sshDir = Join-Path $env:USERPROFILE ".ssh"
-          New-Item -ItemType Directory -Force -Path $sshDir | Out-Null
-      
-          # Save the private key as id_ed25519 (name is arbitrary, but we will use -i explicitly)
-          $keyPath = Join-Path $sshDir "id_ed25519"
-          # Use ASCII to avoid BOM; DO NOT strip newlines
-          Set-Content -Path $keyPath -Value $env:SF_SSH_PRIVATE_KEY -Encoding ascii
-      
-          # Lock down permissions (OpenSSH on Windows is picky)
-          & icacls $keyPath /inheritance:r | Out-Null
-          & icacls $keyPath /grant:r "$($env:USERNAME):(R)" | Out-Null
-      
-          # Known hosts for frs
-          $kh = Join-Path $sshDir "known_hosts"
-          ssh-keyscan -t rsa frs.sourceforge.net | Out-File -FilePath $kh -Encoding ascii
-      
-          # Optional: SSH config to always use our key for frs
-          $cfg = @"
-        Host frs.sourceforge.net
-        UserKnownHostsFile $kh
-        IdentitiesOnly yes
-        IdentityFile $keyPath
-      "@
-          $cfgPath = Join-Path $sshDir "config"
-          Set-Content -Path $cfgPath -Value $cfg -Encoding ascii
-      
-      # ------------------------------------------------
-      # SourceForge: upload (FRS with PFS fallback, -i)
-      # ------------------------------------------------
-      - name: Upload to SourceForge (SCP)
-        if: ${{ inputs.upload_to == 'Sourceforge' || inputs.upload_to == 'Both DS_FTP & Sourceforge' }}
-        shell: pwsh
-        env:
-          SF_USERNAME: ${{ secrets.SF_USERNAME }}
-          SF_PROJECT_PATH: ${{ secrets.SF_PROJECT_PATH }}
-        run: |
-          if (-not $env:SF_USERNAME -or -not $env:SF_PROJECT_PATH) {
-            throw "Missing SourceForge secrets. Required: SF_USERNAME, SF_PROJECT_PATH"
-          }
-      
-          $zip = $env:ZIP_FILE
-          if (-not (Test-Path $zip)) { throw "ZIP file not found: $zip" }
-      
-          # REL_UPLOAD_DIR was computed earlier (e.g. "Oneplus 13/Super Flashers/Global/")
-          $rel = "$env:REL_UPLOAD_DIR".TrimStart('/')
-          $key = "$env:USERPROFILE\.ssh\id_ed25519"
-      
-          $baseA = "/home/frs/project/$($env:SF_PROJECT_PATH)"
-          $baseB = "/home/pfs/project/$($env:SF_PROJECT_PATH)"
-      
-          function Test-RemoteDir($dir) {
-            $cmd = "test -d `"$dir`" && echo OK || echo NO"
-            $res = ssh -i "$key" -o StrictHostKeyChecking=yes "$($env:SF_USERNAME)@frs.sourceforge.net" $cmd
-            return ($res -match 'OK')
-          }
-      
-          $destBase = if (Test-RemoteDir $baseA) { $baseA } elseif (Test-RemoteDir $baseB) { $baseB } else {
-            throw "Neither '$baseA' nor '$baseB' exists. Check SF_PROJECT_PATH and permissions."
-          }
-      
-          $destDir = "$destBase/$rel"
-          $dest    = "$destDir$($env:ARTIFACT_NAME).zip"
-      
-          Write-Host "Uploading to SourceForge: $dest"
-      
-          # Ensure directory exists (quotes keep spaces intact)
-          ssh -i "$key" -o StrictHostKeyChecking=yes "$($env:SF_USERNAME)@frs.sourceforge.net" "mkdir -p `"$destDir`""
-      
-          # Upload with explicit identity file
-          scp -i "$key" -o StrictHostKeyChecking=yes "$zip" "$($env:SF_USERNAME)@frs.sourceforge.net:`"$dest`""
-      
+     # -------------------------------
+# SourceForge: setup SSH correctly
+# -------------------------------
+- name: Setup SSH for SourceForge
+  if: ${{ inputs.upload_to == 'Sourceforge' || inputs.upload_to == 'Both DS_FTP & Sourceforge' }}
+  shell: pwsh
+  env:
+    SF_SSH_PRIVATE_KEY: ${{ secrets.SF_SSH_PRIVATE_KEY }}
+  run: |
+    if (-not $env:SF_SSH_PRIVATE_KEY) { throw "Missing SF_SSH_PRIVATE_KEY secret." }
+
+    $sshDir  = Join-Path $env:USERPROFILE ".ssh"
+    New-Item -ItemType Directory -Force -Path $sshDir | Out-Null
+
+    # Save private key (ASCII avoids BOM)
+    $keyPath = Join-Path $sshDir "id_ed25519"
+    Set-Content -Path $keyPath -Value $env:SF_SSH_PRIVATE_KEY -Encoding ascii
+
+    # Lock down permissions
+    icacls $keyPath /inheritance:r | Out-Null
+    icacls $keyPath /grant:r "$($env:USERNAME):(R)" | Out-Null
+
+    # known_hosts
+    $kh = Join-Path $sshDir "known_hosts"
+    ssh-keyscan -t rsa frs.sourceforge.net | Out-File -FilePath $kh -Encoding ascii
+
+    # Write minimal SSH config (no here-string)
+    $cfgPath  = Join-Path $sshDir "config"
+    $cfgLines = @(
+      "Host frs.sourceforge.net",
+      "  UserKnownHostsFile $kh",
+      "  IdentitiesOnly yes",
+      "  IdentityFile $keyPath"
+    )
+    $cfgLines | Set-Content -Path $cfgPath -Encoding ascii
+
+# -------------------------------
+# SourceForge: setup SSH correctly
+# -------------------------------
+- name: Setup SSH for SourceForge
+  if: ${{ inputs.upload_to == 'Sourceforge' || inputs.upload_to == 'Both DS_FTP & Sourceforge' }}
+  shell: pwsh
+  env:
+    SF_SSH_PRIVATE_KEY: ${{ secrets.SF_SSH_PRIVATE_KEY }}
+  run: |
+    if (-not $env:SF_SSH_PRIVATE_KEY) { throw "Missing SF_SSH_PRIVATE_KEY secret." }
+
+    $sshDir  = Join-Path $env:USERPROFILE ".ssh"
+    New-Item -ItemType Directory -Force -Path $sshDir | Out-Null
+
+    # Save private key (ASCII avoids BOM)
+    $keyPath = Join-Path $sshDir "id_ed25519"
+    Set-Content -Path $keyPath -Value $env:SF_SSH_PRIVATE_KEY -Encoding ascii
+
+    # Lock down permissions
+    icacls $keyPath /inheritance:r | Out-Null
+    icacls $keyPath /grant:r "$($env:USERNAME):(R)" | Out-Null
+
+    # known_hosts
+    $kh = Join-Path $sshDir "known_hosts"
+    ssh-keyscan -t rsa frs.sourceforge.net | Out-File -FilePath $kh -Encoding ascii
+
+    # Write minimal SSH config (no here-string)
+    $cfgPath  = Join-Path $sshDir "config"
+    $cfgLines = @(
+      "Host frs.sourceforge.net",
+      "  UserKnownHostsFile $kh",
+      "  IdentitiesOnly yes",
+      "  IdentityFile $keyPath"
+    )
+    $cfgLines | Set-Content -Path $cfgPath -Encoding ascii
+
+# ------------------------------------------------
+# SourceForge: upload (FRS with PFS fallback, -i)
+# ------------------------------------------------
+- name: Upload to SourceForge (SCP)
+  if: ${{ inputs.upload_to == 'Sourceforge' || inputs.upload_to == 'Both DS_FTP & Sourceforge' }}
+  shell: pwsh
+  env:
+    SF_USERNAME: ${{ secrets.SF_USERNAME }}
+    SF_PROJECT_PATH: ${{ secrets.SF_PROJECT_PATH }}
+  run: |
+    if (-not $env:SF_USERNAME -or -not $env:SF_PROJECT_PATH) {
+      throw "Missing SourceForge secrets. Required: SF_USERNAME, SF_PROJECT_PATH"
+    }
+
+    $zip = $env:ZIP_FILE
+    if (-not (Test-Path $zip)) { throw "ZIP file not found: $zip" }
+
+    $rel = "$env:REL_UPLOAD_DIR".TrimStart('/')  # e.g. "Oneplus 13/Super Flashers/Global/"
+    $key = "$env:USERPROFILE\.ssh\id_ed25519"
+
+    $baseA = "/home/frs/project/$($env:SF_PROJECT_PATH)"
+    $baseB = "/home/pfs/project/$($env:SF_PROJECT_PATH)"
+
+    function Test-RemoteDir($dir) {
+      $cmd = "test -d `"$dir`" && echo OK || echo NO"
+      $res = ssh -i "$key" -o StrictHostKeyChecking=yes "$($env:SF_USERNAME)@frs.sourceforge.net" $cmd
+      return ($res -match 'OK')
+    }
+
+    $destBase = if (Test-RemoteDir $baseA) { $baseA } elseif (Test-RemoteDir $baseB) { $baseB } else {
+      throw "Neither '$baseA' nor '$baseB' exists. Check SF_PROJECT_PATH and permissions."
+    }
+
+    $destDir = "$destBase/$rel"
+    $dest    = "$destDir$($env:ARTIFACT_NAME).zip"
+
+    Write-Host "Uploading to SourceForge: $dest"
+    ssh -i "$key" -o StrictHostKeyChecking=yes "$($env:SF_USERNAME)@frs.sourceforge.net" "mkdir -p `"$destDir`""
+    scp -i "$key" -o StrictHostKeyChecking=yes "$zip" "$($env:SF_USERNAME)@frs.sourceforge.net:`"$dest`""
