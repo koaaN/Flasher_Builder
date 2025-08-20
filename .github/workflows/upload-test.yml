@@ -389,15 +389,18 @@ jobs:
           DS_FTP_USER: ${{ secrets.DS_FTP_USER }}
           DS_FTP_PASS: ${{ secrets.DS_FTP_PASS }}
         run: |
+          # Validate secrets
           if (-not $env:DS_FTP_HOST -or -not $env:DS_FTP_USER -or -not $env:DS_FTP_PASS) {
             throw "Missing DS_FTP secrets. Required: DS_FTP_HOST, DS_FTP_USER, DS_FTP_PASS"
           }
       
-          $ftpHost  = $env:DS_FTP_HOST
-          $cred     = New-Object System.Net.NetworkCredential($env:DS_FTP_USER, $env:DS_FTP_PASS)
-          $remoteDir = "$env:FTP_UPLOAD_DIR".Trim('/')   # e.g. "Oneplus 13/Super Flashers/Global"
+          $ftpHost    = $env:DS_FTP_HOST
+          $cred       = New-Object System.Net.NetworkCredential($env:DS_FTP_USER, $env:DS_FTP_PASS)
+          $remoteDir  = "$env:FTP_UPLOAD_DIR".Trim('/')  # e.g. "Oneplus 13/Super Flashers/Global"
+          $fileName   = "$($env:ARTIFACT_NAME).zip"
+          $zipPath    = $env:ZIP_FILE
       
-          function New-FtpRequest($uri,$method) {
+          function New-FtpRequest([string]$uri,[string]$method) {
             $r = [System.Net.FtpWebRequest]::Create($uri)
             $r.Credentials = $cred
             $r.Method = $method
@@ -407,39 +410,34 @@ jobs:
             return $r
           }
       
-          function Ensure-FtpDirectory($ftpHost,$path) {
-            if ([string]::IsNullOrWhiteSpace($path)) { return }
-            $parts = $path.Split('/') | Where-Object { $_ -ne '' }
-            $accum = @()
-            foreach ($p in $parts) {
-              $accum += $p
-              $seg = ($accum | ForEach-Object { [System.Uri]::EscapeDataString($_) }) -join '/'
-              $uri = "ftp://$ftpHost/$seg"
-              try {
-                $req = New-FtpRequest $uri ([System.Net.WebRequestMethods+Ftp]::MakeDirectory)
-                $resp = $req.GetResponse()
-                $resp.Close()
-                Write-Host "Created FTP dir: /$seg"
-              } catch {
-                # Ignore if it already exists; rethrow only if there's no response object
-                if (-not $_.Exception.Response) { throw }
-              }
-            }
+          # Encode path segments for safe URLs (spaces, etc.)
+          $encodedPath = ($remoteDir.Split('/') | Where-Object { $_ -ne '' } | ForEach-Object { [System.Uri]::EscapeDataString($_) }) -join '/'
+      
+          # 1) Quick existence check on the target directory (no mkdir)
+          $dirUri = if ($encodedPath) { "ftp://$ftpHost/$encodedPath" } else { "ftp://$ftpHost/" }
+          Write-Host "Checking remote folder: $dirUri"
+          try {
+            $req = New-FtpRequest $dirUri ([System.Net.WebRequestMethods+Ftp]::ListDirectory)
+            $resp = $req.GetResponse()
+            $resp.Close()
+            Write-Host "OK: remote folder exists."
+          } catch {
+            $detail = ""
+            if ($_.Exception.Response) { $detail = " ($($_.Exception.Response.StatusDescription))" }
+            throw "Target folder does not exist or is not accessible: $dirUri$detail"
           }
       
-          Ensure-FtpDirectory $ftpHost $remoteDir
-      
-          $fileName = "$($env:ARTIFACT_NAME).zip"
-          $encodedPath = ($remoteDir.Split('/') | Where-Object { $_ -ne '' } | ForEach-Object { [System.Uri]::EscapeDataString($_) }) -join '/'
-          $uri = if ($encodedPath) {
+          # 2) Upload
+          if (-not (Test-Path $zipPath)) { throw "ZIP not found: $zipPath" }
+          $uploadUri = if ($encodedPath) {
             "ftp://$ftpHost/$encodedPath/$([System.Uri]::EscapeDataString($fileName))"
           } else {
             "ftp://$ftpHost/$([System.Uri]::EscapeDataString($fileName))"
           }
       
-          Write-Host "Uploading to: /$encodedPath/$fileName"
-          $req = New-FtpRequest $uri ([System.Net.WebRequestMethods+Ftp]::UploadFile)
-          $bytes = [System.IO.File]::ReadAllBytes($env:ZIP_FILE)
+          Write-Host "Uploading to: $uploadUri"
+          $req = New-FtpRequest $uploadUri ([System.Net.WebRequestMethods+Ftp]::UploadFile)
+          $bytes = [System.IO.File]::ReadAllBytes($zipPath)
           $req.ContentLength = $bytes.Length
           $stream = $req.GetRequestStream()
           $stream.Write($bytes, 0, $bytes.Length)
@@ -447,7 +445,6 @@ jobs:
           $resp = $req.GetResponse()
           Write-Host ("FTP server response: {0}" -f $resp.StatusDescription)
           $resp.Close()
-
 
       # ==============================
       # Conditional: SourceForge upload
