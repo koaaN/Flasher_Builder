@@ -39,6 +39,16 @@ on:
         description: "FULL OTA.zip URL (leave empty for placeholder)"
         type: string
         required: false
+      upload_to:
+        description: "Upload To"
+        type: choice
+        required: true
+        options:
+          - DS_FTP
+          - Sourceforge
+          - "Both DS_FTP & Sourceforge"
+          - Artifact Only
+        default: Artifact Only
 
 permissions:
   contents: read
@@ -343,3 +353,87 @@ jobs:
           name: ${{ env.ARTIFACT_NAME }}
           path: ${{ env.ZIP_FILE }}
           retention-days: ${{ env.ARTIFACT_RETENTION_DAYS }}
+
+      # =========================
+      # Conditional: DS_FTP upload
+      # =========================
+      - name: Upload to DS_FTP
+        if: ${{ inputs.upload_to == 'DS_FTP' || inputs.upload_to == 'Both DS_FTP & Sourceforge' }}
+        shell: pwsh
+        env:
+          DS_FTP_HOST: ${{ secrets.DS_FTP_HOST }}
+          DS_FTP_USER: ${{ secrets.DS_FTP_USER }}
+          DS_FTP_PASS: ${{ secrets.DS_FTP_PASS }}
+          DS_FTP_PATH: ${{ secrets.DS_FTP_PATH }}
+        run: |
+          if (-not $env:DS_FTP_HOST -or -not $env:DS_FTP_USER -or -not $env:DS_FTP_PASS) {
+            throw "Missing DS_FTP secrets. Required: DS_FTP_HOST, DS_FTP_USER, DS_FTP_PASS"
+          }
+          $remotePath = $env:DS_FTP_PATH
+          if ([string]::IsNullOrWhiteSpace($remotePath)) { $remotePath = "" }
+          $remotePath = $remotePath.Trim('/')
+
+          $fileName = "$($env:ARTIFACT_NAME).zip"
+          if ([string]::IsNullOrWhiteSpace($remotePath)) {
+            $uri = "ftp://$($env:DS_FTP_HOST)/$fileName"
+          } else {
+            $uri = "ftp://$($env:DS_FTP_HOST)/$remotePath/$fileName"
+          }
+
+          Write-Host "Uploading $fileName to $uri (passive FTP, binary mode)"
+          $req = [System.Net.FtpWebRequest]::Create($uri)
+          $req.Credentials = New-Object System.Net.NetworkCredential($env:DS_FTP_USER, $env:DS_FTP_PASS)
+          $req.Method = [System.Net.WebRequestMethods+Ftp]::UploadFile
+          $req.UsePassive = $true
+          $req.UseBinary = $true
+          $req.KeepAlive = $false
+
+          $bytes = [System.IO.File]::ReadAllBytes($env:ZIP_FILE)
+          $req.ContentLength = $bytes.Length
+          $stream = $req.GetRequestStream()
+          $stream.Write($bytes, 0, $bytes.Length)
+          $stream.Close()
+
+          $resp = $req.GetResponse()
+          Write-Host ("FTP server response: {0}" -f $resp.StatusDescription)
+          $resp.Close()
+
+      # ==============================
+      # Conditional: SourceForge upload
+      # ==============================
+      - name: Setup SSH for SourceForge
+        if: ${{ inputs.upload_to == 'Sourceforge' || inputs.upload_to == 'Both DS_FTP & Sourceforge' }}
+        shell: pwsh
+        env:
+          SF_SSH_PRIVATE_KEY: ${{ secrets.SF_SSH_PRIVATE_KEY }}
+        run: |
+          if (-not $env:SF_SSH_PRIVATE_KEY) { throw "Missing SF_SSH_PRIVATE_KEY secret." }
+          $sshDir = Join-Path $env:USERPROFILE ".ssh"
+          New-Item -ItemType Directory -Force -Path $sshDir | Out-Null
+
+          $keyPath = Join-Path $sshDir "id_rsa"
+          Set-Content -Path $keyPath -Value $env:SF_SSH_PRIVATE_KEY -Encoding ascii -NoNewline
+          # Restrict permissions for OpenSSH on Windows
+          & icacls $keyPath /inheritance:r | Out-Null
+          & icacls $keyPath /grant:r "$($env:USERNAME):(R)" | Out-Null
+
+          # Known hosts for SourceForge
+          $kh = Join-Path $sshDir "known_hosts"
+          ssh-keyscan -t rsa frs.sourceforge.net | Out-File -FilePath $kh -Encoding ascii
+
+      - name: Upload to SourceForge (SCP)
+        if: ${{ inputs.upload_to == 'Sourceforge' || inputs.upload_to == 'Both DS_FTP & Sourceforge' }}
+        shell: pwsh
+        env:
+          SF_USERNAME: ${{ secrets.SF_USERNAME }}
+          SF_PROJECT_PATH: ${{ secrets.SF_PROJECT_PATH }}
+        run: |
+          if (-not $env:SF_USERNAME -or -not $env:SF_PROJECT_PATH) {
+            throw "Missing SourceForge secrets. Required: SF_USERNAME, SF_PROJECT_PATH"
+          }
+          $destPath = "/home/frs/project/$($env:SF_PROJECT_PATH)/$($env:ARTIFACT_NAME).zip"
+          Write-Host "Uploading to SourceForge: $destPath"
+          $zip = $env:ZIP_FILE
+          if (-not (Test-Path $zip)) { throw "ZIP file not found: $zip" }
+          scp -o StrictHostKeyChecking=yes "$zip" "$($env:SF_USERNAME)@frs.sourceforge.net:`"$destPath`""
+          Write-Host "SourceForge upload complete."
