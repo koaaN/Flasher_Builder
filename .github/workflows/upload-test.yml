@@ -7,7 +7,11 @@ on:
         description: "Device"
         type: choice
         required: true
-        options: [Oneplus 13, Oneplus 13R, Oneplus 13S, Oneplus 13T]
+        options:
+          - Oneplus 13
+          - Oneplus 13R
+          - Oneplus 13S
+          - Oneplus 13T
         default: Oneplus 13
       flasher_type:
         description: "Flasher type"
@@ -24,7 +28,12 @@ on:
         description: "Region"
         type: choice
         required: true
-        options: [GLO, EU, IN, NA, CN]
+        options:
+          - GLO
+          - EU
+          - IN
+          - NA
+          - CN
         default: GLO
       ota_url:
         description: "FULL OTA.zip URL (leave empty for placeholder)"
@@ -134,7 +143,7 @@ jobs:
           "REGION=$region"       | Out-File -FilePath $env:GITHUB_ENV -Append
           "BUILDER_BAT=$batName" | Out-File -FilePath $env:GITHUB_ENV -Append
 
-      # 4) Stage the template next to the .bat (source), as before
+      # 4) Stage files (as before)
       - name: Stage files
         shell: pwsh
         run: |
@@ -189,9 +198,11 @@ jobs:
             $tplBase = Join-Path $tplBase ($(if ($region -eq 'CN') { 'cos' } else { 'oos' }))
             $tplBase = Join-Path $tplBase ($(if ($ftype -like '*Super*') { 'super' } else { 'regional' }))
           } elseif ($ftype -eq 'Super Flasher') {
-            if ($dev -eq '13T' -and $region -eq 'CN') { $tplBase = Join-Path $tplBase 'cos\super' } else { $tplBase = Join-Path $tplBase 'oos\super' }
+            if ($dev -eq '13T' -and $region -eq 'CN') { $tplBase = Join-Path $tplBase 'cos\super' }
+            else                                      { $tplBase = Join-Path $tplBase 'oos\super' }
           } elseif ($ftype -eq 'Regional Flasher') {
-            if ($dev -eq '13R' -and $region -eq 'CN') { $tplBase = Join-Path $tplBase 'cos\regional' } else { $tplBase = Join-Path $tplBase 'oos\regional' }
+            if ($dev -eq '13R' -and $region -eq 'CN') { $tplBase = Join-Path $tplBase 'cos\regional' }
+            else                                      { $tplBase = Join-Path $tplBase 'oos\regional' }
           }
 
           Copy-Item "$tplBase\*" -Destination $workDir -Recurse -Force
@@ -241,7 +252,6 @@ jobs:
         run: |
           $otaDir = $env:OTA_DIR
 
-          # Candidate folder names (ordered by flasher_type first)
           $byFtype = switch ($env:FTYPE) {
             'SuperHybrid Flasher'       { @('SuperHybrid Flasher','SuperHybrid Flasher CN') }
             'RegionalHybrid Flasher'    { @('RegionalHybrid Flasher','RegionalHybrid Flasher CN') }
@@ -251,14 +261,13 @@ jobs:
             default { @() }
           }
           $fallback = @('SuperHybrid Flasher','SuperHybrid Flasher CN','RegionalHybrid Flasher','RegionalHybrid Flasher CN','SuperHybrid SunOS Flasher','Super Flasher','Regional Flasher')
-
           $candidates = @() + $byFtype + $fallback | Select-Object -Unique
+
           $resultDir = $null
           foreach ($name in $candidates) {
             $p = Join-Path $otaDir $name
             if (Test-Path $p) { $resultDir = $p; break }
           }
-
           if (-not $resultDir) {
             throw "Could not find builder output folder next to OTA in '$otaDir'. Expected one of: $($candidates -join ', ')"
           }
@@ -277,12 +286,12 @@ jobs:
           "ARTIFACT_NAME=$artifact" | Out-File -FilePath $env:GITHUB_ENV -Append
           "ZIP_FILE=$zipPath"       | Out-File -FilePath $env:GITHUB_ENV -Append
 
-      # ============ Artifact / Upload (unchanged) ============
+      # ========= Artifact upload / paths =========
       - name: Upload artifact (single zip only)
         if: ${{ inputs.upload_to == 'Artifact Only' }}
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ env:ARTIFACT_NAME }}
+          name: ${{ env.ARTIFACT_NAME }}
           path: ${{ env:ZIP_FILE }}
           retention-days: ${{ env:ARTIFACT_RETENTION_DAYS }}
 
@@ -312,6 +321,9 @@ jobs:
           $sfBaseAbs = ($sfBaseAbs -replace '\\','/').TrimEnd('/')
           "SF_UPLOAD_DIR=$sfBaseAbs/$rel" | Out-File -FilePath $env:GITHUB_ENV -Append
 
+      # =========================
+      # DS_FTP Upload (no mkdirs)
+      # =========================
       - name: Upload to DS_FTP
         if: ${{ inputs.upload_to == 'DS_FTP' || inputs.upload_to == 'Both DS_FTP & Sourceforge' }}
         shell: pwsh
@@ -326,40 +338,72 @@ jobs:
           $fileName   = "$($env:ARTIFACT_NAME).zip"
           $zipPath    = $env:ZIP_FILE
           function New-FtpRequest([string]$uri,[string]$method){ $r=[System.Net.FtpWebRequest]::Create($uri);$r.Credentials=$cred;$r.Method=$method;$r.UsePassive=$true;$r.UseBinary=$true;$r.KeepAlive=$false;return $r }
-          $encodedPath = ($remoteDir.Split('/') | ? { $_ -ne '' } | % { [System.Uri]::EscapeDataString($_) }) -join '/'
+          $encodedPath = ($remoteDir.Split('/') | Where-Object { $_ -ne '' } | ForEach-Object { [System.Uri]::EscapeDataString($_) }) -join '/'
           $dirUri = if ($encodedPath) { "ftp://$ftpHost/$encodedPath" } else { "ftp://$ftpHost/" }
-          try { ($NewFtpReq=(New-FtpRequest $dirUri ([System.Net.WebRequestMethods+Ftp]::ListDirectory))).GetResponse().Close() } catch { $detail = $_.Exception.Response?.StatusDescription; throw "Target folder missing: $dirUri ($detail)" }
+          try { (New-FtpRequest $dirUri ([System.Net.WebRequestMethods+Ftp]::ListDirectory)).GetResponse().Close() } catch { $detail = $_.Exception.Response?.StatusDescription; throw "Target folder missing: $dirUri ($detail)" }
           if (-not (Test-Path $zipPath)) { throw "ZIP not found: $zipPath" }
           $uploadUri = if ($encodedPath) { "ftp://$ftpHost/$encodedPath/$([System.Uri]::EscapeDataString($fileName))" } else { "ftp://$ftpHost/$([System.Uri]::EscapeDataString($fileName))" }
           $req = New-FtpRequest $uploadUri ([System.Net.WebRequestMethods+Ftp]::UploadFile)
           $bytes = [System.IO.File]::ReadAllBytes($zipPath); $req.ContentLength=$bytes.Length
           $stream = $req.GetRequestStream(); $stream.Write($bytes,0,$bytes.Length); $stream.Close(); ($resp=$req.GetResponse()); Write-Host $resp.StatusDescription; $resp.Close()
 
+      # -------------------------------
+      # SourceForge: setup SSH (block env mapping)
+      # -------------------------------
       - name: Setup SSH for SourceForge
         if: ${{ inputs.upload_to == 'Sourceforge' || inputs.upload_to == 'Both DS_FTP & Sourceforge' }}
         shell: pwsh
-        env: { SF_SSH_PRIVATE_KEY: ${{ secrets.SF_SSH_PRIVATE_KEY }} }
+        env:
+          SF_SSH_PRIVATE_KEY: ${{ secrets.SF_SSH_PRIVATE_KEY }}
         run: |
           if (-not $env:SF_SSH_PRIVATE_KEY) { throw "Missing SF_SSH_PRIVATE_KEY secret." }
-          $sshDir = Join-Path $env:USERPROFILE ".ssh"; New-Item -ItemType Directory -Force -Path $sshDir | Out-Null
+          $sshDir  = Join-Path $env:USERPROFILE ".ssh"
+          New-Item -ItemType Directory -Force -Path $sshDir | Out-Null
           $keyPath = Join-Path $sshDir "id_ed25519"
+
           $key = ($env:SF_SSH_PRIVATE_KEY -replace "`r","").Trim() + "`n"
-          $first = ($key -split "`n")[0]; if ($first -notmatch "BEGIN OPENSSH PRIVATE KEY|BEGIN RSA PRIVATE KEY") { throw "SF_SSH_PRIVATE_KEY header invalid." }
+          $first = ($key -split "`n")[0]
+          if ($first -notmatch "BEGIN OPENSSH PRIVATE KEY|BEGIN RSA PRIVATE KEY") {
+            throw "SF_SSH_PRIVATE_KEY doesn't look like an OpenSSH private key (bad header)."
+          }
+
           Set-Content -Path $keyPath -Value $key -Encoding ascii
           icacls $keyPath /inheritance:r | Out-Null
           icacls $keyPath /grant:r "$($env:USERNAME):(R)" | Out-Null
-          $kh = Join-Path $sshDir "known_hosts"; ssh-keyscan -t rsa frs.sourceforge.net | Out-File -FilePath $kh -Encoding ascii
-          @("Host frs.sourceforge.net","  UserKnownHostsFile $kh","  IdentitiesOnly yes","  IdentityFile $keyPath") | Set-Content -Path (Join-Path $sshDir "config") -Encoding ascii
 
+          $kh = Join-Path $sshDir "known_hosts"
+          ssh-keyscan -t rsa frs.sourceforge.net | Out-File -FilePath $kh -Encoding ascii
+
+          $cfgPath  = Join-Path $sshDir "config"
+          @(
+            "Host frs.sourceforge.net"
+            "  UserKnownHostsFile $kh"
+            "  IdentitiesOnly yes"
+            "  IdentityFile $keyPath"
+          ) | Set-Content -Path $cfgPath -Encoding ascii
+
+      # ------------------------------------------------
+      # SourceForge: upload (block env mapping)
+      # ------------------------------------------------
       - name: Upload to SourceForge (SCP)
         if: ${{ inputs.upload_to == 'Sourceforge' || inputs.upload_to == 'Both DS_FTP & Sourceforge' }}
         shell: pwsh
-        env: { SF_USERNAME: ${{ secrets.SF_USERNAME }} }
+        env:
+          SF_USERNAME: ${{ secrets.SF_USERNAME }}
         run: |
-          if (-not $env:SF_USERNAME -or -not $env:SF_UPLOAD_DIR) { throw "Missing SF config." }
-          $zip=$env:ZIP_FILE; if (-not (Test-Path $zip)) { throw "ZIP not found: $zip" }
+          if (-not $env:SF_USERNAME -or -not $env:SF_UPLOAD_DIR) {
+            throw "Missing SourceForge config at runtime. Need SF_USERNAME and computed SF_UPLOAD_DIR."
+          }
+
+          $zip = $env:ZIP_FILE
+          if (-not (Test-Path $zip)) { throw "ZIP file not found: $zip" }
+
           $destDir = ($env:SF_UPLOAD_DIR -replace '\\','/').TrimEnd('/')
-          $dest = "$destDir/$($env:ARTIFACT_NAME).zip"
-          $key  = "$env:USERPROFILE\.ssh\id_ed25519"
-          ssh -i "$key" -o StrictHostKeyChecking=yes "$($env:SF_USERNAME)@frs.sourceforge.net" "test -d `"$destDir`" || { echo 'ERROR: Missing folder on SourceForge: ' `"$destDir`"; exit 66; }"
+          $dest    = "$destDir/$($env:ARTIFACT_NAME).zip"
+          $key     = "$env:USERPROFILE\.ssh\id_ed25519"
+
+          ssh -i "$key" -o StrictHostKeyChecking=yes "$($env:SF_USERNAME)@frs.sourceforge.net" `
+            "test -d `"$destDir`" || { echo 'ERROR: Destination folder does not exist on SourceForge: ' `"$destDir`"; exit 66; }"
+
+          Write-Host "Uploading to SourceForge: $dest"
           scp -i "$key" -o StrictHostKeyChecking=yes "$zip" "$($env:SF_USERNAME)@frs.sourceforge.net:`"$dest`""
