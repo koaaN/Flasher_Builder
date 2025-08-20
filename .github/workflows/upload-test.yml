@@ -378,7 +378,7 @@ jobs:
           $sfBaseAbs = ($sfBaseAbs -replace '\\','/').TrimEnd('/')
           "SF_UPLOAD_DIR=$sfBaseAbs/$rel" | Out-File -FilePath $env:GITHUB_ENV -Append
 
-      - name: Upload to DS_FTP
+      - name: Upload to DS_FTP (streamed, large-file safe)
         if: ${{ inputs.upload_to == 'DS_FTP' || inputs.upload_to == 'Both DS_FTP & Sourceforge' }}
         shell: pwsh
         env:
@@ -386,46 +386,80 @@ jobs:
           DS_FTP_USER: ${{ secrets.DS_FTP_USER }}
           DS_FTP_PASS: ${{ secrets.DS_FTP_PASS }}
         run: |
-          if (-not $env:DS_FTP_HOST -or -not $env:DS_FTP_USER -or -not $env:DS_FTP_PASS) { throw "Missing DS_FTP secrets." }
-          $ftpHost=$env:DS_FTP_HOST
-          $cred=New-Object System.Net.NetworkCredential($env:DS_FTP_USER,$env:DS_FTP_PASS)
-
-          $remoteDir  = "$env:FTP_UPLOAD_DIR".Trim('/')
-          $fileName   = "$($env:ARTIFACT_NAME).zip"
-          $zipPath    = $env:ZIP_FILE
-
+          if (-not $env:DS_FTP_HOST -or -not $env:DS_FTP_USER -or -not $env:DS_FTP_PASS) {
+            throw "Missing DS_FTP secrets. Required: DS_FTP_HOST, DS_FTP_USER, DS_FTP_PASS"
+          }
+      
+          $ftpHost   = $env:DS_FTP_HOST
+          $user      = $env:DS_FTP_USER
+          $pass      = $env:DS_FTP_PASS
+          $remoteDir = "$env:FTP_UPLOAD_DIR".Trim('/')     # e.g. Oneplus 13/Super Flashers/Global
+          $fileName  = "$($env:ARTIFACT_NAME).zip"
+          $zipPath   = $env:ZIP_FILE
+      
+          if (-not (Test-Path $zipPath)) { throw "ZIP not found: $zipPath" }
+      
+          # URL-encode each path segment
+          $encPath = ($remoteDir.Split('/') | ? { $_ -ne '' } | % { [System.Uri]::EscapeDataString($_) }) -join '/'
+      
+          # Preflight: verify remote folder exists (no mkdirs)
           function New-FtpRequest([string]$uri,[string]$method){
             $r=[System.Net.FtpWebRequest]::Create($uri)
-            $r.Credentials=$cred
-            $r.Method=$method
-            $r.UsePassive=$true
-            $r.UseBinary=$true
-            $r.KeepAlive=$false
+            $r.Credentials = New-Object System.Net.NetworkCredential($user,$pass)
+            $r.Method      = $method
+            $r.UsePassive  = $true
+            $r.UseBinary   = $true
+            $r.KeepAlive   = $false
             return $r
           }
-
-          $encodedPath = ($remoteDir.Split('/') | Where-Object { $_ -ne '' } | ForEach-Object { [System.Uri]::EscapeDataString($_) }) -join '/'
-          $dirUri = if ($encodedPath) { "ftp://$ftpHost/$encodedPath" } else { "ftp://$ftpHost/" }
-
+          $dirUri = if ($encPath) { "ftp://$ftpHost/$encPath" } else { "ftp://$ftpHost/" }
           try {
             (New-FtpRequest $dirUri ([System.Net.WebRequestMethods+Ftp]::ListDirectory)).GetResponse().Close()
           } catch {
             $detail = $_.Exception.Response?.StatusDescription
-            throw "Target folder missing: $dirUri ($detail)"
+            throw "Target folder does not exist or is not accessible: $dirUri ($detail)"
           }
-
-          if (-not (Test-Path $zipPath)) { throw "ZIP not found: $zipPath" }
-          $uploadUri = if ($encodedPath) { "ftp://$ftpHost/$encodedPath/$([System.Uri]::EscapeDataString($fileName))" } else { "ftp://$ftpHost/$([System.Uri]::EscapeDataString($fileName))" }
-
-          $req = New-FtpRequest $uploadUri ([System.Net.WebRequestMethods+Ftp]::UploadFile)
-          $bytes = [System.IO.File]::ReadAllBytes($zipPath)
-          $req.ContentLength=$bytes.Length
-          $stream = $req.GetRequestStream()
-          $stream.Write($bytes,0,$bytes.Length)
-          $stream.Close()
-          ($resp=$req.GetResponse())
-          Write-Host $resp.StatusDescription
-          $resp.Close()
+      
+          # Stream the upload in chunks (avoids >2 GB ReadAllBytes limitation)
+          $uploadUri = if ($encPath) {
+            "ftp://$ftpHost/$encPath/$([System.Uri]::EscapeDataString($fileName))"
+          } else {
+            "ftp://$ftpHost/$([System.Uri]::EscapeDataString($fileName))"
+          }
+      
+          try {
+            $req = New-FtpRequest $uploadUri ([System.Net.WebRequestMethods+Ftp]::UploadFile)
+            $req.ContentLength = (Get-Item $zipPath).Length
+      
+            $bufferSize = 4MB
+            $buffer     = New-Object byte[] $bufferSize
+            $fs   = [System.IO.File]::OpenRead($zipPath)
+            $dest = $req.GetRequestStream()
+            try {
+              while (($read = $fs.Read($buffer,0,$buffer.Length)) -gt 0) {
+                $dest.Write($buffer,0,$read)
+              }
+            } finally {
+              $dest.Close()
+              $fs.Close()
+            }
+      
+            $resp = $req.GetResponse()
+            Write-Host ("FTP server response: {0}" -f $resp.StatusDescription)
+            $resp.Close()
+          } catch {
+            Write-Warning "Streaming FTP upload failed: $($_.Exception.Message)"
+            Write-Warning "Falling back to curl…"
+      
+            # curl upload (also streams). No mkdirs; must already exist.
+            $curlExe = Get-Command curl -ErrorAction SilentlyContinue
+            if (-not $curlExe) { throw "curl not found and FTP upload failed." }
+      
+            $urlBase = if ($encPath) { "ftp://$ftpHost/$encPath/" } else { "ftp://$ftpHost/" }
+            $urlFull = $urlBase + [System.Uri]::EscapeDataString($fileName)
+            $userPwd = "$($user):$($pass)"
+            & $curlExe.Path --ftp-pasv --disable-eprt --user $userPwd -T "$zipPath" "$urlFull" --fail --show-error --silent
+          }
 
       - name: Setup SSH for SourceForge
         if: ${{ inputs.upload_to == 'Sourceforge' || inputs.upload_to == 'Both DS_FTP & Sourceforge' }}
