@@ -66,6 +66,7 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
+      # 1) Prepare dirs; if no URL, create a placeholder OTA.zip
       - name: Prep dirs and placeholder
         shell: pwsh
         run: |
@@ -77,6 +78,7 @@ jobs:
             Compress-Archive -Path "download\PLACEHOLDER.txt" -DestinationPath "download\OTA.zip" -Force
           }
 
+      # 2) Download with aria2 (fallback to curl) only when URL is provided
       - name: Download OTA zip (aria2 → curl fallback)
         if: ${{ inputs.ota_url != '' }}
         shell: cmd
@@ -90,6 +92,7 @@ jobs:
             curl -L -o download\OTA.zip "${{ inputs.ota_url }}"
           )
 
+      # 3) Export OTA_PATH and OTA_DIR for later steps
       - name: Export OTA env
         shell: pwsh
         run: |
@@ -99,6 +102,7 @@ jobs:
           "OTA_PATH=$ota"    | Out-File -FilePath $env:GITHUB_ENV -Append
           "OTA_DIR=$otaDir"  | Out-File -FilePath $env:GITHUB_ENV -Append
 
+      # 4) Decide which builder .bat to use
       - name: Map device → pick builder
         shell: pwsh
         run: |
@@ -146,7 +150,8 @@ jobs:
           "REGION=$region"       | Out-File -FilePath $env:GITHUB_ENV -Append
           "BUILDER_BAT=$batName" | Out-File -FilePath $env:GITHUB_ENV -Append
 
-      - name: Stage files
+      # 5) Stage builder + template source folders in OUT_DIR
+      - name: Stage files (with Oneplus 13 SuperHybrid tweaks)
         shell: pwsh
         run: |
           function Copy-BloatFiles($base, $region, $dest) {
@@ -159,11 +164,14 @@ jobs:
               'A5'  = 'A5_DEBLOAT'
             }
             $needed = @('my_preload.img','my_company.img','odm.img','oplusstanvbk.img','my_region.img')
+
             $folder = $map[$region]
             if (-not $folder) { return }
             $src = Join-Path $base $folder
             if (-not (Test-Path $src)) { return }
+
             if (-not (Test-Path $dest)) { New-Item -ItemType Directory -Force -Path $dest | Out-Null }
+
             foreach ($f in $needed) {
               $imgPath  = Join-Path $src $f
               if (Test-Path $imgPath) { Copy-Item $imgPath -Destination $dest -Force; continue }
@@ -172,12 +180,10 @@ jobs:
                 try {
                   $url = (Get-Content $stubPath -Raw).Trim()
                   if ($url) {
-                    $outFile = Join-Path $dest $f
-                    Write-Host ("Downloading missing {0} from {1}" -f $f, $url)
-                    Invoke-WebRequest -Uri $url -OutFile $outFile
+                    Invoke-WebRequest -Uri $url -OutFile (Join-Path $dest $f)
                   }
                 } catch {
-                  Write-Warning ("Failed to download {0} from stub URL in {1}: {2}") 
+                  Write-Warning ("Failed to download {0} from stub URL in {1}: {2}" -f $f, $stubPath, $_.Exception.Message)
                 }
               }
             }
@@ -191,16 +197,18 @@ jobs:
           $builderDir = Join-Path $root ("build_scripts\" + $dev)
           $bloatBase  = Join-Path $root ("bloat\" + $dev)
 
+          # Fresh OUT_DIR
           if (Test-Path $env:OUT_DIR) { Remove-Item $env:OUT_DIR -Recurse -Force }
           New-Item -ItemType Directory -Force -Path $env:OUT_DIR | Out-Null
 
+          # Put otaripper + builder .bat in OUT_DIR (the .bat uses %~dp0 paths)
           if (Test-Path (Join-Path $root 'otaripper\otaripper.exe')) {
             Copy-Item (Join-Path $root 'otaripper\otaripper.exe') -Destination $env:OUT_DIR -Force
           }
           $builderSrc = Join-Path $builderDir $env:BUILDER_BAT
           if (Test-Path $builderSrc) { Copy-Item $builderSrc -Destination $env:OUT_DIR -Force }
 
-          # IMPORTANT: use exact folder names that the .bat expects via %~dp0
+          # IMPORTANT: exact folder names the .bat expects via "%~dp0..."
           $workName = switch ($ftype) {
             'SuperHybrid Flasher'       { 'SuperHybrid Flasher' }
             'RegionalHybrid Flasher'    { 'RegionalHybrid Flasher' }
@@ -211,6 +219,7 @@ jobs:
           $workDir = Join-Path $env:OUT_DIR $workName
           New-Item -ItemType Directory -Force -Path $workDir | Out-Null
 
+          # Choose template root
           $tplBase = Join-Path $root ("flasher_scripts\" + $dev)
           if ($ftype -like '*Hybrid*') {
             $tplBase = Join-Path $tplBase ($(if ($region -eq 'CN') { 'cos' } else { 'oos' }))
@@ -223,13 +232,16 @@ jobs:
             else                                      { $tplBase = Join-Path $tplBase 'oos\regional' }
           }
 
+          # Copy template into the EXACT folder name that the batch expects
           Copy-Item "$tplBase\*" -Destination $workDir -Recurse -Force
 
+          # META-INF only for Hybrid builds
           if ($ftype -like '*Hybrid*') {
             $mi = Join-Path $tplBase 'META-INF'
             if (Test-Path $mi) { Copy-Item $mi -Destination (Join-Path $workDir 'META-INF') -Recurse -Force }
           }
 
+          # Super builds: stage lpmake and bloat
           if ($ftype -match 'Super') {
             $superDir = Join-Path $workDir 'Super'
             New-Item -ItemType Directory -Force -Path $superDir | Out-Null
@@ -254,21 +266,46 @@ jobs:
             }
           }
 
+          # --- EXTRA REQUIREMENTS ---
+          # 1) Oneplus 13 + SuperHybrid: ensure 16DTBO exists in OUT_DIR (next to .bat & otaripper)
+          if ($dev -eq '13' -and $ftype -eq 'SuperHybrid Flasher') {
+            $src16 = Join-Path $root '16DTBO'
+            if (Test-Path $src16) {
+              Copy-Item $src16 -Destination $env:OUT_DIR -Recurse -Force
+              Write-Host "Copied 16DTBO to $env:OUT_DIR"
+            } else {
+              Write-Warning "16DTBO folder not found at repo root; builder may fail to copy dtbo.img"
+            }
+
+            # 2) Oneplus 13 + SuperHybrid: add bloat/13/COS_FILES_HERE into the working folder
+            $cosBloat = Join-Path $bloatBase 'COS_FILES_HERE'
+            if (Test-Path $cosBloat) {
+              Copy-Item $cosBloat -Destination (Join-Path $workDir 'COS_FILES_HERE') -Recurse -Force
+              Write-Host "Injected COS_FILES_HERE into $workDir"
+            } else {
+              Write-Warning "COS_FILES_HERE not found under $bloatBase"
+            }
+          }
+
           "WORK_DIR=$workDir" | Out-File -FilePath $env:GITHUB_ENV -Append
 
+      # 6) TRUE drag&drop: run builder with CWD = OTA_DIR, pass OTA path as %1
       - name: Run builder (Explorer-style drag & drop)
         shell: cmd
         working-directory: ${{ env.OTA_DIR }}
         run: |
           echo CWD is %CD%
           echo Calling builder: "%GITHUB_WORKSPACE%\%OUT_DIR%\%BUILDER_BAT%" "%OTA_PATH%"
+          rem Feed a newline so 'pause' in the script doesn't hang CI
           (echo.| call "%GITHUB_WORKSPACE%\%OUT_DIR%\%BUILDER_BAT%" "%OTA_PATH%") || exit /b 1
 
-      - name: Package final output (builder result) — large-zip safe
+      # 7) Package ONLY the folder produced next to the ZIP using tar -a (fast, large-file safe)
+      - name: Package final output (tar -a)
         shell: pwsh
         run: |
           $otaDir = $env:OTA_DIR
 
+          # Candidate folder names (prefer exact based on flasher_type)
           $byFtype = switch ($env:FTYPE) {
             'SuperHybrid Flasher'       { @('SuperHybrid Flasher') }
             'RegionalHybrid Flasher'    { @('RegionalHybrid Flasher') }
@@ -297,45 +334,28 @@ jobs:
 
           if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
 
-          # Prefer 7-Zip if available (fast & large-file safe)
-          $sevenZip = @(
-            "$env:ProgramFiles\7-Zip\7z.exe",
-            "$env:ProgramFiles(x86)\7-Zip\7z.exe",
-            (Join-Path $env:GITHUB_WORKSPACE '7zip\7z.exe')
-          ) | Where-Object { Test-Path $_ } | Select-Object -First 1
+          $tarCmd = Get-Command tar -ErrorAction SilentlyContinue
+          if (-not $tarCmd) { throw "tar.exe not found on runner; please install / add to PATH." }
 
-          if ($sevenZip) {
-            Write-Host "Using 7z at $sevenZip"
-            & $sevenZip a -tzip $zipPath "$resultDir\*" -mx=7 | Write-Host
-          }
-          else {
-            # Use bsdtar (bundled tar.exe) to write ZIPs; avoids Compress-Archive 2GB bug
-            $tarCmd = Get-Command tar -ErrorAction SilentlyContinue
-            if ($tarCmd) {
-              Write-Host "Using tar (bsdtar) to create ZIP"
-              Push-Location $resultDir
-              tar -a -c -f $zipPath .
-              Pop-Location
-            }
-            else {
-              Write-Warning "7z and tar not found. Falling back to Compress-Archive (may fail >2GB)."
-              Compress-Archive -Path "$resultDir\*" -DestinationPath $zipPath -Force
-            }
-          }
+          Push-Location $resultDir
+          tar -a -c -f "$zipPath" .
+          Pop-Location
 
           if (-not (Test-Path $zipPath)) { throw "Packaging failed: ZIP not created at $zipPath" }
 
           "ARTIFACT_NAME=$artifact" | Out-File -FilePath $env:GITHUB_ENV -Append
           "ZIP_FILE=$zipPath"       | Out-File -FilePath $env:GITHUB_ENV -Append
 
+      # ========= Artifact upload =========
       - name: Upload artifact (single zip only)
         if: ${{ inputs.upload_to == 'Artifact Only' }}
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.ARTIFACT_NAME }}
-          path: ${{ env.ZIP_FILE }}
-          retention-days: ${{ env.ARTIFACT_RETENTION_DAYS }}
+          name: ${{ env:ARTIFACT_NAME }}
+          path: ${{ env:ZIP_FILE }}
+          retention-days: ${{ env:ARTIFACT_RETENTION_DAYS }}
 
+      # ========= Compute remote paths =========
       - name: Compute upload paths
         shell: pwsh
         run: |
@@ -367,10 +387,12 @@ jobs:
           if (-not $rel.EndsWith('/')) { $rel += '/' }
           "REL_UPLOAD_DIR=$rel" | Out-File -FilePath $env:GITHUB_ENV -Append
 
+          # DS FTP base ("/" means login root)
           $ftpBase = "${{ secrets.DS_FTP_PATH }}".Trim('/')
           $ftpAbs  = ($ftpBase.Length -gt 0) ? "$ftpBase/$rel" : $rel
           "FTP_UPLOAD_DIR=$ftpAbs" | Out-File -FilePath $env:GITHUB_ENV -Append
 
+          # SourceForge absolute base path must be provided
           $sfBaseAbs = "${{ secrets.SF_PROJECT_PATH }}".Trim()
           if ([string]::IsNullOrWhiteSpace($sfBaseAbs) -or -not $sfBaseAbs.StartsWith('/')) {
             throw "SF_PROJECT_PATH must be an absolute path like /home/frs/project/oneplus13flashers"
@@ -378,6 +400,9 @@ jobs:
           $sfBaseAbs = ($sfBaseAbs -replace '\\','/').TrimEnd('/')
           "SF_UPLOAD_DIR=$sfBaseAbs/$rel" | Out-File -FilePath $env:GITHUB_ENV -Append
 
+      # =========================
+      # DS_FTP Upload (streamed)
+      # =========================
       - name: Upload to DS_FTP (streamed, large-file safe)
         if: ${{ inputs.upload_to == 'DS_FTP' || inputs.upload_to == 'Both DS_FTP & Sourceforge' }}
         shell: pwsh
@@ -389,20 +414,19 @@ jobs:
           if (-not $env:DS_FTP_HOST -or -not $env:DS_FTP_USER -or -not $env:DS_FTP_PASS) {
             throw "Missing DS_FTP secrets. Required: DS_FTP_HOST, DS_FTP_USER, DS_FTP_PASS"
           }
-      
+
           $ftpHost   = $env:DS_FTP_HOST
           $user      = $env:DS_FTP_USER
           $pass      = $env:DS_FTP_PASS
-          $remoteDir = "$env:FTP_UPLOAD_DIR".Trim('/')     # e.g. Oneplus 13/Super Flashers/Global
+          $remoteDir = "$env:FTP_UPLOAD_DIR".Trim('/')
           $fileName  = "$($env:ARTIFACT_NAME).zip"
           $zipPath   = $env:ZIP_FILE
-      
+
           if (-not (Test-Path $zipPath)) { throw "ZIP not found: $zipPath" }
-      
+
           # URL-encode each path segment
-          $encPath = ($remoteDir.Split('/') | ? { $_ -ne '' } | % { [System.Uri]::EscapeDataString($_) }) -join '/'
-      
-          # Preflight: verify remote folder exists (no mkdirs)
+          $encPath = ($remoteDir.Split('/') | Where-Object { $_ -ne '' } | ForEach-Object { [System.Uri]::EscapeDataString($_) }) -join '/'
+
           function New-FtpRequest([string]$uri,[string]$method){
             $r=[System.Net.FtpWebRequest]::Create($uri)
             $r.Credentials = New-Object System.Net.NetworkCredential($user,$pass)
@@ -412,6 +436,8 @@ jobs:
             $r.KeepAlive   = $false
             return $r
           }
+
+          # Preflight: verify remote folder exists
           $dirUri = if ($encPath) { "ftp://$ftpHost/$encPath" } else { "ftp://$ftpHost/" }
           try {
             (New-FtpRequest $dirUri ([System.Net.WebRequestMethods+Ftp]::ListDirectory)).GetResponse().Close()
@@ -419,18 +445,18 @@ jobs:
             $detail = $_.Exception.Response?.StatusDescription
             throw "Target folder does not exist or is not accessible: $dirUri ($detail)"
           }
-      
-          # Stream the upload in chunks (avoids >2 GB ReadAllBytes limitation)
+
+          # Stream the upload in chunks (no 2GB ReadAllBytes limit)
           $uploadUri = if ($encPath) {
             "ftp://$ftpHost/$encPath/$([System.Uri]::EscapeDataString($fileName))"
           } else {
             "ftp://$ftpHost/$([System.Uri]::EscapeDataString($fileName))"
           }
-      
+
           try {
             $req = New-FtpRequest $uploadUri ([System.Net.WebRequestMethods+Ftp]::UploadFile)
             $req.ContentLength = (Get-Item $zipPath).Length
-      
+
             $bufferSize = 4MB
             $buffer     = New-Object byte[] $bufferSize
             $fs   = [System.IO.File]::OpenRead($zipPath)
@@ -443,24 +469,26 @@ jobs:
               $dest.Close()
               $fs.Close()
             }
-      
+
             $resp = $req.GetResponse()
             Write-Host ("FTP server response: {0}" -f $resp.StatusDescription)
             $resp.Close()
           } catch {
             Write-Warning "Streaming FTP upload failed: $($_.Exception.Message)"
             Write-Warning "Falling back to curl…"
-      
-            # curl upload (also streams). No mkdirs; must already exist.
+
             $curlExe = Get-Command curl -ErrorAction SilentlyContinue
             if (-not $curlExe) { throw "curl not found and FTP upload failed." }
-      
+
             $urlBase = if ($encPath) { "ftp://$ftpHost/$encPath/" } else { "ftp://$ftpHost/" }
             $urlFull = $urlBase + [System.Uri]::EscapeDataString($fileName)
             $userPwd = "$($user):$($pass)"
             & $curlExe.Path --ftp-pasv --disable-eprt --user $userPwd -T "$zipPath" "$urlFull" --fail --show-error --silent
           }
 
+      # -------------------------------
+      # SourceForge: setup SSH
+      # -------------------------------
       - name: Setup SSH for SourceForge
         if: ${{ inputs.upload_to == 'Sourceforge' || inputs.upload_to == 'Both DS_FTP & Sourceforge' }}
         shell: pwsh
@@ -494,6 +522,9 @@ jobs:
             "  IdentityFile $keyPath"
           ) | Set-Content -Path $cfgPath -Encoding ascii
 
+      # ------------------------------------------------
+      # SourceForge: upload
+      # ------------------------------------------------
       - name: Upload to SourceForge (SCP)
         if: ${{ inputs.upload_to == 'Sourceforge' || inputs.upload_to == 'Both DS_FTP & Sourceforge' }}
         shell: pwsh
@@ -511,8 +542,7 @@ jobs:
           $dest    = "$destDir/$($env:ARTIFACT_NAME).zip"
           $key     = "$env:USERPROFILE\.ssh\id_ed25519"
 
-          ssh -i "$key" -o StrictHostKeyChecking=yes "$($env:SF_USERNAME)@frs.sourceforge.net" `
-            "test -d `"$destDir`" || { echo 'ERROR: Destination folder does not exist on SourceForge: ' `"$destDir`"; exit 66; }"
+          ssh -i "$key" -o StrictHostKeyChecking=yes "$($env:SF_USERNAME)@frs.sourceforge.net" "test -d `"$destDir`" || { echo 'ERROR: Destination folder does not exist on SourceForge: ' `"$destDir`"; exit 66; }"
 
           Write-Host "Uploading to SourceForge: $dest"
           scp -i "$key" -o StrictHostKeyChecking=yes "$zip" "$($env:SF_USERNAME)@frs.sourceforge.net:`"$dest`""
