@@ -102,14 +102,8 @@ jobs:
           $region = "${{ inputs.region }}"
 
           $batName = switch ($ftype) {
-            'SuperHybrid Flasher' {
-              if ($region -eq 'CN') { 'SUPERHYBRID_CN_FULL_SUPERBUILD.bat' }
-              else { 'SUPERHYBRID_FULL_SUPERBUILD.bat' }
-            }
-            'RegionalHybrid Flasher' {
-              if ($region -eq 'CN') { 'REGIONALHYBRID_CN_FULL_BUILD.bat' }
-              else { 'REGIONALHYBRID_FULL_BUILD.bat' }
-            }
+            'SuperHybrid Flasher'       { if ($region -eq 'CN') { 'SUPERHYBRID_CN_FULL_SUPERBUILD.bat' } else { 'SUPERHYBRID_FULL_SUPERBUILD.bat' } }
+            'RegionalHybrid Flasher'    { if ($region -eq 'CN') { 'REGIONALHYBRID_CN_FULL_BUILD.bat' } else { 'REGIONALHYBRID_FULL_BUILD.bat' } }
             'SuperHybrid SunOS Flasher' { 'SUPERHYBRID_SUNOS_FULL_SUPERBUILD.bat' }
             'Super Flasher' {
               if     ($dev -eq '13R' -and $region -eq 'CN') { 'SUPER_CN_FULL_SUPERBUILD.bat' }
@@ -128,10 +122,10 @@ jobs:
             default { throw "Unknown flasher type: $ftype" }
           }
 
-          "DEV=$dev"                 | Out-File -FilePath $env:GITHUB_ENV -Append
-          "FTYPE=$ftype"             | Out-File -FilePath $env:GITHUB_ENV -Append
-          "REGION=$region"           | Out-File -FilePath $env:GITHUB_ENV -Append
-          "BUILDER_BAT=$batName"     | Out-File -FilePath $env:GITHUB_ENV -Append
+          "DEV=$dev"             | Out-File -FilePath $env:GITHUB_ENV -Append
+          "FTYPE=$ftype"         | Out-File -FilePath $env:GITHUB_ENV -Append
+          "REGION=$region"       | Out-File -FilePath $env:GITHUB_ENV -Append
+          "BUILDER_BAT=$batName" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Stage files
         shell: pwsh
@@ -174,7 +168,7 @@ jobs:
           $ftype   = $env:FTYPE
           $region  = $env:REGION
 
-          $root = $env:GITHUB_WORKSPACE
+          $root       = $env:GITHUB_WORKSPACE
           $builderDir = Join-Path $root ("build_scripts\" + $dev)
           $bloatBase  = Join-Path $root ("bloat\" + $dev)
 
@@ -367,7 +361,7 @@ jobs:
           $ftpAbs  = ($ftpBase.Length -gt 0) ? "$ftpBase/$rel" : $rel
           "FTP_UPLOAD_DIR=$ftpAbs" | Out-File -FilePath $env:GITHUB_ENV -Append
 
-          # SF base is absolute full path from secret (e.g. /home/pfs/project/oneplus13flashers)
+          # SourceForge base is an absolute path from the secret (e.g. /home/pfs/project/oneplus13flashers)
           $sfBaseAbs = "${{ secrets.SF_PROJECT_PATH }}".TrimEnd('/')
           $sfAbs     = "$sfBaseAbs/$rel"
           "SF_UPLOAD_DIR=$sfAbs" | Out-File -FilePath $env:GITHUB_ENV -Append
@@ -480,7 +474,7 @@ jobs:
           $zip = $env:ZIP_FILE
           if (-not (Test-Path $zip)) { throw "ZIP file not found: $zip" }
 
-          # Absolute destination path computed earlier
+          # Use absolute destination dir computed earlier (ends with /)
           $destDir = "$($env:SF_UPLOAD_DIR)".TrimEnd('/')
           $dest    = "$destDir/$($env:ARTIFACT_NAME).zip"
           $key     = "$env:USERPROFILE\.ssh\id_ed25519"
