@@ -337,43 +337,47 @@ jobs:
           $device = "${{ inputs.device }}"
           $ftype  = "${{ inputs.flasher_type }}"
           $region = "${{ inputs.region }}"
-
+      
           # Category from flasher type
           $category = switch -Regex ($ftype) {
             '^(SuperHybrid Flasher|SuperHybrid SunOS Flasher|Super Flasher)$' { 'Super Flashers'; break }
             default { 'Regional Flashers' }
           }
-
-          # Region folder mapping
-          $regionFolder = switch ($region) {
-            'CN'  { 'COS' }
-            'GLO' { 'Global' }
-            'EU'  { 'EU' }
-            'IN'  { 'IN' }
-            'NA'  { 'NA' }
-            default { $region }
+      
+          # Devices 13S and 13T skip region subfolders
+          $needsRegion = ($device -ne 'Oneplus 13S' -and $device -ne 'Oneplus 13T')
+      
+          $rel = ""
+          if ($needsRegion) {
+            $regionFolder = switch ($region) {
+              'CN'  { 'COS' }
+              'GLO' { 'Global' }
+              'EU'  { 'EU' }
+              'IN'  { 'IN' }
+              'NA'  { 'NA' }
+              default { $region }
+            }
+            $rel = Join-Path (Join-Path $device $category) $regionFolder
+          } else {
+            $rel = Join-Path $device $category
           }
-
-          # Relative dir (shared layout)
-          $rel = Join-Path (Join-Path $device $category) $regionFolder
-
-          # Normalize to forward slashes for remote paths, ensure trailing slash
+      
+          # Normalize to forward slashes, ensure trailing slash
           $rel = ($rel -replace '\\','/')
           if (-not $rel.EndsWith('/')) { $rel += '/' }
-
+      
           "REL_UPLOAD_DIR=$rel" | Out-File -FilePath $env:GITHUB_ENV -Append
-
+      
           # Build absolute dirs for each backend
           $ftpBase = "${{ secrets.DS_FTP_PATH }}".Trim('/')
           $sfBase  = "${{ secrets.SF_PROJECT_PATH }}".Trim('/')
-
+      
           $ftpAbs = ($ftpBase.Length -gt 0) ? "$ftpBase/$rel" : $rel
           $sfAbs  = ($sfBase.Length  -gt 0) ? "/home/frs/project/$sfBase/$rel" : "/home/frs/project/$rel"
-
+      
           "FTP_UPLOAD_DIR=$ftpAbs" | Out-File -FilePath $env:GITHUB_ENV -Append
           "SF_UPLOAD_DIR=$sfAbs"   | Out-File -FilePath $env:GITHUB_ENV -Append
-
-          # Useful echo
+      
           Write-Host "Relative upload dir: $rel"
           Write-Host "FTP upload dir: $ftpAbs"
           Write-Host "SF upload dir:  $sfAbs"
