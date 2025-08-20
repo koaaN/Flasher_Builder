@@ -476,7 +476,7 @@ jobs:
       
           # Optional: SSH config to always use our key for frs
           $cfg = @"
-      Host frs.sourceforge.net
+        Host frs.sourceforge.net
         UserKnownHostsFile $kh
         IdentitiesOnly yes
         IdentityFile $keyPath
