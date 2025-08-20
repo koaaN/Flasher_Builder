@@ -322,7 +322,7 @@ jobs:
         with:
           name: ${{ env.ARTIFACT_NAME }}
           path: ${{ env.ZIP_FILE }}
-          retention-days: ${{ env.ARTIFACT_RETENTION_DAYS }}
+          retention-days: ${{ env:ARTIFACT_RETENTION_DAYS }}
 
       # ============
       # Compute upload paths
@@ -361,14 +361,15 @@ jobs:
 
           "REL_UPLOAD_DIR=$rel" | Out-File -FilePath $env:GITHUB_ENV -Append
 
+          # DS FTP base (can be "/" to mean login root)
           $ftpBase = "${{ secrets.DS_FTP_PATH }}".Trim('/')
-          $sfBase  = "${{ secrets.SF_PROJECT_PATH }}".Trim('/')
-
-          $ftpAbs = ($ftpBase.Length -gt 0) ? "$ftpBase/$rel" : $rel
-          $sfAbs  = ($sfBase.Length  -gt 0) ? "/home/frs/project/$sfBase/$rel" : "/home/frs/project/$rel"
-
+          $ftpAbs  = ($ftpBase.Length -gt 0) ? "$ftpBase/$rel" : $rel
           "FTP_UPLOAD_DIR=$ftpAbs" | Out-File -FilePath $env:GITHUB_ENV -Append
-          "SF_UPLOAD_DIR=$sfAbs"   | Out-File -FilePath $env:GITHUB_ENV -Append
+
+          # SF base is absolute full path from secret (e.g. /home/pfs/project/oneplus13flashers)
+          $sfBaseAbs = "${{ secrets.SF_PROJECT_PATH }}".TrimEnd('/')
+          $sfAbs     = "$sfBaseAbs/$rel"
+          "SF_UPLOAD_DIR=$sfAbs" | Out-File -FilePath $env:GITHUB_ENV -Append
 
           Write-Host "Relative upload dir: $rel"
           Write-Host "FTP upload dir: $ftpAbs"
@@ -391,7 +392,7 @@ jobs:
 
           $ftpHost    = $env:DS_FTP_HOST
           $cred       = New-Object System.Net.NetworkCredential($env:DS_FTP_USER, $env:DS_FTP_PASS)
-          $remoteDir  = "$env:FTP_UPLOAD_DIR".Trim('/')  # e.g. "Oneplus 13/Super Flashers/Global" or "Oneplus 13S/Super Flashers"
+          $remoteDir  = "$env:FTP_UPLOAD_DIR".Trim('/')
           $fileName   = "$($env:ARTIFACT_NAME).zip"
           $zipPath    = $env:ZIP_FILE
 
@@ -410,21 +411,15 @@ jobs:
           Write-Host "Checking remote folder: $dirUri"
           try {
             $req = New-FtpRequest $dirUri ([System.Net.WebRequestMethods+Ftp]::ListDirectory)
-            $resp = $req.GetResponse()
-            $resp.Close()
+            $resp = $req.GetResponse(); $resp.Close()
             Write-Host "OK: remote folder exists."
           } catch {
-            $detail = ""
-            if ($_.Exception.Response) { $detail = " ($($_.Exception.Response.StatusDescription))" }
+            $detail = ""; if ($_.Exception.Response) { $detail = " ($($_.Exception.Response.StatusDescription))" }
             throw "Target folder does not exist or is not accessible: $dirUri$detail"
           }
 
           if (-not (Test-Path $zipPath)) { throw "ZIP not found: $zipPath" }
-          $uploadUri = if ($encodedPath) {
-            "ftp://$ftpHost/$encodedPath/$([System.Uri]::EscapeDataString($fileName))"
-          } else {
-            "ftp://$ftpHost/$([System.Uri]::EscapeDataString($fileName))"
-          }
+          $uploadUri = if ($encodedPath) { "ftp://$ftpHost/$encodedPath/$([System.Uri]::EscapeDataString($fileName))" } else { "ftp://$ftpHost/$([System.Uri]::EscapeDataString($fileName))" }
 
           Write-Host "Uploading to: $uploadUri"
           $req = New-FtpRequest $uploadUri ([System.Net.WebRequestMethods+Ftp]::UploadFile)
@@ -451,19 +446,14 @@ jobs:
           $sshDir  = Join-Path $env:USERPROFILE ".ssh"
           New-Item -ItemType Directory -Force -Path $sshDir | Out-Null
 
-          # Save private key (ASCII avoids BOM)
           $keyPath = Join-Path $sshDir "id_ed25519"
           Set-Content -Path $keyPath -Value $env:SF_SSH_PRIVATE_KEY -Encoding ascii
-
-          # Lock down permissions
           icacls $keyPath /inheritance:r | Out-Null
           icacls $keyPath /grant:r "$($env:USERNAME):(R)" | Out-Null
 
-          # known_hosts
           $kh = Join-Path $sshDir "known_hosts"
           ssh-keyscan -t rsa frs.sourceforge.net | Out-File -FilePath $kh -Encoding ascii
 
-          # Minimal SSH config (no here-string to avoid YAML issues)
           $cfgPath  = Join-Path $sshDir "config"
           $cfgLines = @(
             "Host frs.sourceforge.net",
@@ -474,14 +464,14 @@ jobs:
           $cfgLines | Set-Content -Path $cfgPath -Encoding ascii
 
       # ------------------------------------------------
-      # SourceForge: upload (FRS with PFS fallback, -i)
+      # SourceForge: upload (uses absolute base from secret)
       # ------------------------------------------------
       - name: Upload to SourceForge (SCP)
         if: ${{ inputs.upload_to == 'Sourceforge' || inputs.upload_to == 'Both DS_FTP & Sourceforge' }}
         shell: pwsh
         env:
           SF_USERNAME: ${{ secrets.SF_USERNAME }}
-          SF_PROJECT_PATH: ${{ secrets.SF_PROJECT_PATH }}
+          SF_PROJECT_PATH: ${{ secrets.SF_PROJECT_PATH }}   # e.g. /home/pfs/project/oneplus13flashers
         run: |
           if (-not $env:SF_USERNAME -or -not $env:SF_PROJECT_PATH) {
             throw "Missing SourceForge secrets. Required: SF_USERNAME, SF_PROJECT_PATH"
@@ -493,20 +483,8 @@ jobs:
           $rel = "$env:REL_UPLOAD_DIR".TrimStart('/')  # e.g. "Oneplus 13/Super Flashers/Global/"
           $key = "$env:USERPROFILE\.ssh\id_ed25519"
 
-          $baseA = "/home/frs/project/$($env:SF_PROJECT_PATH)"
-          $baseB = "/home/pfs/project/$($env:SF_PROJECT_PATH)"
-
-          function Test-RemoteDir($dir) {
-            $cmd = "test -d `"$dir`" && echo OK || echo NO"
-            $res = ssh -i "$key" -o StrictHostKeyChecking=yes "$($env:SF_USERNAME)@frs.sourceforge.net" $cmd
-            return ($res -match 'OK')
-          }
-
-          $destBase = if (Test-RemoteDir $baseA) { $baseA } elseif (Test-RemoteDir $baseB) { $baseB } else {
-            throw "Neither '$baseA' nor '$baseB' exists. Check SF_PROJECT_PATH and permissions."
-          }
-
-          $destDir = "$destBase/$rel"
+          $base    = "$($env:SF_PROJECT_PATH)".TrimEnd('/')   # absolute base path
+          $destDir = "$base/$rel"
           $dest    = "$destDir$($env:ARTIFACT_NAME).zip"
 
           Write-Host "Uploading to SourceForge: $dest"
