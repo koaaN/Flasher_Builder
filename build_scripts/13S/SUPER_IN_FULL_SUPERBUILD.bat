@@ -69,6 +69,6 @@ copy /Y "%~dp0IN_BLOAT\my_company.img" "%super_flasher_dest%\super\"
 )
 
 echo Packing super.img
-call "Super Flasher\Super\super.bat"
+call "Super Flasher\Super\super_oos.bat"
 move /Y "Super Flasher\Super\super.img" "Super Flasher\"
 rmdir /S /Q "Super Flasher\Super"
