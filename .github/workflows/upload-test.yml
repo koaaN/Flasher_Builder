@@ -92,7 +92,7 @@ jobs:
             curl -L -o download\OTA.zip "${{ inputs.ota_url }}"
           )
 
-      # 3) Export OTA_PATH for later steps (works for either placeholder or real download)
+      # 3) Export OTA_PATH for later steps
       - name: Export OTA_PATH
         shell: pwsh
         run: |
@@ -114,16 +114,9 @@ jobs:
           $ftype  = "${{ inputs.flasher_type }}"
           $region = "${{ inputs.region }}"
 
-          # Device-specific builder selection
           $batName = switch ($ftype) {
-            'SuperHybrid Flasher' {
-              if ($region -eq 'CN') { 'SUPERHYBRID_CN_FULL_SUPERBUILD.bat' }
-              else { 'SUPERHYBRID_FULL_SUPERBUILD.bat' }
-            }
-            'RegionalHybrid Flasher' {
-              if ($region -eq 'CN') { 'REGIONALHYBRID_CN_FULL_BUILD.bat' }
-              else { 'REGIONALHYBRID_FULL_BUILD.bat' }
-            }
+            'SuperHybrid Flasher'       { if ($region -eq 'CN') { 'SUPERHYBRID_CN_FULL_SUPERBUILD.bat' } else { 'SUPERHYBRID_FULL_SUPERBUILD.bat' } }
+            'RegionalHybrid Flasher'    { if ($region -eq 'CN') { 'REGIONALHYBRID_CN_FULL_BUILD.bat' } else { 'REGIONALHYBRID_FULL_BUILD.bat' } }
             'SuperHybrid SunOS Flasher' { 'SUPERHYBRID_SUNOS_FULL_SUPERBUILD.bat' }
             'Super Flasher' {
               if     ($dev -eq '13R' -and $region -eq 'CN') { 'SUPER_CN_FULL_SUPERBUILD.bat' }
@@ -199,14 +192,14 @@ jobs:
           if (Test-Path $env:OUT_DIR) { Remove-Item $env:OUT_DIR -Recurse -Force }
           New-Item -ItemType Directory -Force -Path $env:OUT_DIR | Out-Null
 
-          # Put otaripper + builder bat in OUT_DIR (root of final zip)
+          # Put otaripper + builder bat in OUT_DIR (drag&drop target)
           if (Test-Path (Join-Path $root 'otaripper\otaripper.exe')) {
             Copy-Item (Join-Path $root 'otaripper\otaripper.exe') -Destination $env:OUT_DIR -Force
           }
           $builderSrc = Join-Path $builderDir $env:BUILDER_BAT
           if (Test-Path $builderSrc) { Copy-Item $builderSrc -Destination $env:OUT_DIR -Force }
 
-          # Working folder name
+          # Working folder name (builder's output lives here)
           $workName = switch ($ftype) {
             'SuperHybrid Flasher'       { if ($region -eq 'CN') { 'SuperHybrid Flasher CN' } else { 'SuperHybrid Flasher' } }
             'RegionalHybrid Flasher'    { if ($region -eq 'CN') { 'RegionalHybrid Flasher CN' } else { 'RegionalHybrid Flasher' } }
@@ -299,27 +292,24 @@ jobs:
             }
           }
 
-          # Regional builds → bloat in OOS_FILES_HERE/ (+ CN extras)
-          if ($ftype -eq 'Regional Flasher' -or $ftype -eq 'RegionalHybrid Flasher') {
-            $oosHere = Join-Path $workDir 'OOS_FILES_HERE'
-            New-Item -ItemType Directory -Force -Path $oosHere | Out-Null
-            Copy-BloatFiles $bloatBase $region $oosHere
-
-            if ($region -eq 'CN') {
-              $cosHere = Join-Path $workDir 'COS_FILES_HERE'
-              New-Item -ItemType Directory -Force -Path $cosHere | Out-Null
-              Copy-BloatFiles $bloatBase 'CN' $cosHere
-              if ($dev -eq '13R') { Copy-BloatFiles $bloatBase 'A5' $oosHere }
-              else                { Copy-BloatFiles $bloatBase 'GLO' $oosHere }
-            }
-          }
-
           "WORK_DIR=$workDir" | Out-File -FilePath $env:GITHUB_ENV -Append
 
-      - name: Package output (include folder + otaripper + builder)
+      # 4) Simulate "drag & drop" → run the builder .bat with OTA.zip as %1
+      - name: Run builder (drag & drop OTA onto .bat)
+        shell: cmd
+        working-directory: ${{ env.OUT_DIR }}
+        run: |
+          echo Running %BUILDER_BAT% with OTA: %OTA_PATH%
+          call "%BUILDER_BAT%" "%OTA_PATH%"
+        # If your .bat needs elevation or a different shell, adjust here.
+
+      # 5) Package ONLY the builder's output folder (the working dir)
+      - name: Package final output (builder result)
         shell: pwsh
         run: |
           $workDir   = $env:WORK_DIR
+          if (-not (Test-Path $workDir)) { throw "Working directory not found after builder: $workDir" }
+
           $outRoot   = $env:OUT_DIR
           $devName   = "${{ inputs.device }}".Replace(' ','')
           $ftypeName = "${{ inputs.flasher_type }}".Replace(' ','')
@@ -328,33 +318,24 @@ jobs:
           $artifact  = "$devName-$ftypeName-$regionStr-$ts".Replace(' ','')
           $zipPath   = Join-Path $outRoot "$artifact.zip"
 
-          $stage = Join-Path $outRoot "__stage"
-          if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
-          New-Item -ItemType Directory -Force -Path $stage | Out-Null
-
-          Copy-Item $workDir -Destination $stage -Recurse -Force
-
-          $otaripper = Join-Path $outRoot 'otaripper.exe'
-          if (Test-Path $otaripper) { Copy-Item $otaripper -Destination $stage -Force }
-
-          $builder = Join-Path $outRoot $env:BUILDER_BAT
-          if (Test-Path $builder) { Copy-Item $builder -Destination $stage -Force }
-
           if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
-          Compress-Archive -Path "$stage\*" -DestinationPath $zipPath -Force
-          Remove-Item $stage -Recurse -Force
+          Compress-Archive -Path "$workDir\*" -DestinationPath $zipPath -Force
 
           "ARTIFACT_NAME=$artifact" | Out-File -FilePath $env:GITHUB_ENV -Append
           "ZIP_FILE=$zipPath"       | Out-File -FilePath $env:GITHUB_ENV -Append
 
+      # Artifact upload ONLY when selected
       - name: Upload artifact (single zip only)
         if: ${{ inputs.upload_to == 'Artifact Only' }}
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.ARTIFACT_NAME }}
-          path: ${{ env.ZIP_FILE }}
-          retention-days: ${{ env.ARTIFACT_RETENTION_DAYS }}
+          path: ${{ env:ZIP_FILE }}
+          retention-days: ${{ env:ARTIFACT_RETENTION_DAYS }}
 
+      # ============
+      # Path compute
+      # ============
       - name: Compute upload paths
         shell: pwsh
         run: |
@@ -400,6 +381,9 @@ jobs:
           "SF_UPLOAD_DIR=$sfAbs" | Out-File -FilePath $env:GITHUB_ENV -Append
           Write-Host "Computed SF_UPLOAD_DIR (will be masked in logs)."
 
+      # =========================
+      # DS_FTP Upload (no mkdirs)
+      # =========================
       - name: Upload to DS_FTP
         if: ${{ inputs.upload_to == 'DS_FTP' || inputs.upload_to == 'Both DS_FTP & Sourceforge' }}
         shell: pwsh
@@ -459,6 +443,9 @@ jobs:
           Write-Host ("FTP server response: {0}" -f $resp.StatusDescription)
           $resp.Close()
 
+      # -------------------------------
+      # SourceForge SSH setup & upload
+      # -------------------------------
       - name: Setup SSH for SourceForge
         if: ${{ inputs.upload_to == 'Sourceforge' || inputs.upload_to == 'Both DS_FTP & Sourceforge' }}
         shell: pwsh
