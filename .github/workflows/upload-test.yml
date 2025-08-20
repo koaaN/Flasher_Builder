@@ -474,22 +474,38 @@ jobs:
           SF_SSH_PRIVATE_KEY: ${{ secrets.SF_SSH_PRIVATE_KEY }}
         run: |
           if (-not $env:SF_SSH_PRIVATE_KEY) { throw "Missing SF_SSH_PRIVATE_KEY secret." }
-
+      
           $sshDir  = Join-Path $env:USERPROFILE ".ssh"
           New-Item -ItemType Directory -Force -Path $sshDir | Out-Null
-
+      
           $keyPath = Join-Path $sshDir "id_ed25519"
-
-          # Strip CR to avoid OpenSSH 'invalid format' on Windows; write raw bytes without extra newline
-          $keyClean = ($env:SF_SSH_PRIVATE_KEY -replace "`r","")
-          [System.IO.File]::WriteAllBytes($keyPath, [Text.Encoding]::ASCII.GetBytes($keyClean))
-
+      
+          # --- Normalize key for Windows runner ---
+          $key = $env:SF_SSH_PRIVATE_KEY
+          $key = $key -replace "`r",""                  # remove CR so we have LF-only
+          $key = $key -replace '^\s*"',""               # strip accidental leading double-quote
+          $key = $key -replace '"\s*$',""               # strip accidental trailing double-quote
+          $key = $key -replace "^\s*'",""               # strip accidental leading single-quote
+          $key = $key -replace "'\s*$",""               # strip accidental trailing single-quote
+          $key = $key.Trim() + "`n"                     # ensure trailing newline
+      
+          # Optional sanity check: header must look right
+          $first = ($key -split "`n")[0]
+          if ($first -notmatch "BEGIN OPENSSH PRIVATE KEY|BEGIN RSA PRIVATE KEY") {
+            throw "SF_SSH_PRIVATE_KEY doesn't look like an OpenSSH private key (bad header)."
+          }
+      
+          # Write with LF; Set-Content adds final newline (we already enforced one too)
+          Set-Content -Path $keyPath -Value $key -Encoding ascii
+      
+          # Tighten permissions for OpenSSH on Windows
           icacls $keyPath /inheritance:r | Out-Null
           icacls $keyPath /grant:r "$($env:USERNAME):(R)" | Out-Null
-
+      
+          # Host key + SSH config
           $kh = Join-Path $sshDir "known_hosts"
           ssh-keyscan -t rsa frs.sourceforge.net | Out-File -FilePath $kh -Encoding ascii
-
+      
           $cfgPath  = Join-Path $sshDir "config"
           @(
             "Host frs.sourceforge.net"
