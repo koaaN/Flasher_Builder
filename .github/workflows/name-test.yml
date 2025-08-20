@@ -1,4 +1,4 @@
-name: Upload Test
+name: Name Test
 
 on:
   workflow_dispatch:
@@ -207,7 +207,7 @@ jobs:
           if (Test-Path $env:OUT_DIR) { Remove-Item $env:OUT_DIR -Recurse -Force }
           New-Item -ItemType Directory -Force -Path $env:OUT_DIR | Out-Null
 
-          # Main folder: otaripper + builder (batch uses %~dp0)
+          # Main folder: otaripper + builder
           if (Test-Path (Join-Path $root 'otaripper\otaripper.exe')) {
             Copy-Item (Join-Path $root 'otaripper\otaripper.exe') -Destination $env:OUT_DIR -Force
           }
@@ -255,14 +255,14 @@ jobs:
             }
           }
 
-          # ALWAYS copy platform-tools into the flasher dir
-          $ptSrc  = Join-Path $root 'platform-tools'
+          # ===== ALWAYS copy Platform-Tools into the flasher dir =====
+          $ptSrc  = Join-Path $root 'Platform-Tools'
           if (Test-Path $ptSrc) {
-            $ptDst = Join-Path $workDir 'platform-tools'
+            $ptDst = Join-Path $workDir 'Platform-Tools'
             New-Item -ItemType Directory -Force -Path $ptDst | Out-Null
             Copy-Item "$ptSrc\*" -Destination $ptDst -Recurse -Force
           } else {
-            Write-Warning ("platform-tools not found at repo root: {0}" -f $ptSrc)
+            Write-Warning ("Platform-Tools not found at repo root: {0}" -f $ptSrc)
           }
 
           # Super builds: tools + bloat
@@ -328,11 +328,11 @@ jobs:
           echo Calling builder: "%GITHUB_WORKSPACE%\%OUT_DIR%\%BUILDER_BAT%" "%OTA_PATH%"
           (echo.| call "%GITHUB_WORKSPACE%\%OUT_DIR%\%BUILDER_BAT%" "%OTA_PATH%") || exit /b 1
 
-      - name: Package final output (tar -a, absolute path, clean paths, versioned name w/ 13R/13S/13T)
+      - name: Package final output (tar -a, absolute path, clean paths, versioned name w/ 13R/13S/13T + COS for CN)
         shell: pwsh
         run: |
           $otaDir = $env:OTA_DIR
-      
+
           $byFtype = switch ($env:FTYPE) {
             'SuperHybrid Flasher'       { @('SuperHybrid Flasher') }
             'RegionalHybrid Flasher'    { @('RegionalHybrid Flasher') }
@@ -352,7 +352,7 @@ jobs:
             'Regional Flasher'
           )
           $candidates = @() + $byFtype + $fallback | Select-Object -Unique
-      
+
           $resultDir = $null
           foreach ($name in $candidates) {
             $p = Join-Path $otaDir $name
@@ -361,21 +361,23 @@ jobs:
           if (-not $resultDir) {
             throw ("Could not find builder output folder next to OTA in '{0}'. Looked for: {1}" -f $otaDir, ($candidates -join ', '))
           }
-      
+
           $zipRoot  = Join-Path $env:GITHUB_WORKSPACE $env:OUT_DIR
           New-Item -ItemType Directory -Force -Path $zipRoot | Out-Null
-      
-          # Versioned, human-readable name with optional 13R/13S/13T suffix
+
+          # Versioned, human-readable name with device tags and CN→COS rule
           $ftypeName   = $env:FTYPE
           $regionCode  = $env:REGION
           $regionDisp  = switch ($regionCode) { 'CN'{'COS'} 'GLO'{'Global'} 'EU'{'EU'} 'IN'{'IN'} 'NA'{'NA'} default {$regionCode} }
           $ver         = $env:OTA_VERSION
           if ([string]::IsNullOrWhiteSpace($ver)) { $ver = 'UNKNOWN' }
-      
-          $devCode     = $env:DEV        # '13','13R','13S','13T'
-          $devTag      = switch ($devCode) { '13R'{'13R'} '13S'{'13S'} '13T'{'13T'} default { '' } }
-          $includeRegion = ($devCode -ne '13S' -and $devCode -ne '13T')
-      
+
+          $devCode = $env:DEV        # '13','13R','13S','13T'
+          $devTag  = switch ($devCode) { '13R'{'13R'} '13S'{'13S'} '13T'{'13T'} default { '' } }
+
+          # include region for base 13 and 13R always; for 13S/13T include only when CN (to show COS)
+          $includeRegion = if ($devCode -in @('13','13R')) { $true } elseif ($devCode -in @('13S','13T') -and $regionCode -eq 'CN') { $true } else { $false }
+
           if ($devTag) {
             if ($includeRegion) {
               $artifactBase = "{0} {1} {2} {3}" -f $ftypeName, $devTag, $regionDisp, $ver
@@ -385,20 +387,21 @@ jobs:
           } else {
             $artifactBase = "{0} {1} {2}" -f $ftypeName, $regionDisp, $ver
           }
-      
+
           $zipPath = Join-Path $zipRoot ($artifactBase + '.zip')
           if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
-      
+
           $tar = Get-Command tar -ErrorAction Stop
-      
+
+          # Avoid './' by passing explicit top-level entries
           $items = Get-ChildItem -LiteralPath $resultDir -Force | ForEach-Object { $_.Name }
           if ($items.Count -eq 0) { throw ("Nothing to archive in {0}" -f $resultDir) }
-      
+
           $args = @('-a','-c','-f',"$zipPath",'-C',"$resultDir") + $items
           & $tar.Path @args
-      
+
           if (-not (Test-Path $zipPath)) { throw ("Packaging failed: ZIP not created at {0}" -f $zipPath) }
-      
+
           "ARTIFACT_NAME=$artifactBase" | Out-File -FilePath $env:GITHUB_ENV -Append
           "ZIP_FILE=$zipPath"           | Out-File -FilePath $env:GITHUB_ENV -Append
 
@@ -547,7 +550,7 @@ jobs:
           $key = ($env:SF_SSH_PRIVATE_KEY -replace "`r","").Trim() + "`n"
           $first = ($key -split "`n")[0]
           if ($first -notmatch "BEGIN OPENSSH PRIVATE KEY|BEGIN RSA PRIVATE KEY") {
-            throw "SF_SSH_PRIVATE KEY doesn't look like an OpenSSH private key (bad header)."
+            throw "SF_SSH_PRIVATE_KEY doesn't look like an OpenSSH private key (bad header)."
           }
 
           Set-Content -Path $keyPath -Value $key -Encoding ascii
