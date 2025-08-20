@@ -300,11 +300,11 @@ jobs:
           (echo.| call "%GITHUB_WORKSPACE%\%OUT_DIR%\%BUILDER_BAT%" "%OTA_PATH%") || exit /b 1
 
       # 7) Package ONLY the folder produced next to the ZIP using tar -a (fast, large-file safe)
-      - name: Package final output (tar -a)
+      - name: Package final output (tar -a, absolute path)
         shell: pwsh
         run: |
           $otaDir = $env:OTA_DIR
-
+      
           # Candidate folder names (prefer exact based on flasher_type)
           $byFtype = switch ($env:FTYPE) {
             'SuperHybrid Flasher'       { @('SuperHybrid Flasher') }
@@ -314,35 +314,39 @@ jobs:
             'Regional Flasher'          { @('Regional Flasher') }
             default { @() }
           }
-          $fallback = @('SuperHybrid Flasher','RegionalHybrid Flasher','SuperHybrid SunOS Flasher','Super Flasher','Regional Flasher')
+          $fallback   = @('SuperHybrid Flasher','RegionalHybrid Flasher','SuperHybrid SunOS Flasher','Super Flasher','Regional Flasher')
           $candidates = @() + $byFtype + $fallback | Select-Object -Unique
-
+      
           $resultDir = $null
           foreach ($name in $candidates) {
             $p = Join-Path $otaDir $name
             if (Test-Path $p) { $resultDir = $p; break }
           }
-          if (-not $resultDir) { throw "Could not find builder output folder next to OTA in '$otaDir'. Looked for: $($candidates -join ', ')" }
-
-          $outRoot   = $env:OUT_DIR
+          if (-not $resultDir) {
+            throw "Could not find builder output folder next to OTA in '$otaDir'. Looked for: $($candidates -join ', ')"
+          }
+      
+          # Build absolute output path under the repo workspace: <workspace>\out\<artifact>.zip
+          $zipRoot  = Join-Path $env:GITHUB_WORKSPACE $env:OUT_DIR
+          New-Item -ItemType Directory -Force -Path $zipRoot | Out-Null
+      
           $devName   = "${{ inputs.device }}".Replace(' ','')
           $ftypeName = "${{ inputs.flasher_type }}".Replace(' ','')
           $regionStr = "${{ inputs.region }}"
           $ts        = Get-Date -Format "yyyyMMdd-HHmmss"
           $artifact  = "$devName-$ftypeName-$regionStr-$ts".Replace(' ','')
-          $zipPath   = Join-Path $outRoot "$artifact.zip"
-
+          $zipPath   = Join-Path $zipRoot "$artifact.zip"
+      
           if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
-
+      
           $tarCmd = Get-Command tar -ErrorAction SilentlyContinue
           if (-not $tarCmd) { throw "tar.exe not found on runner; please install / add to PATH." }
-
-          Push-Location $resultDir
-          tar -a -c -f "$zipPath" .
-          Pop-Location
-
+      
+          # No Push-Location needed: tell tar where to read from with -C and write using absolute -f
+          & $tarCmd.Path -a -c -f "$zipPath" -C "$resultDir" .
+      
           if (-not (Test-Path $zipPath)) { throw "Packaging failed: ZIP not created at $zipPath" }
-
+      
           "ARTIFACT_NAME=$artifact" | Out-File -FilePath $env:GITHUB_ENV -Append
           "ZIP_FILE=$zipPath"       | Out-File -FilePath $env:GITHUB_ENV -Append
 
