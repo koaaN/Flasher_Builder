@@ -322,7 +322,7 @@ jobs:
         with:
           name: ${{ env.ARTIFACT_NAME }}
           path: ${{ env.ZIP_FILE }}
-          retention-days: ${{ env:ARTIFACT_RETENTION_DAYS }}
+          retention-days: ${{ env.ARTIFACT_RETENTION_DAYS }}
 
       # ============
       # Compute upload paths
