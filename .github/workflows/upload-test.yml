@@ -155,60 +155,44 @@ jobs:
         shell: pwsh
         run: |
           function Copy-BloatFiles($base, $region, $dest) {
-            $map = @{
-              'EU'  = 'EUGLO_BLOAT'
-              'GLO' = 'EUGLO_BLOAT'
-              'IN'  = 'IN_BLOAT'
-              'NA'  = 'NA_BLOAT'
-              'CN'  = 'CN_BLOAT'
-              'A5'  = 'A5_DEBLOAT'
-            }
+            $map = @{ 'EU'='EUGLO_BLOAT'; 'GLO'='EUGLO_BLOAT'; 'IN'='IN_BLOAT'; 'NA'='NA_BLOAT'; 'CN'='CN_BLOAT'; 'A5'='A5_DEBLOAT' }
             $needed = @('my_preload.img','my_company.img','odm.img','oplusstanvbk.img','my_region.img')
-
-            $folder = $map[$region]
-            if (-not $folder) { return }
-            $src = Join-Path $base $folder
-            if (-not (Test-Path $src)) { return }
-
+            $folder = $map[$region]; if (-not $folder) { return }
+            $src = Join-Path $base $folder; if (-not (Test-Path $src)) { return }
             if (-not (Test-Path $dest)) { New-Item -ItemType Directory -Force -Path $dest | Out-Null }
-
             foreach ($f in $needed) {
-              $imgPath  = Join-Path $src $f
+              $imgPath = Join-Path $src $f
               if (Test-Path $imgPath) { Copy-Item $imgPath -Destination $dest -Force; continue }
               $stubPath = Join-Path $src ([System.IO.Path]::GetFileNameWithoutExtension($f))
               if (Test-Path $stubPath) {
                 try {
                   $url = (Get-Content $stubPath -Raw).Trim()
-                  if ($url) {
-                    Invoke-WebRequest -Uri $url -OutFile (Join-Path $dest $f)
-                  }
-                } catch {
-                  Write-Warning ("Failed to download {0} from stub URL in {1}: {2}" -f $f, $stubPath, $_.Exception.Message)
-                }
+                  if ($url) { Invoke-WebRequest -Uri $url -OutFile (Join-Path $dest $f) }
+                } catch { Write-Warning "Failed to download $f from $stubPath: $($_.Exception.Message)" }
               }
             }
           }
-
+          
           $dev     = $env:DEV
           $ftype   = $env:FTYPE
           $region  = $env:REGION
-
+          
           $root = $env:GITHUB_WORKSPACE
           $builderDir = Join-Path $root ("build_scripts\" + $dev)
           $bloatBase  = Join-Path $root ("bloat\" + $dev)
-
+          
           # Fresh OUT_DIR
           if (Test-Path $env:OUT_DIR) { Remove-Item $env:OUT_DIR -Recurse -Force }
           New-Item -ItemType Directory -Force -Path $env:OUT_DIR | Out-Null
-
-          # Put otaripper + builder .bat in OUT_DIR (the .bat uses %~dp0 paths)
+          
+          # Main folder: put otaripper + builder here (batch uses %~dp0)
           if (Test-Path (Join-Path $root 'otaripper\otaripper.exe')) {
             Copy-Item (Join-Path $root 'otaripper\otaripper.exe') -Destination $env:OUT_DIR -Force
           }
           $builderSrc = Join-Path $builderDir $env:BUILDER_BAT
           if (Test-Path $builderSrc) { Copy-Item $builderSrc -Destination $env:OUT_DIR -Force }
-
-          # IMPORTANT: exact folder names the .bat expects via "%~dp0..."
+          
+          # Working folder (exact name the batch expects)
           $workName = switch ($ftype) {
             'SuperHybrid Flasher'       { 'SuperHybrid Flasher' }
             'RegionalHybrid Flasher'    { 'RegionalHybrid Flasher' }
@@ -218,36 +202,33 @@ jobs:
           }
           $workDir = Join-Path $env:OUT_DIR $workName
           New-Item -ItemType Directory -Force -Path $workDir | Out-Null
-
-          # Choose template root
+          
+          # Template root
           $tplBase = Join-Path $root ("flasher_scripts\" + $dev)
           if ($ftype -like '*Hybrid*') {
             $tplBase = Join-Path $tplBase ($(if ($region -eq 'CN') { 'cos' } else { 'oos' }))
             $tplBase = Join-Path $tplBase ($(if ($ftype -like '*Super*') { 'super' } else { 'regional' }))
           } elseif ($ftype -eq 'Super Flasher') {
-            if ($dev -eq '13T' -and $region -eq 'CN') { $tplBase = Join-Path $tplBase 'cos\super' }
-            else                                      { $tplBase = Join-Path $tplBase 'oos\super' }
+            if ($dev -eq '13T' -and $region -eq 'CN') { $tplBase = Join-Path $tplBase 'cos\super' } else { $tplBase = Join-Path $tplBase 'oos\super' }
           } elseif ($ftype -eq 'Regional Flasher') {
-            if ($dev -eq '13R' -and $region -eq 'CN') { $tplBase = Join-Path $tplBase 'cos\regional' }
-            else                                      { $tplBase = Join-Path $tplBase 'oos\regional' }
+            if ($dev -eq '13R' -and $region -eq 'CN') { $tplBase = Join-Path $tplBase 'cos\regional' } else { $tplBase = Join-Path $tplBase 'oos\regional' }
           }
-
-          # Copy template into the EXACT folder name that the batch expects
+          
           Copy-Item "$tplBase\*" -Destination $workDir -Recurse -Force
-
+          
           # META-INF only for Hybrid builds
           if ($ftype -like '*Hybrid*') {
             $mi = Join-Path $tplBase 'META-INF'
             if (Test-Path $mi) { Copy-Item $mi -Destination (Join-Path $workDir 'META-INF') -Recurse -Force }
           }
-
-          # Super builds: stage lpmake and bloat
+          
+          # Super builds: stage tools and bloat
           if ($ftype -match 'Super') {
             $superDir = Join-Path $workDir 'Super'
             New-Item -ItemType Directory -Force -Path $superDir | Out-Null
             Copy-Item (Join-Path $root 'lpmake\lpmake.exe') -Destination $superDir -Force
             Copy-Item (Join-Path $root 'lpmake\cygwin1.dll') -Destination $superDir -Force
-
+          
             if ($dev -eq '13T') {
               $pdir = Join-Path $root 'super_packers\13T'
               Copy-Item (Join-Path $pdir ($(if ($region -eq 'CN') { 'super_cos.bat' } else { 'super_oos.bat' }))) -Destination $superDir -Force
@@ -255,29 +236,37 @@ jobs:
               $p = Join-Path $root ("super_packers\" + $dev + "\super_oos.bat")
               if (Test-Path $p) { Copy-Item $p -Destination $superDir -Force }
             }
-
+          
             Copy-BloatFiles $bloatBase $region $superDir
-
+          
             if ($region -eq 'CN') {
               $oosHere = Join-Path $workDir 'OOS_FILES_HERE'
               New-Item -ItemType Directory -Force -Path $oosHere | Out-Null
-              if ($dev -eq '13R') { Copy-BloatFiles $bloatBase 'A5' $oosHere }
-              else                { Copy-BloatFiles $bloatBase 'GLO' $oosHere }
+              if ($dev -eq '13R') { Copy-BloatFiles $bloatBase 'A5' $oosHere } else { Copy-BloatFiles $bloatBase 'GLO' $oosHere }
             }
           }
-
-          # --- EXTRA REQUIREMENTS ---
-          # 1) Oneplus 13 + SuperHybrid: ensure 16DTBO exists in OUT_DIR (next to .bat & otaripper)
+          
+          # === Oneplus 13 + SuperHybrid: special handling ===
           if ($dev -eq '13' -and $ftype -eq 'SuperHybrid Flasher') {
-            $src16 = Join-Path $root '16DTBO'
-            if (Test-Path $src16) {
-              Copy-Item $src16 -Destination $env:OUT_DIR -Recurse -Force
-              Write-Host "Copied 16DTBO to $env:OUT_DIR"
+            # Ensure 16DTBO is in the MAIN folder (same as otaripper & .bat)
+            $repo16  = Join-Path $root '16DTBO'
+            $main16  = Join-Path $env:OUT_DIR '16DTBO'
+            if (Test-Path $repo16) {
+              Copy-Item $repo16 -Destination $main16 -Recurse -Force
+              Write-Host "Placed 16DTBO in MAIN folder: $main16"
             } else {
-              Write-Warning "16DTBO folder not found at repo root; builder may fail to copy dtbo.img"
+              Write-Warning "16DTBO folder not found at repo root."
             }
-
-            # 2) Oneplus 13 + SuperHybrid: add bloat/13/COS_FILES_HERE into the working folder
+          
+            # If template accidentally brought 16DTBO into the working folder, move it back to MAIN
+            $work16 = Join-Path $workDir '16DTBO'
+            if (Test-Path $work16) {
+              if (Test-Path $main16) { Remove-Item $main16 -Recurse -Force }
+              Move-Item $work16 $main16
+              Write-Host "Moved stray 16DTBO from working folder to MAIN."
+            }
+          
+            # Inject bloat/13/COS_FILES_HERE into the working folder
             $cosBloat = Join-Path $bloatBase 'COS_FILES_HERE'
             if (Test-Path $cosBloat) {
               Copy-Item $cosBloat -Destination (Join-Path $workDir 'COS_FILES_HERE') -Recurse -Force
@@ -286,8 +275,9 @@ jobs:
               Write-Warning "COS_FILES_HERE not found under $bloatBase"
             }
           }
-
+          
           "WORK_DIR=$workDir" | Out-File -FilePath $env:GITHUB_ENV -Append
+
 
       # 6) TRUE drag&drop: run builder with CWD = OTA_DIR, pass OTA path as %1
       - name: Run builder (Explorer-style drag & drop)
@@ -304,8 +294,7 @@ jobs:
         shell: pwsh
         run: |
           $otaDir = $env:OTA_DIR
-      
-          # Candidate folder names (prefer exact based on flasher_type)
+
           $byFtype = switch ($env:FTYPE) {
             'SuperHybrid Flasher'       { @('SuperHybrid Flasher') }
             'RegionalHybrid Flasher'    { @('RegionalHybrid Flasher') }
@@ -316,37 +305,37 @@ jobs:
           }
           $fallback   = @('SuperHybrid Flasher','RegionalHybrid Flasher','SuperHybrid SunOS Flasher','Super Flasher','Regional Flasher')
           $candidates = @() + $byFtype + $fallback | Select-Object -Unique
-      
+          
           $resultDir = $null
           foreach ($name in $candidates) {
             $p = Join-Path $otaDir $name
             if (Test-Path $p) { $resultDir = $p; break }
           }
-          if (-not $resultDir) {
-            throw "Could not find builder output folder next to OTA in '$otaDir'. Looked for: $($candidates -join ', ')"
-          }
-      
-          # Build absolute output path under the repo workspace: <workspace>\out\<artifact>.zip
+          if (-not $resultDir) { throw "Could not find builder output folder next to OTA in '$otaDir'. Looked for: $($candidates -join ', ')" }
+          
+          # Absolute output under workspace\out
           $zipRoot  = Join-Path $env:GITHUB_WORKSPACE $env:OUT_DIR
           New-Item -ItemType Directory -Force -Path $zipRoot | Out-Null
-      
+          
           $devName   = "${{ inputs.device }}".Replace(' ','')
           $ftypeName = "${{ inputs.flasher_type }}".Replace(' ','')
           $regionStr = "${{ inputs.region }}"
           $ts        = Get-Date -Format "yyyyMMdd-HHmmss"
           $artifact  = "$devName-$ftypeName-$regionStr-$ts".Replace(' ','')
           $zipPath   = Join-Path $zipRoot "$artifact.zip"
-      
           if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
-      
-          $tarCmd = Get-Command tar -ErrorAction SilentlyContinue
-          if (-not $tarCmd) { throw "tar.exe not found on runner; please install / add to PATH." }
-      
-          # No Push-Location needed: tell tar where to read from with -C and write using absolute -f
-          & $tarCmd.Path -a -c -f "$zipPath" -C "$resultDir" .
-      
+          
+          $tar = Get-Command tar -ErrorAction Stop
+          
+          # Build argument list: tar -a -c -f <zip> -C <resultDir> <all top-level entries>
+          $items = Get-ChildItem -LiteralPath $resultDir -Force | ForEach-Object { $_.Name }
+          if ($items.Count -eq 0) { throw "Nothing to archive in $resultDir" }
+          
+          $args = @('-a','-c','-f',"$zipPath",'-C',"$resultDir") + $items
+          & $tar.Path @args
+          
           if (-not (Test-Path $zipPath)) { throw "Packaging failed: ZIP not created at $zipPath" }
-      
+          
           "ARTIFACT_NAME=$artifact" | Out-File -FilePath $env:GITHUB_ENV -Append
           "ZIP_FILE=$zipPath"       | Out-File -FilePath $env:GITHUB_ENV -Append
 
