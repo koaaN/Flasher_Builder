@@ -169,6 +169,7 @@ jobs:
           "BUILDER_BAT=$batName" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Stage files (with device-specific tweaks)
+        shell: powershell
         run: |
           function Copy-BloatFiles($base, $region, $dest) {
             $map = @{ 'EU'='EUGLO_BLOAT'; 'GLO'='EUGLO_BLOAT'; 'IN'='IN_BLOAT'; 'NA'='NA_BLOAT'; 'CN'='CN_BLOAT'; 'A5'='A5_DEBLOAT' }
@@ -190,25 +191,25 @@ jobs:
               }
             }
           }
-
-          $dev     = $env:DEV
-          $ftype   = $env:FTYPE
-          $region  = $env:REGION
-          $root    = $env:GITHUB_WORKSPACE
+      
+          $dev        = $env:DEV
+          $ftype      = $env:FTYPE
+          $region     = $env:REGION
+          $root       = $env:GITHUB_WORKSPACE
           $builderDir = Join-Path $root ("build_scripts\" + $dev)
           $bloatBase  = Join-Path $root ("bloat\" + $dev)
-
+      
           # Fresh OUT_DIR
           if (Test-Path $env:OUT_DIR) { Remove-Item $env:OUT_DIR -Recurse -Force }
           New-Item -ItemType Directory -Force -Path $env:OUT_DIR | Out-Null
-
+      
           # Main folder: otaripper + builder
           if (Test-Path (Join-Path $root 'otaripper\otaripper.exe')) {
             Copy-Item (Join-Path $root 'otaripper\otaripper.exe') -Destination $env:OUT_DIR -Force
           }
           $builderSrc = Join-Path $builderDir $env:BUILDER_BAT
           if (Test-Path $builderSrc) { Copy-Item $builderSrc -Destination $env:OUT_DIR -Force }
-
+      
           # Working folder (CN rule for Super Flasher on 13R/13T)
           $workName = switch ($ftype) {
             'SuperHybrid Flasher'       { 'SuperHybrid Flasher' }
@@ -221,7 +222,7 @@ jobs:
           }
           $workDir = Join-Path $env:OUT_DIR $workName
           New-Item -ItemType Directory -Force -Path $workDir | Out-Null
-
+      
           # Template root
           $tplBase = Join-Path $root ("flasher_scripts\" + $dev)
           if ($ftype -like '*Hybrid*') {
@@ -232,11 +233,11 @@ jobs:
           } elseif ($ftype -eq 'Regional Flasher') {
             if ($dev -eq '13R' -and $region -eq 'CN') { $tplBase = Join-Path $tplBase 'cos\regional' } else { $tplBase = Join-Path $tplBase 'oos\regional' }
           }
-
+      
           # Copy whole template (brings META-INF once)
           Copy-Item "$tplBase\*" -Destination $workDir -Recurse -Force
-
-          # ONLY if META-INF wasn't in the template, copy contents (prevents META-INF\META-INF)
+      
+          # ONLY if META-INF was not in the template, copy contents (prevents META-INF\META-INF)
           if ($ftype -like '*Hybrid*') {
             $mi = Join-Path $tplBase 'META-INF'
             if (Test-Path $mi) {
@@ -245,12 +246,12 @@ jobs:
                 New-Item -ItemType Directory -Force -Path $miDest | Out-Null
                 Copy-Item "$mi\*" -Destination $miDest -Recurse -Force
               } else {
-                Write-Host ("META-INF already present in {0} — skipping duplicate copy." -f $miDest)
+                Write-Host ("META-INF already present in {0} - skipping duplicate copy." -f $miDest)
               }
             }
           }
-
-          # ===== ALWAYS copy Platform-Tools into the flasher dir =====
+      
+          # ALWAYS copy Platform-Tools into the flasher dir
           $ptSrc  = Join-Path $root 'Platform-Tools'
           if (Test-Path $ptSrc) {
             $ptDst = Join-Path $workDir 'Platform-Tools'
@@ -259,14 +260,14 @@ jobs:
           } else {
             Write-Warning ("Platform-Tools not found at repo root: {0}" -f $ptSrc)
           }
-
+      
           # Super builds: tools + bloat
           if ($ftype -match 'Super') {
             $superDir = Join-Path $workDir 'Super'
             New-Item -ItemType Directory -Force -Path $superDir | Out-Null
             Copy-Item (Join-Path $root 'lpmake\lpmake.exe') -Destination $superDir -Force
             Copy-Item (Join-Path $root 'lpmake\cygwin1.dll') -Destination $superDir -Force
-
+      
             if ($dev -eq '13T') {
               $pdir = Join-Path $root 'super_packers\13T'
               Copy-Item (Join-Path $pdir ($(if ($region -eq 'CN') { 'super_cos.bat' } else { 'super_oos.bat' }))) -Destination $superDir -Force
@@ -274,11 +275,11 @@ jobs:
               $p = Join-Path $root ("super_packers\" + $dev + "\super_oos.bat")
               if (Test-Path $p) { Copy-Item $p -Destination $superDir -Force }
             }
-
+      
             # Standard bloat into Super/
             Copy-BloatFiles $bloatBase $region $superDir
-
-            # Special case: 13T • Super Flasher • IN → move 3 files to COS_FILES_HERE (not in Super/)
+      
+            # Special case: 13T + Super Flasher + IN -> move 3 files to COS_FILES_HERE (not in Super/)
             if ($dev -eq '13T' -and $ftype -eq 'Super Flasher' -and $region -eq 'IN') {
               $cosHere = Join-Path $workDir 'COS_FILES_HERE'
               New-Item -ItemType Directory -Force -Path $cosHere | Out-Null
@@ -308,7 +309,7 @@ jobs:
                 if (Test-Path $left) { Remove-Item $left -Force }
               }
             }
-
+      
             # CN Super extra OOS staging (EUGLO or A5)
             if ($region -eq 'CN') {
               $oosHere = Join-Path $workDir 'OOS_FILES_HERE'
@@ -317,7 +318,7 @@ jobs:
               else                { Copy-BloatFiles $bloatBase 'GLO' $oosHere }
             }
           }
-
+      
           # Oneplus 13 + SuperHybrid extras
           if ($dev -eq '13' -and $ftype -eq 'SuperHybrid Flasher') {
             $repo16  = Join-Path $root '16DTBO'
@@ -343,16 +344,17 @@ jobs:
               Write-Warning ("COS_FILES_HERE not found under {0}" -f $bloatBase)
             }
           }
-
+      
           "WORK_DIR=$workDir" | Out-File -FilePath $env:GITHUB_ENV -Append
-
-      - name: Run builder (Explorer-style drag & drop)
-        shell: cmd
-        working-directory: ${{ env.OTA_DIR }}
-        run: |
-          echo CWD is %CD%
-          echo Calling builder: "%GITHUB_WORKSPACE%\%OUT_DIR%\%BUILDER_BAT%" "%OTA_PATH%"
-          (echo.| call "%GITHUB_WORKSPACE%\%OUT_DIR%\%BUILDER_BAT%" "%OTA_PATH%") || exit /b 1
+      
+      
+            - name: Run builder (Explorer-style drag & drop)
+              shell: cmd
+              working-directory: ${{ env.OTA_DIR }}
+              run: |
+                echo CWD is %CD%
+                echo Calling builder: "%GITHUB_WORKSPACE%\%OUT_DIR%\%BUILDER_BAT%" "%OTA_PATH%"
+                (echo.| call "%GITHUB_WORKSPACE%\%OUT_DIR%\%BUILDER_BAT%" "%OTA_PATH%") || exit /b 1
 
       - name: Package final output (tar -a, clean paths, versioned name w/ 13R/13S/13T + COS for CN)
         run: |
