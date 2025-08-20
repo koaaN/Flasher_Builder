@@ -1,4 +1,4 @@
-name: Build Flasher
+name: Upload Test
 
 on:
   workflow_dispatch:
