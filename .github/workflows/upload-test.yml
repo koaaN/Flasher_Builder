@@ -208,7 +208,7 @@ jobs:
           # Copy whole template (brings META-INF once)
           Copy-Item "$tplBase\*" -Destination $workDir -Recurse -Force
 
-          # ONLY if META-INF wasn't in the template, copy its contents (prevents META-INF\META-INF)
+          # If template didn't include META-INF, copy contents into place (no nesting)
           if ($ftype -like '*Hybrid*') {
             $mi = Join-Path $tplBase 'META-INF'
             if (Test-Path $mi) {
@@ -220,6 +220,16 @@ jobs:
                 Write-Host ("META-INF already present in {0} — skipping duplicate copy." -f $miDest)
               }
             }
+          }
+
+          # ===== ALWAYS copy platform-tools into the flasher dir =====
+          $ptSrc  = Join-Path $root 'platform-tools'
+          if (Test-Path $ptSrc) {
+            $ptDst = Join-Path $workDir 'platform-tools'
+            New-Item -ItemType Directory -Force -Path $ptDst | Out-Null
+            Copy-Item "$ptSrc\*" -Destination $ptDst -Recurse -Force
+          } else {
+            Write-Warning ("platform-tools not found at repo root: {0}" -f $ptSrc)
           }
 
           # Super builds: tools + bloat
@@ -248,7 +258,7 @@ jobs:
 
           # Oneplus 13 + SuperHybrid extras
           if ($dev -eq '13' -and $ftype -eq 'SuperHybrid Flasher') {
-            # Ensure 16DTBO in MAIN folder (same as otaripper.exe and builder .bat)
+            # Ensure 16DTBO in MAIN folder
             $repo16  = Join-Path $root '16DTBO'
             $main16  = Join-Path $env:OUT_DIR '16DTBO'
             if (Test-Path $repo16) {
@@ -257,7 +267,7 @@ jobs:
             } else {
               Write-Warning "16DTBO folder not found at repo root."
             }
-            # Move stray 16DTBO out of working folder if the template placed it there
+            # Move stray 16DTBO out of working folder if present
             $work16 = Join-Path $workDir '16DTBO'
             if (Test-Path $work16) {
               if (Test-Path $main16) { Remove-Item $main16 -Recurse -Force }
