@@ -360,13 +360,12 @@ jobs:
           $ftype  = "${{ inputs.flasher_type }}"
           $region = "${{ inputs.region }}"
       
-          # Category from flasher type
           $category = switch -Regex ($ftype) {
             '^(SuperHybrid Flasher|SuperHybrid SunOS Flasher|Super Flasher)$' { 'Super Flashers'; break }
             default { 'Regional Flashers' }
           }
       
-          # 13S / 13T have no region subfolder
+          # 13S / 13T have no region folder
           $needsRegion = ($device -ne 'Oneplus 13S' -and $device -ne 'Oneplus 13T')
           if ($needsRegion) {
             $regionFolder = switch ($region) {
@@ -382,35 +381,27 @@ jobs:
             $rel = Join-Path $device $category
           }
       
-          # normalize to forward slashes and ensure trailing slash
           $rel = ($rel -replace '\\','/')
           if (-not $rel.EndsWith('/')) { $rel += '/' }
-      
           "REL_UPLOAD_DIR=$rel" | Out-File -FilePath $env:GITHUB_ENV -Append
       
-          # DS FTP base (can be "/" to mean login root)
+          # DS FTP (unchanged)
           $ftpBase = "${{ secrets.DS_FTP_PATH }}".Trim('/')
           $ftpAbs  = ($ftpBase.Length -gt 0) ? "$ftpBase/$rel" : $rel
           "FTP_UPLOAD_DIR=$ftpAbs" | Out-File -FilePath $env:GITHUB_ENV -Append
       
-          # -------- SourceForge absolute base REQUIRED --------
+          # SourceForge — use absolute base from secret (MUST be /home/frs/project/<project>)
           $sfBaseAbs = "${{ secrets.SF_PROJECT_PATH }}".Trim()
-          if ([string]::IsNullOrWhiteSpace($sfBaseAbs)) {
-            throw "SF_PROJECT_PATH secret is empty. Set it to your absolute SF path, e.g. /home/pfs/project/<project>"
-          }
-          # normalize: must start with '/'
           if (-not $sfBaseAbs.StartsWith('/')) {
-            throw "SF_PROJECT_PATH must be an absolute path starting with '/'. Example: /home/pfs/project/<project>"
+            throw "SF_PROJECT_PATH must be an absolute path like /home/frs/project/<project>"
           }
-          # normalize slashes and trim trailing '/'
           $sfBaseAbs = ($sfBaseAbs -replace '\\','/').TrimEnd('/')
       
-          $sfAbs = "$sfBaseAbs/$rel"     # e.g. /home/pfs/project/<project>/Oneplus 13/Super Flashers/Global/
+          $sfAbs = "$sfBaseAbs/$rel"         # e.g. /home/frs/project/oneplus13flashers/Oneplus 13/Super Flashers/Global/
           "SF_UPLOAD_DIR=$sfAbs" | Out-File -FilePath $env:GITHUB_ENV -Append
       
-          Write-Host "Relative upload dir: $rel"
-          Write-Host "FTP  upload dir: $ftpAbs"
-          Write-Host "SF   upload dir: $sfAbs"
+          Write-Host "SF upload dir: $sfAbs"
+
 
       # =========================
       # DS_FTP Upload (no mkdirs)
@@ -535,23 +526,15 @@ jobs:
           SF_USERNAME: ${{ secrets.SF_USERNAME }}
         run: |
           if (-not $env:SF_USERNAME -or -not $env:SF_UPLOAD_DIR) {
-            throw "Missing SourceForge config. Need SF_USERNAME and SF_UPLOAD_DIR."
+            throw "Missing SourceForge config at runtime. Need SF_USERNAME and computed SF_UPLOAD_DIR."
           }
       
           $zip = $env:ZIP_FILE
           if (-not (Test-Path $zip)) { throw "ZIP file not found: $zip" }
       
-          # Convert any *** (masked) or backslashes to forward slashes, then trim trailing /
-          $destDir = ($env:SF_UPLOAD_DIR -replace '\*{3}','/' -replace '\\','/').TrimEnd('/')
-      
-          # Build final remote file path
-          $dest = "$destDir/$($env:ARTIFACT_NAME).zip"
-      
-          # Local key path on runner
-          $key  = "$env:USERPROFILE\.ssh\id_ed25519"
+          $destDir = ($env:SF_UPLOAD_DIR -replace '\\','/').TrimEnd('/')   # absolute dir
+          $dest    = "$destDir/$($env:ARTIFACT_NAME).zip"
+          $key     = "$env:USERPROFILE\.ssh\id_ed25519"
       
           Write-Host "Uploading to SourceForge: $dest"
-          ssh -i "$key" -o StrictHostKeyChecking=yes "$($env:SF_USERNAME)@frs.sourceforge.net" "mkdir -p `"$destDir`""
           scp -i "$key" -o StrictHostKeyChecking=yes "$zip" "$($env:SF_USERNAME)@frs.sourceforge.net:`"$dest`""
-
-
