@@ -101,9 +101,16 @@ jobs:
           $ftype  = "${{ inputs.flasher_type }}"
           $region = "${{ inputs.region }}"
 
+          # Device-specific builder selection
           $batName = switch ($ftype) {
-            'SuperHybrid Flasher'       { if ($region -eq 'CN') { 'SUPERHYBRID_CN_FULL_SUPERBUILD.bat' } else { 'SUPERHYBRID_FULL_SUPERBUILD.bat' } }
-            'RegionalHybrid Flasher'    { if ($region -eq 'CN') { 'REGIONALHYBRID_CN_FULL_BUILD.bat' } else { 'REGIONALHYBRID_FULL_BUILD.bat' } }
+            'SuperHybrid Flasher' {
+              if ($region -eq 'CN') { 'SUPERHYBRID_CN_FULL_SUPERBUILD.bat' }
+              else { 'SUPERHYBRID_FULL_SUPERBUILD.bat' }
+            }
+            'RegionalHybrid Flasher' {
+              if ($region -eq 'CN') { 'REGIONALHYBRID_CN_FULL_BUILD.bat' }
+              else { 'REGIONALHYBRID_FULL_BUILD.bat' }
+            }
             'SuperHybrid SunOS Flasher' { 'SUPERHYBRID_SUNOS_FULL_SUPERBUILD.bat' }
             'Super Flasher' {
               if     ($dev -eq '13R' -and $region -eq 'CN') { 'SUPER_CN_FULL_SUPERBUILD.bat' }
@@ -140,11 +147,14 @@ jobs:
               'A5'  = 'A5_DEBLOAT'
             }
             $needed = @('my_preload.img','my_company.img','odm.img','oplusstanvbk.img','my_region.img')
+
             $folder = $map[$region]
             if (-not $folder) { return }
             $src = Join-Path $base $folder
             if (-not (Test-Path $src)) { return }
+
             if (-not (Test-Path $dest)) { New-Item -ItemType Directory -Force -Path $dest | Out-Null }
+
             foreach ($f in $needed) {
               $imgPath  = Join-Path $src $f
               if (Test-Path $imgPath) { Copy-Item $imgPath -Destination $dest -Force; continue }
@@ -168,19 +178,22 @@ jobs:
           $ftype   = $env:FTYPE
           $region  = $env:REGION
 
-          $root       = $env:GITHUB_WORKSPACE
+          $root = $env:GITHUB_WORKSPACE
           $builderDir = Join-Path $root ("build_scripts\" + $dev)
           $bloatBase  = Join-Path $root ("bloat\" + $dev)
 
+          # Prepare OUT_DIR fresh
           if (Test-Path $env:OUT_DIR) { Remove-Item $env:OUT_DIR -Recurse -Force }
           New-Item -ItemType Directory -Force -Path $env:OUT_DIR | Out-Null
 
+          # Put otaripper + builder bat in OUT_DIR (root of final zip)
           if (Test-Path (Join-Path $root 'otaripper\otaripper.exe')) {
             Copy-Item (Join-Path $root 'otaripper\otaripper.exe') -Destination $env:OUT_DIR -Force
           }
           $builderSrc = Join-Path $builderDir $env:BUILDER_BAT
           if (Test-Path $builderSrc) { Copy-Item $builderSrc -Destination $env:OUT_DIR -Force }
 
+          # Working folder name
           $workName = switch ($ftype) {
             'SuperHybrid Flasher'       { if ($region -eq 'CN') { 'SuperHybrid Flasher CN' } else { 'SuperHybrid Flasher' } }
             'RegionalHybrid Flasher'    { if ($region -eq 'CN') { 'RegionalHybrid Flasher CN' } else { 'RegionalHybrid Flasher' } }
@@ -191,6 +204,7 @@ jobs:
           $workDir = Join-Path $env:OUT_DIR $workName
           New-Item -ItemType Directory -Force -Path $workDir | Out-Null
 
+          # Choose template root
           $tplBase = Join-Path $root ("flasher_scripts\" + $dev)
           if ($ftype -like '*Hybrid*') {
             $tplBase = Join-Path $tplBase ($(if ($region -eq 'CN') { 'cos' } else { 'oos' }))
@@ -203,24 +217,29 @@ jobs:
             else                                      { $tplBase = Join-Path $tplBase 'oos\regional' }
           }
 
+          # Copy template files
           Copy-Item "$tplBase\*" -Destination $workDir -Recurse -Force
 
+          # META-INF → ONLY for Hybrid builds
           if ($ftype -like '*Hybrid*') {
             $mi = Join-Path $tplBase 'META-INF'
             if (Test-Path $mi) { Copy-Item $mi -Destination (Join-Path $workDir 'META-INF') -Recurse -Force }
           }
 
+          # Platform-tools ONLY for SuperHybrid Flasher
           if ($ftype -eq 'SuperHybrid Flasher') {
             $ptSrc = Join-Path $root 'platform-tools'
             if (Test-Path $ptSrc) { Copy-Item $ptSrc -Destination $workDir -Recurse -Force }
           }
 
+          # Super folder setup (Super builds of any kind)
           if ($ftype -match 'Super') {
             $superDir = Join-Path $workDir 'Super'
             New-Item -ItemType Directory -Force -Path $superDir | Out-Null
             Copy-Item (Join-Path $root 'lpmake\lpmake.exe') -Destination $superDir -Force
             Copy-Item (Join-Path $root 'lpmake\cygwin1.dll') -Destination $superDir -Force
 
+            # packer scripts
             if ($dev -eq '13T') {
               $pdir = Join-Path $root 'super_packers\13T'
               Copy-Item (Join-Path $pdir ($(if ($region -eq 'CN') { 'super_cos.bat' } else { 'super_oos.bat' }))) -Destination $superDir -Force
@@ -229,8 +248,10 @@ jobs:
               if (Test-Path $p) { Copy-Item $p -Destination $superDir -Force }
             }
 
+            # Bloat placement for Super builds → Super/
             Copy-BloatFiles $bloatBase $region $superDir
 
+            # CN Super extra OOS staging (EUGLO or A5)
             if ($region -eq 'CN') {
               $oosHere = Join-Path $workDir 'OOS_FILES_HERE'
               New-Item -ItemType Directory -Force -Path $oosHere | Out-Null
@@ -238,6 +259,7 @@ jobs:
               else                { Copy-BloatFiles $bloatBase 'GLO' $oosHere }
             }
 
+            # 13T special: Super Flasher OOS (region != CN) → copy CN_BLOAT files to COS_FILES_HERE
             if ($dev -eq '13T' -and $ftype -eq 'Super Flasher' -and $region -ne 'CN') {
               $cosHere = Join-Path $workDir 'COS_FILES_HERE'
               New-Item -ItemType Directory -Force -Path $cosHere | Out-Null
@@ -246,6 +268,7 @@ jobs:
                 if (Test-Path $srcFile) {
                   Copy-Item $srcFile -Destination $cosHere -Force
                 } else {
+                  # Try stub download for each of the three extras
                   $stub = Join-Path $bloatBase ("CN_BLOAT\" + ([System.IO.Path]::GetFileNameWithoutExtension($extra)))
                   if (Test-Path $stub) {
                     try {
@@ -264,6 +287,7 @@ jobs:
             }
           }
 
+          # Regional builds → bloat in OOS_FILES_HERE/ (+ CN extras)
           if ($ftype -eq 'Regional Flasher' -or $ftype -eq 'RegionalHybrid Flasher') {
             $oosHere = Join-Path $workDir 'OOS_FILES_HERE'
             New-Item -ItemType Directory -Force -Path $oosHere | Out-Null
@@ -278,6 +302,7 @@ jobs:
             }
           }
 
+          # Expose for packaging step
           "WORK_DIR=$workDir" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Package output (include folder + otaripper + builder)
@@ -292,16 +317,23 @@ jobs:
           $artifact  = "$devName-$ftypeName-$regionStr-$ts".Replace(' ','')
           $zipPath   = Join-Path $outRoot "$artifact.zip"
 
+          # Stage a temp folder to control zip root contents
           $stage = Join-Path $outRoot "__stage"
           if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
           New-Item -ItemType Directory -Force -Path $stage | Out-Null
 
+          # 1) keep the working folder as a folder
           Copy-Item $workDir -Destination $stage -Recurse -Force
+
+          # 2) add otaripper.exe (if present)
           $otaripper = Join-Path $outRoot 'otaripper.exe'
           if (Test-Path $otaripper) { Copy-Item $otaripper -Destination $stage -Force }
+
+          # 3) add builder .bat (if present)
           $builder = Join-Path $outRoot $env:BUILDER_BAT
           if (Test-Path $builder) { Copy-Item $builder -Destination $stage -Force }
 
+          # Create the single zip
           if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
           Compress-Archive -Path "$stage\*" -DestinationPath $zipPath -Force
           Remove-Item $stage -Recurse -Force
@@ -309,7 +341,7 @@ jobs:
           "ARTIFACT_NAME=$artifact" | Out-File -FilePath $env:GITHUB_ENV -Append
           "ZIP_FILE=$zipPath"       | Out-File -FilePath $env:GITHUB_ENV -Append
 
-      # Upload artifact ONLY when selected
+      # Artifact upload ONLY when selected
       - name: Upload artifact (single zip only)
         if: ${{ inputs.upload_to == 'Artifact Only' }}
         uses: actions/upload-artifact@v4
@@ -319,7 +351,7 @@ jobs:
           retention-days: ${{ env.ARTIFACT_RETENTION_DAYS }}
 
       # ============
-      # Compute upload paths
+      # Path compute
       # ============
       - name: Compute upload paths
         shell: pwsh
@@ -356,15 +388,14 @@ jobs:
 
           "REL_UPLOAD_DIR=$rel" | Out-File -FilePath $env:GITHUB_ENV -Append
 
-          # DS FTP base (can be "/" to mean login root)
           $ftpBase = "${{ secrets.DS_FTP_PATH }}".Trim('/')
-          $ftpAbs  = ($ftpBase.Length -gt 0) ? "$ftpBase/$rel" : $rel
-          "FTP_UPLOAD_DIR=$ftpAbs" | Out-File -FilePath $env:GITHUB_ENV -Append
+          $sfBase  = "${{ secrets.SF_PROJECT_PATH }}".TrimEnd('/')
 
-          # SourceForge base is an absolute path from the secret (e.g. /home/pfs/project/oneplus13flashers)
-          $sfBaseAbs = "${{ secrets.SF_PROJECT_PATH }}".TrimEnd('/')
-          $sfAbs     = "$sfBaseAbs/$rel"
-          "SF_UPLOAD_DIR=$sfAbs" | Out-File -FilePath $env:GITHUB_ENV -Append
+          $ftpAbs = ($ftpBase.Length -gt 0) ? "$ftpBase/$rel" : $rel
+          $sfAbs  = "$sfBase/$rel"   # secret MUST be absolute, e.g. /home/frs/project/oneplus13flashers
+
+          "FTP_UPLOAD_DIR=$ftpAbs" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "SF_UPLOAD_DIR=$sfAbs"   | Out-File -FilePath $env:GITHUB_ENV -Append
 
           Write-Host "Relative upload dir: $rel"
           Write-Host "FTP upload dir: $ftpAbs"
@@ -387,7 +418,7 @@ jobs:
 
           $ftpHost    = $env:DS_FTP_HOST
           $cred       = New-Object System.Net.NetworkCredential($env:DS_FTP_USER, $env:DS_FTP_PASS)
-          $remoteDir  = "$env:FTP_UPLOAD_DIR".Trim('/')
+          $remoteDir  = "$env:FTP_UPLOAD_DIR".Trim('/')  # e.g. "Oneplus 13/Super Flashers/Global" or "Oneplus 13S/Super Flashers"
           $fileName   = "$($env:ARTIFACT_NAME).zip"
           $zipPath    = $env:ZIP_FILE
 
@@ -406,15 +437,21 @@ jobs:
           Write-Host "Checking remote folder: $dirUri"
           try {
             $req = New-FtpRequest $dirUri ([System.Net.WebRequestMethods+Ftp]::ListDirectory)
-            $resp = $req.GetResponse(); $resp.Close()
+            $resp = $req.GetResponse()
+            $resp.Close()
             Write-Host "OK: remote folder exists."
           } catch {
-            $detail = ""; if ($_.Exception.Response) { $detail = " ($($_.Exception.Response.StatusDescription))" }
+            $detail = ""
+            if ($_.Exception.Response) { $detail = " ($($_.Exception.Response.StatusDescription))" }
             throw "Target folder does not exist or is not accessible: $dirUri$detail"
           }
 
           if (-not (Test-Path $zipPath)) { throw "ZIP not found: $zipPath" }
-          $uploadUri = if ($encodedPath) { "ftp://$ftpHost/$encodedPath/$([System.Uri]::EscapeDataString($fileName))" } else { "ftp://$ftpHost/$([System.Uri]::EscapeDataString($fileName))" }
+          $uploadUri = if ($encodedPath) {
+            "ftp://$ftpHost/$encodedPath/$([System.Uri]::EscapeDataString($fileName))"
+          } else {
+            "ftp://$ftpHost/$([System.Uri]::EscapeDataString($fileName))"
+          }
 
           Write-Host "Uploading to: $uploadUri"
           $req = New-FtpRequest $uploadUri ([System.Net.WebRequestMethods+Ftp]::UploadFile)
@@ -437,14 +474,13 @@ jobs:
           SF_SSH_PRIVATE_KEY: ${{ secrets.SF_SSH_PRIVATE_KEY }}
         run: |
           if (-not $env:SF_SSH_PRIVATE_KEY) { throw "Missing SF_SSH_PRIVATE_KEY secret." }
-
-          $sshDir  = Join-Path $env:USERPROFILE ".ssh"
+          $sshDir = Join-Path $env:USERPROFILE ".ssh"
           New-Item -ItemType Directory -Force -Path $sshDir | Out-Null
 
           $keyPath = Join-Path $sshDir "id_ed25519"
-          Set-Content -Path $keyPath -Value $env:SF_SSH_PRIVATE_KEY -Encoding ascii
-          icacls $keyPath /inheritance:r | Out-Null
-          icacls $keyPath /grant:r "$($env:USERNAME):(R)" | Out-Null
+          Set-Content -Path $keyPath -Value $env:SF_SSH_PRIVATE_KEY -Encoding ascii -NoNewline
+          & icacls $keyPath /inheritance:r | Out-Null
+          & icacls $keyPath /grant:r "$($env:USERNAME):(R)" | Out-Null
 
           $kh = Join-Path $sshDir "known_hosts"
           ssh-keyscan -t rsa frs.sourceforge.net | Out-File -FilePath $kh -Encoding ascii
@@ -470,7 +506,6 @@ jobs:
           if (-not $env:SF_USERNAME -or -not $env:SF_UPLOAD_DIR) {
             throw "Missing SourceForge config. Need SF_USERNAME and SF_UPLOAD_DIR."
           }
-
           $zip = $env:ZIP_FILE
           if (-not (Test-Path $zip)) { throw "ZIP file not found: $zip" }
 
