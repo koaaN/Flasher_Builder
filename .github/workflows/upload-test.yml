@@ -392,11 +392,11 @@ jobs:
           if (-not $env:DS_FTP_HOST -or -not $env:DS_FTP_USER -or -not $env:DS_FTP_PASS) {
             throw "Missing DS_FTP secrets. Required: DS_FTP_HOST, DS_FTP_USER, DS_FTP_PASS"
           }
-
-          $host = $env:DS_FTP_HOST
-          $cred = New-Object System.Net.NetworkCredential($env:DS_FTP_USER, $env:DS_FTP_PASS)
-          $remoteDir = "$env:FTP_UPLOAD_DIR".Trim('/')
-
+      
+          $ftpHost  = $env:DS_FTP_HOST
+          $cred     = New-Object System.Net.NetworkCredential($env:DS_FTP_USER, $env:DS_FTP_PASS)
+          $remoteDir = "$env:FTP_UPLOAD_DIR".Trim('/')   # e.g. "Oneplus 13/Super Flashers/Global"
+      
           function New-FtpRequest($uri,$method) {
             $r = [System.Net.FtpWebRequest]::Create($uri)
             $r.Credentials = $cred
@@ -406,34 +406,38 @@ jobs:
             $r.KeepAlive = $false
             return $r
           }
-
-          function Ensure-FtpDirectory($host,$path) {
+      
+          function Ensure-FtpDirectory($ftpHost,$path) {
             if ([string]::IsNullOrWhiteSpace($path)) { return }
             $parts = $path.Split('/') | Where-Object { $_ -ne '' }
             $accum = @()
             foreach ($p in $parts) {
               $accum += $p
               $seg = ($accum | ForEach-Object { [System.Uri]::EscapeDataString($_) }) -join '/'
-              $uri = "ftp://$host/$seg"
+              $uri = "ftp://$ftpHost/$seg"
               try {
                 $req = New-FtpRequest $uri ([System.Net.WebRequestMethods+Ftp]::MakeDirectory)
                 $resp = $req.GetResponse()
                 $resp.Close()
                 Write-Host "Created FTP dir: /$seg"
               } catch {
-                # Ignore error if exists
+                # Ignore if it already exists; rethrow only if there's no response object
                 if (-not $_.Exception.Response) { throw }
               }
             }
           }
-
-          Ensure-FtpDirectory $host $remoteDir
-
+      
+          Ensure-FtpDirectory $ftpHost $remoteDir
+      
           $fileName = "$($env:ARTIFACT_NAME).zip"
           $encodedPath = ($remoteDir.Split('/') | Where-Object { $_ -ne '' } | ForEach-Object { [System.Uri]::EscapeDataString($_) }) -join '/'
-          $uri = if ($encodedPath) { "ftp://$host/$encodedPath/$([System.Uri]::EscapeDataString($fileName))" } else { "ftp://$host/$([System.Uri]::EscapeDataString($fileName))" }
-
-          Write-Host "Uploading to $uri"
+          $uri = if ($encodedPath) {
+            "ftp://$ftpHost/$encodedPath/$([System.Uri]::EscapeDataString($fileName))"
+          } else {
+            "ftp://$ftpHost/$([System.Uri]::EscapeDataString($fileName))"
+          }
+      
+          Write-Host "Uploading to: /$encodedPath/$fileName"
           $req = New-FtpRequest $uri ([System.Net.WebRequestMethods+Ftp]::UploadFile)
           $bytes = [System.IO.File]::ReadAllBytes($env:ZIP_FILE)
           $req.ContentLength = $bytes.Length
@@ -443,6 +447,7 @@ jobs:
           $resp = $req.GetResponse()
           Write-Host ("FTP server response: {0}" -f $resp.StatusDescription)
           $resp.Close()
+
 
       # ==============================
       # Conditional: SourceForge upload
