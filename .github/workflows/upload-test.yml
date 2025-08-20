@@ -351,9 +351,9 @@ jobs:
         if: ${{ inputs.upload_to == 'Artifact Only' }}
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ env:ARTIFACT_NAME }}
-          path: ${{ env:ZIP_FILE }}
-          retention-days: ${{ env:ARTIFACT_RETENTION_DAYS }}
+          name: ${{ env.ARTIFACT_NAME }}
+          path: ${{ env.ZIP_FILE }}
+          retention-days: ${{ env.ARTIFACT_RETENTION_DAYS }}
 
       # ========= Compute remote paths =========
       - name: Compute upload paths
