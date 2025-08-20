@@ -73,7 +73,7 @@ echo Copying 16.0.0.1 dtbo.img into OOS_FILES_HERE...
 copy /Y "%~dp016DTBO\dtbo.img" "%super_flasher_dest%\OOS_FILES_HERE\"
 
 echo Packing super.img
-call "Super Flasher\Super\super.bat"
+call "Super Flasher\Super\super_oos.bat"
 echo Moving super.img into Super Flasher.
 move /Y "Super Flasher\Super\super.img" "Super Flasher\"
 echo Removing scrap files
