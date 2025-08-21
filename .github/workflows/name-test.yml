@@ -453,12 +453,18 @@ jobs:
           $device = "${{ inputs.device }}"
           $ftype  = "${{ inputs.flasher_type }}"
           $region = "${{ inputs.region }}"
-
-          $category = switch -Regex ($ftype) {
-            '^(SuperHybrid Flasher|SuperHybrid SunOS Flasher|Super Flasher)$' { 'Super Flashers'; break }
-            default { 'Regional Flashers' }
+      
+          # Special case: 13T + Super Flasher + IN -> OxygenOS Flashers
+          if ($device -eq 'Oneplus 13T' -and $ftype -eq 'Super Flasher' -and $region -eq 'IN') {
+            $category = 'OxygenOS Flashers'
+          } else {
+            $category = switch -Regex ($ftype) {
+              '^(SuperHybrid Flasher|SuperHybrid SunOS Flasher|Super Flasher)$' { 'Super Flashers'; break }
+              default { 'Regional Flashers' }
+            }
           }
-
+      
+          # 13S / 13T have no region folder
           $needsRegion = ($device -ne 'Oneplus 13S' -and $device -ne 'Oneplus 13T')
           if ($needsRegion) {
             $regionFolder = switch ($region) {
@@ -473,21 +479,25 @@ jobs:
           } else {
             $rel = Join-Path $device $category
           }
-
+      
+          # Normalize to forward slashes with trailing slash
           $rel = ($rel -replace '\\','/')
           if (-not $rel.EndsWith('/')) { $rel += '/' }
           "REL_UPLOAD_DIR=$rel" | Out-File -FilePath $env:GITHUB_ENV -Append
-
+      
+          # DS FTP absolute target
           $ftpBase = "${{ secrets.DS_FTP_PATH }}".Trim('/')
           $ftpAbs  = ($ftpBase.Length -gt 0) ? "$ftpBase/$rel" : $rel
           "FTP_UPLOAD_DIR=$ftpAbs" | Out-File -FilePath $env:GITHUB_ENV -Append
-
+      
+          # SourceForge absolute base (must be absolute)
           $sfBaseAbs = "${{ secrets.SF_PROJECT_PATH }}".Trim()
           if ([string]::IsNullOrWhiteSpace($sfBaseAbs) -or -not $sfBaseAbs.StartsWith('/')) {
             throw "SF_PROJECT_PATH must be an absolute path like /home/frs/project/oneplus13flashers"
           }
           $sfBaseAbs = ($sfBaseAbs -replace '\\','/').TrimEnd('/')
           "SF_UPLOAD_DIR=$sfBaseAbs/$rel" | Out-File -FilePath $env:GITHUB_ENV -Append
+
 
       - name: Upload to DS_FTP (streamed, large-file safe)
         if: ${{ inputs.upload_to == 'DS_FTP' || inputs.upload_to == 'Both DS_FTP & Sourceforge' }}
