@@ -362,11 +362,11 @@ jobs:
           echo Calling builder: "%GITHUB_WORKSPACE%\%OUT_DIR%\%BUILDER_BAT%" "%OTA_PATH%"
           (echo.| call "%GITHUB_WORKSPACE%\%OUT_DIR%\%BUILDER_BAT%" "%OTA_PATH%") || exit /b 1
 
-      - name: Package final output (tar -a, absolute path, clean paths, versioned name w/ 13R/13S/13T + COS for CN)
+      - name: Package final output (tar -a, absolute path, clean paths, versioned name incl. OOS/COS for 13T)
         shell: pwsh
         run: |
           $otaDir = $env:OTA_DIR
-
+      
           $byFtype = switch ($env:FTYPE) {
             'SuperHybrid Flasher'       { @('SuperHybrid Flasher') }
             'RegionalHybrid Flasher'    { @('RegionalHybrid Flasher') }
@@ -377,16 +377,9 @@ jobs:
             'Regional Flasher'          { @('Regional Flasher') }
             default { @() }
           }
-          $fallback = @(
-            'SuperHybrid Flasher',
-            'RegionalHybrid Flasher',
-            'SuperHybrid SunOS Flasher',
-            'Super Flasher CN',
-            'Super Flasher',
-            'Regional Flasher'
-          )
+          $fallback = @('SuperHybrid Flasher','RegionalHybrid Flasher','SuperHybrid SunOS Flasher','Super Flasher CN','Super Flasher','Regional Flasher')
           $candidates = @() + $byFtype + $fallback | Select-Object -Unique
-
+      
           $resultDir = $null
           foreach ($name in $candidates) {
             $p = Join-Path $otaDir $name
@@ -395,47 +388,51 @@ jobs:
           if (-not $resultDir) {
             throw ("Could not find builder output folder next to OTA in '{0}'. Looked for: {1}" -f $otaDir, ($candidates -join ', '))
           }
-
+      
           $zipRoot  = Join-Path $env:GITHUB_WORKSPACE $env:OUT_DIR
           New-Item -ItemType Directory -Force -Path $zipRoot | Out-Null
-
-          # Versioned, human-readable name with device tags and CN→COS rule
-          $ftypeName   = $env:FTYPE
-          $regionCode  = $env:REGION
-          $regionDisp  = switch ($regionCode) { 'CN'{'COS'} 'GLO'{'Global'} 'EU'{'EU'} 'IN'{'IN'} 'NA'{'NA'} default {$regionCode} }
-          $ver         = $env:OTA_VERSION
+      
+          # ---- Name building (OOS/COS only for 13T) ----
+          $ftypeName  = $env:FTYPE
+          $regionCode = $env:REGION
+          $ver        = $env:OTA_VERSION
           if ([string]::IsNullOrWhiteSpace($ver)) { $ver = 'UNKNOWN' }
-
+      
           $devCode = $env:DEV
-          $devTag  = switch ($devCode) { '13R'{'13R'} '13S'{'13S'} '13T'{'13T'} default { '' } }
-
-          # include region for base 13 and 13R always; for 13S/13T include only when CN (to show COS)
-          $includeRegion = if ($devCode -in @('13','13R')) { $true } elseif ($devCode -in @('13S','13T') -and $regionCode -eq 'CN') { $true } else { $false }
-
-          if ($devTag) {
-            if ($includeRegion) {
-              $artifactBase = "{0} {1} {2} {3}" -f $ftypeName, $devTag, $regionDisp, $ver
-            } else {
-              $artifactBase = "{0} {1} {2}" -f $ftypeName, $devTag, $ver
-            }
-          } else {
+          $regionDisp = switch ($regionCode) {
+            'CN'  { 'COS' }
+            'GLO' { 'Global' }
+            'EU'  { 'EU' }
+            'IN'  { 'IN' }
+            'NA'  { 'NA' }
+            default { $regionCode }
+          }
+      
+          if ($devCode -eq '13T') {
+            $osTag = if ($regionCode -eq 'CN') { 'COS' } else { 'OOS' }
+            $artifactBase = "{0} 13T {1} {2}" -f $ftypeName, $osTag, $ver
+          } elseif ($devCode -eq '13S') {
+            # No region or OOS/COS for 13S
+            $artifactBase = "{0} 13S {1}" -f $ftypeName, $ver
+          } elseif ($devCode -eq '13R') {
+            $artifactBase = "{0} 13R {1} {2}" -f $ftypeName, $regionDisp, $ver
+          } else { # 13
             $artifactBase = "{0} {1} {2}" -f $ftypeName, $regionDisp, $ver
           }
-
+          # ---------------------------------------------
+      
           $zipPath = Join-Path $zipRoot ($artifactBase + '.zip')
           if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
-
+      
           $tar = Get-Command tar -ErrorAction Stop
-
-          # Avoid './' by passing explicit top-level entries
           $items = Get-ChildItem -LiteralPath $resultDir -Force | ForEach-Object { $_.Name }
           if ($items.Count -eq 0) { throw ("Nothing to archive in {0}" -f $resultDir) }
-
+      
           $args = @('-a','-c','-f',"$zipPath",'-C',"$resultDir") + $items
           & $tar.Path @args
-
+      
           if (-not (Test-Path $zipPath)) { throw ("Packaging failed: ZIP not created at {0}" -f $zipPath) }
-
+      
           "ARTIFACT_NAME=$artifactBase" | Out-File -FilePath $env:GITHUB_ENV -Append
           "ZIP_FILE=$zipPath"           | Out-File -FilePath $env:GITHUB_ENV -Append
 
