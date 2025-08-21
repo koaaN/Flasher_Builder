@@ -371,7 +371,7 @@ jobs:
           echo Calling builder: "%GITHUB_WORKSPACE%\%OUT_DIR%\%BUILDER_BAT%" "%OTA_PATH%"
           (echo.| call "%GITHUB_WORKSPACE%\%OUT_DIR%\%BUILDER_BAT%" "%OTA_PATH%") || exit /b 1
 
-      - name: Package final output (tar -a; names: 13T OOS/COS + A5/A5P codes)
+      - name: "Package final output (tar -a; names: 13T OOS/COS + A5/A5P codes)"
         shell: pwsh
         run: |
           $otaDir = $env:OTA_DIR
