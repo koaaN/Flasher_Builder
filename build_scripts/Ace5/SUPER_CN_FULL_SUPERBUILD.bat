@@ -74,6 +74,6 @@ copy /Y "%~dp0A5_DEBLOAT\my_company.img" "%super_flasher_dest%\OOS_FILES_HERE\"
 
 echo Done moving files into Super Flasher CN.
 echo Packing super.img
-call "Super Flasher CN\Super\super.bat"
+call "Super Flasher CN\Super\super_cos.bat"
 move /Y "Super Flasher CN\Super\super.img" "Super Flasher CN\"
 rmdir /S /Q "Super Flasher CN\Super"
