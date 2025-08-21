@@ -489,8 +489,8 @@ jobs:
           $device = "${{ inputs.device }}"
           $ftype  = "${{ inputs.flasher_type }}"
           $region = "${{ inputs.region }}"
-
-          # 13T + Super Flasher + IN -> OxygenOS Flashers
+      
+          # Category selection
           if ($device -eq 'Oneplus 13T' -and $ftype -eq 'Super Flasher' -and $region -eq 'IN') {
             $category = 'OxygenOS Flashers'
           } elseif ($device -eq 'Oneplus Ace 5 Pro') {
@@ -502,9 +502,11 @@ jobs:
               default { 'Regional Flashers' }
             }
           }
-
-          # 13S / 13T have no region folder; Ace devices DO have region folder
-          $needsRegion = ($device -ne 'Oneplus 13S' -and $device -ne 'Oneplus 13T')
+      
+          # Devices that DO NOT get a region subfolder
+          $noRegionDevices = @('Oneplus 13S','Oneplus 13T','Oneplus Ace 5','Oneplus Ace 5 Pro')
+          $needsRegion = -not ($noRegionDevices -contains $device)
+      
           if ($needsRegion) {
             $regionFolder = switch ($region) {
               'CN'  { 'COS' }
@@ -516,17 +518,21 @@ jobs:
             }
             $rel = Join-Path (Join-Path $device $category) $regionFolder
           } else {
+            # Ace 5 / Ace 5 Pro (and 13S/13T): no region directory
             $rel = Join-Path $device $category
           }
-
+      
+          # Normalize to forward slashes and ensure trailing slash
           $rel = ($rel -replace '\\','/')
           if (-not $rel.EndsWith('/')) { $rel += '/' }
           "REL_UPLOAD_DIR=$rel" | Out-File -FilePath $env:GITHUB_ENV -Append
-
+      
+          # DS FTP absolute target
           $ftpBase = "${{ secrets.DS_FTP_PATH }}".Trim('/')
           $ftpAbs  = ($ftpBase.Length -gt 0) ? "$ftpBase/$rel" : $rel
           "FTP_UPLOAD_DIR=$ftpAbs" | Out-File -FilePath $env:GITHUB_ENV -Append
-
+      
+          # SourceForge absolute base (must be absolute)
           $sfBaseAbs = "${{ secrets.SF_PROJECT_PATH }}".Trim()
           if ([string]::IsNullOrWhiteSpace($sfBaseAbs) -or -not $sfBaseAbs.StartsWith('/')) {
             throw "SF_PROJECT_PATH must be an absolute path like /home/frs/project/oneplus13flashers"
