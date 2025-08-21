@@ -389,6 +389,36 @@ jobs:
             }
           }
 
+          # ---- FIX: Ace 5 Pro • Regional Flasher • CN → put A5P_BLOAT {my_preload.img,my_company.img} into COS_FILES_HERE ----
+          if ($ftype -eq 'Regional Flasher' -and $dev -eq 'Ace5Pro' -and $region -eq 'CN') {
+            $cosHere = Join-Path $workDir 'COS_FILES_HERE'
+            New-Item -ItemType Directory -Force -Path $cosHere | Out-Null
+          
+            # Ace devices share bloat root: $bloatBase = Join-Path $root 'bloat\Ace5'
+            $a5pBloat = Join-Path $bloatBase 'A5P_BLOAT'
+          
+            foreach ($f in 'my_preload.img','my_company.img') {
+              $src = Join-Path $a5pBloat $f
+              if (Test-Path $src) {
+                Copy-Item $src -Destination $cosHere -Force
+                continue
+              }
+          
+              # If .img is absent (e.g. my_preload), try stub (file without extension) and download it
+              $stub = Join-Path $a5pBloat ([System.IO.Path]::GetFileNameWithoutExtension($f))
+              if (Test-Path $stub) {
+                try {
+                  $url = (Get-Content $stub -Raw).Trim()
+                  if ($url) {
+                    Invoke-WebRequest -Uri $url -OutFile (Join-Path $cosHere $f)
+                  }
+                } catch {
+                  Write-Warning ("Failed to download {0} from {1}: {2}" -f $f, $stub, $_.Exception.Message)
+                }
+              }
+            }
+          }
+
           # Oneplus 13 + SuperHybrid extras
           if ($dev -eq '13' -and $ftype -eq 'SuperHybrid Flasher') {
             $repo16  = Join-Path $root '16DTBO'
