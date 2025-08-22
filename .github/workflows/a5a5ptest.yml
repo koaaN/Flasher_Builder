@@ -359,6 +359,18 @@ jobs:
 
           rsync -a "$tpl_base/" "$work_dir/"
 
+                    # CN-RegionalHybrid erwartet EUGLO_BLOAT neben dem Builder (im OUT_DIR)
+          if [[ "$FTYPE" == "RegionalHybrid Flasher" && "$REGION" == "CN" ]]; then
+            src_bloat="$bloat_base/EUGLO_BLOAT"
+            if [ -d "$src_bloat" ]; then
+              mkdir -p "$OUT_DIR/EUGLO_BLOAT"
+              rsync -a "$src_bloat/" "$OUT_DIR/EUGLO_BLOAT/"
+            else
+              echo "WARN: expected EUGLO_BLOAT at $src_bloat not found"
+            fi
+          fi
+
+
           if [[ "$FTYPE" == *Hybrid* ]]; then
             mi="$tpl_base/META-INF"
             if [ -d "$mi" ]; then
