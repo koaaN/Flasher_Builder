@@ -12,7 +12,7 @@ set "regional_flasher_src=%~dp0Regional Hybrid Flasher"
 set "regional_flasher_dest=%input_dir%Regional Hybrid Flasher"
 
 :: Copy Regional Hybrid Flasher folder to zip location
-xcopy /E /I /Y "%Regional_Hybrid_Flasher_src%" "%Regional_Hybrid_Flasher_src%"
+xcopy /E /I /Y "%regional_flasher_src%" "%regional_flasher_dest%"
 
 :: Copy otaripper.exe to the zip's folder
 copy "%tool%" "%input_dir%" >nul
@@ -43,13 +43,12 @@ for /d %%D in ("%input_dir%*") do (
 :: Move all extracted files and handle bloat
 if defined new_folder (
     echo Moving all extracted files into OOS_FILES_HERE...
-    if not exist "%Regional_Hybrid_Flasher_src%\OOS_FILES_HERE" mkdir "%Regional_Hybrid_Flasher_src%\OOS_FILES_HERE"
-    move /Y "!new_folder!\*" "%Regional_Hybrid_Flasher_src%\OOS_FILES_HERE\" >nul
+    if not exist "%regional_flasher_dest%\OOS_FILES_HERE" mkdir "%regional_flasher_dest%\OOS_FILES_HERE"
+    move /Y "!new_folder!\*" "%regional_flasher_dest%\OOS_FILES_HERE\" >nul
 
     rd /s /q "!new_folder!"
 )
 
 echo Done moving files into Regional Hybrid Flasher.
 echo Copying 16.0.0.1_dtbo.img into Regional Hybrid Flasher...
-copy /Y "%~dp016DTBO\16.0.0.1_dtbo.img" "%Regional Hybrid Flasher_dest%"
-pause
+copy /Y "%~dp016DTBO\16.0.0.1_dtbo.img" "%regional_flasher_dest%"
