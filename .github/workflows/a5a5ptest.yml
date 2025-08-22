@@ -722,33 +722,15 @@ jobs:
           : "${DS_FTP_USER:?Missing DS_FTP_USER}"
           : "${DS_FTP_PASS:?Missing DS_FTP_PASS}"
 
-          remote_dir="$(printf "%s" "$FTP_UPLOAD_DIR" | sed 's#^/*##')"   # z.B. "Oneplus 13/Super Flashers/Global/"
+          remote_dir="$(printf "%s" "$FTP_UPLOAD_DIR" | sed 's#^/*##')"
           file_name="${ARTIFACT_NAME}.zip"
           zip_path="$ZIP_FILE"
           [ -f "$zip_path" ] || { echo "ZIP not found: $zip_path"; exit 1; }
 
-          # URL-encode Pfad (Leerzeichen etc.), aber / unverändert lassen
-          if command -v python3 >/dev/null 2>&1; then
-            enc_path="$(python3 - <<'PY' "$remote_dir$file_name"
-import sys, urllib.parse
-print(urllib.parse.quote(sys.argv[1], safe='/'))
-PY
-)"
-          else
-            # Fallback: das Wichtigste (Space, %, #, +, ?)
-            enc_path="$(printf '%s' "$remote_dir$file_name" \
-              | sed -e 's/%/%25/g' -e 's/ /%20/g' -e 's/#/%23/g' -e 's/+/%2B/g' -e 's/?/%3F/g')"
-          fi
-
-          url="ftp://${DS_FTP_HOST}/${enc_path}"
+          url="ftp://${DS_FTP_HOST}/${remote_dir}${file_name}"
           echo "Uploading via curl to: $url"
-
-          curl --ftp-pasv --disable-eprt --ftp-method nocwd \
-               --user "${DS_FTP_USER}:${DS_FTP_PASS}" \
-               --ftp-create-dirs \
-               -T "$zip_path" "$url" \
-               --fail --show-error --silent
-
+          curl --ftp-pasv --disable-eprt --user "${DS_FTP_USER}:${DS_FTP_PASS}" \
+               --ftp-create-dirs -T "$zip_path" "$url" --fail --show-error --silent
 
       - name: Setup SSH for SourceForge
         if: ${{ inputs.upload_to == 'Sourceforge' || inputs.upload_to == 'Both DS_FTP & Sourceforge' }}
