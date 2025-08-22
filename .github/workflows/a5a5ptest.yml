@@ -1,4 +1,4 @@
-name: Upload Test
+name: Upload Test (Linux)
 
 on:
   workflow_dispatch:
@@ -62,738 +62,683 @@ env:
 jobs:
   build:
     name: Build • ${{ inputs.device }} • ${{ inputs.flasher_type }} • ${{ inputs.region }}
-    runs-on: [self-hosted, Windows, X64]
+    # Passe an: self-hosted Linux Runner ODER ubuntu-latest
+    runs-on: [self-hosted, Linux, X64]
 
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Prep dirs and placeholder
-        shell: pwsh
+      - name: Ensure deps (optional if dein Runner already has them)
+        if: ${{ runner.os == 'Linux' }}
         run: |
-          New-Item -ItemType Directory -Force -Path "download","$env:OUT_DIR" | Out-Null
-          $url = "${{ inputs.ota_url }}".Trim()
-          if ([string]::IsNullOrWhiteSpace($url)) {
-            Set-Content -Path "download\PLACEHOLDER.txt" -Value "Placeholder OTA for dry-run"
-            if (Test-Path "download\OTA.zip") { Remove-Item "download\OTA.zip" -Force }
-            Compress-Archive -Path "download\PLACEHOLDER.txt" -DestinationPath "download\OTA.zip" -Force
-          }
+          set -e
+          if command -v apt-get >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends \
+              aria2 curl unzip zip rsync openssh-client ca-certificates tar coreutils grep sed awk
+          fi
+
+      - name: Prep dirs and placeholder
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p download "${OUT_DIR}"
+          url="${{ inputs.ota_url }}"
+          url="$(printf "%s" "$url" | xargs)"  # trim
+          if [ -z "$url" ]; then
+            echo "Placeholder OTA for dry-run" > download/PLACEHOLDER.txt
+            rm -f download/OTA.zip
+            (cd download && zip -q OTA.zip PLACEHOLDER.txt)
+          fi
 
       - name: Download OTA zip (aria2 → curl fallback)
         if: ${{ inputs.ota_url != '' }}
-        shell: cmd
+        shell: bash
         run: |
-          mkdir download
-          if exist aria2\aria2c.exe (
-            echo Using aria2c for OTA download...
-            aria2\aria2c.exe -x 8 -s 8 -c --file-allocation=none --retry-wait=5 --max-tries=10 --timeout=30 -o download\OTA.zip "${{ inputs.ota_url }}"
-          ) else (
-            echo aria2c.exe not found, falling back to curl...
-            curl -L -o download\OTA.zip "${{ inputs.ota_url }}"
-          )
+          set -euo pipefail
+          mkdir -p download
+          if command -v aria2c >/dev/null 2>&1; then
+            echo "Using aria2c for OTA download..."
+            aria2c -x 8 -s 8 -c --file-allocation=none --retry-wait=5 --max-tries=10 --timeout=30 \
+              -o "download/OTA.zip" "${{ inputs.ota_url }}"
+          else
+            echo "aria2c not found, falling back to curl..."
+            curl -L --fail --retry 5 --retry-delay 5 -o "download/OTA.zip" "${{ inputs.ota_url }}"
+          fi
 
       - name: Export OTA env
-        shell: pwsh
+        shell: bash
         run: |
-          if (-not (Test-Path "download\OTA.zip")) { throw "OTA.zip not found in download\" }
-          $ota = (Resolve-Path 'download\OTA.zip').Path
-          $otaDir = Split-Path -Path $ota -Parent
-          "OTA_PATH=$ota"    | Out-File -FilePath $env:GITHUB_ENV -Append
-          "OTA_DIR=$otaDir"  | Out-File -FilePath $env:GITHUB_ENV -Append
+          set -euo pipefail
+          test -f "download/OTA.zip" || { echo "OTA.zip not found in download/"; exit 1; }
+          ota="$(realpath download/OTA.zip)"
+          ota_dir="$(dirname "$ota")"
+          {
+            echo "OTA_PATH=$ota"
+            echo "OTA_DIR=$ota_dir"
+          } >> "$GITHUB_ENV"
 
       - name: Extract OTA version (from META-INF/com/android/metadata)
-        shell: pwsh
+        shell: bash
         run: |
-          $ota = $env:OTA_PATH
-          Add-Type -AssemblyName System.IO.Compression
-          Add-Type -AssemblyName System.IO.Compression.FileSystem
-
-          $zip = [System.IO.Compression.ZipFile]::OpenRead($ota)
-          try {
-            $entry = $zip.Entries | Where-Object {
-              ($_.FullName -replace '\\','/') -ieq 'META-INF/com/android/metadata'
-            }
-            if (-not $entry) { throw "metadata not found in OTA.zip" }
-            $sr = New-Object System.IO.StreamReader($entry.Open())
-            $content = $sr.ReadToEnd()
-            $sr.Close()
-          } finally {
-            $zip.Dispose()
-          }
-
-          $versionLine = ($content -split "`r?`n") | Where-Object { $_ -match '^version_name=' } | Select-Object -First 1
-          if (-not $versionLine) { throw "version_name not found in metadata" }
-          $val = $versionLine.Substring('version_name='.Length)
-
-          $m = [regex]::Matches($val, '\d+(?:\.\d+){1,4}')
-          if ($m.Count -eq 0) { throw ("Could not parse numeric version from '{0}'" -f $val) }
-          $numeric = ($m | Sort-Object { $_.Value.Length } -Descending | Select-Object -First 1).Value
-
-          "OTA_VERSION=$numeric" | Out-File -FilePath $env:GITHUB_ENV -Append
-          Write-Host ("Parsed OTA version: {0}" -f $numeric)
+          set -euo pipefail
+          content="$(unzip -p "$OTA_PATH" META-INF/com/android/metadata 2>/dev/null || true)"
+          [ -n "$content" ] || { echo "metadata not found in OTA.zip"; exit 1; }
+          version_line="$(printf "%s" "$content" | grep -E '^version_name=')" || { echo "version_name not found in metadata"; exit 1; }
+          val="${version_line#version_name=}"
+          # Greife die längste numerische Form (x.y[.z...]) ab
+          numeric="$(printf "%s" "$val" | grep -oE '[0-9]+(\.[0-9]+){1,4}' | awk '{ print length, $0 }' | sort -nr | head -n1 | cut -d" " -f2-)"
+          [ -n "$numeric" ] || { echo "Could not parse numeric version from '$val'"; exit 1; }
+          echo "Parsed OTA version: $numeric"
+          echo "OTA_VERSION=$numeric" >> "$GITHUB_ENV"
 
       - name: Map device → pick builder
-        shell: pwsh
+        shell: bash
         run: |
-          $devDisp = "${{ inputs.device }}"
-          $dev = switch ($devDisp) {
-            'Oneplus 13'        { '13' }
-            'Oneplus 13R'       { '13R' }
-            'Oneplus 13S'       { '13S' }
-            'Oneplus 13T'       { '13T' }
-            'Oneplus Ace 5'     { 'Ace5' }
-            'Oneplus Ace 5 Pro' { 'Ace5Pro' }
-            default { throw "Unknown device: $devDisp" }
+          set -euo pipefail
+          dev_disp="${{ inputs.device }}"
+          case "$dev_disp" in
+            "Oneplus 13") dev="13" ;;
+            "Oneplus 13R") dev="13R" ;;
+            "Oneplus 13S") dev="13S" ;;
+            "Oneplus 13T") dev="13T" ;;
+            "Oneplus Ace 5") dev="Ace5" ;;
+            "Oneplus Ace 5 Pro") dev="Ace5Pro" ;;
+            *) echo "Unknown device: $dev_disp"; exit 1 ;;
+          esac
+
+          ftype="${{ inputs.flasher_type }}"
+          region="${{ inputs.region }}"
+
+          # Wir nehmen an, dass es Linux-Builder-Skripte (.sh) mit analogen Namen gibt.
+          # Passe ggf. die Namen/Orte an dein Repo an.
+          pick_bat() {
+            case "$ftype" in
+              "SuperHybrid Flasher")
+                if [[ "$dev" == "Ace5" || "$dev" == "Ace5Pro" ]]; then echo "Hybrid flashers are not supported for $dev_disp." >&2; exit 1; fi
+                if [[ "$region" == "CN" ]]; then echo "SUPERHYBRID_CN_FULL_SUPERBUILD"; else echo "SUPERHYBRID_FULL_SUPERBUILD"; fi
+              ;;
+              "RegionalHybrid Flasher")
+                if [[ "$dev" == "Ace5" || "$dev" == "Ace5Pro" ]]; then echo "Hybrid flashers are not supported for $dev_disp." >&2; exit 1; fi
+                if [[ "$region" == "CN" ]]; then echo "REGIONALHYBRID_CN_FULL_BUILD"; else echo "REGIONALHYBRID_FULL_BUILD"; fi
+              ;;
+              "SuperHybrid SunOS Flasher")
+                if [[ "$dev" == "Ace5" || "$dev" == "Ace5Pro" ]]; then echo "Hybrid flashers are not supported for $dev_disp." >&2; exit 1; fi
+                echo "SUPERHYBRID_SUNOS_FULL_SUPERBUILD"
+              ;;
+              "Super Flasher")
+                if   [[ "$dev" == "13R" && "$region" == "CN" ]]; then echo "SUPER_CN_FULL_SUPERBUILD"
+                elif [[ "$dev" == "13R" ]]; then echo "SUPER_EUGLO_FULL_SUPERBUILD"
+                elif [[ "$dev" == "13S" ]]; then echo "SUPER_IN_FULL_SUPERBUILD"
+                elif [[ "$dev" == "13T" && "$region" == "CN" ]]; then echo "SUPER_CN_FULL_SUPERBUILD"
+                elif [[ "$dev" == "13T" ]]; then echo "SUPER_IN_FULL_SUPERBUILD"
+                elif [[ "$dev" == "Ace5" && "$region" == "CN" ]]; then echo "SUPER_CN_FULL_SUPERBUILD"
+                elif [[ "$dev" == "Ace5" ]]; then echo "SUPER_OOS_FULL_SUPERBUILD"
+                elif [[ "$dev" == "Ace5Pro" ]]; then echo "ERROR_ACE5PRO_REGIONAL_ONLY"
+                else echo "SUPERHYBRID_FULL_SUPERBUILD"; fi
+              ;;
+              "Regional Flasher")
+                if   [[ "$dev" == "13R" && "$region" == "CN" ]]; then echo "REGIONAL_CN_FULL_BUILD"
+                elif [[ "$dev" == "13R" ]]; then echo "REGIONAL_EUGLO_FULL_BUILD"
+                elif [[ "$dev" == "13S" ]]; then echo "REGIONAL_IN_FULL_BUILD"
+                elif [[ "$dev" == "Ace5Pro" ]]; then echo "REGIONAL_ACE5PRO_CN_FULL_BUILD"
+                elif [[ "$dev" == "Ace5" ]]; then echo "REGIONAL_CN_FULL_BUILD"
+                else echo "REGIONALHYBRID_FULL_BUILD"; fi
+              ;;
+              *)
+                echo "Unknown flasher type: $ftype" >&2; exit 1 ;;
+            esac
           }
 
-          $ftype  = "${{ inputs.flasher_type }}"
-          $region = "${{ inputs.region }}"
+          base_name="$(pick_bat)"
+          if [[ "$base_name" == "ERROR_ACE5PRO_REGIONAL_ONLY" ]]; then
+            echo "Ace 5 Pro supports Regional Flasher only." >&2
+            exit 1
+          fi
 
-          $batName = $null
-          switch ($ftype) {
-            'SuperHybrid Flasher' {
-              if ($dev -in @('Ace5','Ace5Pro')) { throw "Hybrid flashers are not supported for $devDisp." }
-              $batName = if ($region -eq 'CN') { 'SUPERHYBRID_CN_FULL_SUPERBUILD.bat' } else { 'SUPERHYBRID_FULL_SUPERBUILD.bat' }
-            }
-            'RegionalHybrid Flasher' {
-              if ($dev -in @('Ace5','Ace5Pro')) { throw "Hybrid flashers are not supported for $devDisp." }
-              $batName = if ($region -eq 'CN') { 'REGIONALHYBRID_CN_FULL_BUILD.bat' } else { 'REGIONALHYBRID_FULL_BUILD.bat' }
-            }
-            'SuperHybrid SunOS Flasher' {
-              if ($dev -in @('Ace5','Ace5Pro')) { throw "Hybrid flashers are not supported for $devDisp." }
-              $batName = 'SUPERHYBRID_SUNOS_FULL_SUPERBUILD.bat'
-            }
-            'Super Flasher' {
-              if     ($dev -eq '13R' -and $region -eq 'CN') { $batName = 'SUPER_CN_FULL_SUPERBUILD.bat' }
-              elseif ($dev -eq '13R')                        { $batName = 'SUPER_EUGLO_FULL_SUPERBUILD.bat' }
-              elseif ($dev -eq '13S')                        { $batName = 'SUPER_IN_FULL_SUPERBUILD.bat' }
-              elseif ($dev -eq '13T' -and $region -eq 'CN') { $batName = 'SUPER_CN_FULL_SUPERBUILD.bat' }
-              elseif ($dev -eq '13T')                        { $batName = 'SUPER_IN_FULL_SUPERBUILD.bat' }
-              elseif ($dev -eq 'Ace5' -and $region -eq 'CN') { $batName = 'SUPER_CN_FULL_SUPERBUILD.bat' }
-              elseif ($dev -eq 'Ace5')                       { $batName = 'SUPER_OOS_FULL_SUPERBUILD.bat' }
-              elseif ($dev -eq 'Ace5Pro')                    { throw "Ace 5 Pro supports Regional Flasher only." }
-              else                                            { $batName = 'SUPERHYBRID_FULL_SUPERBUILD.bat' }
-            }
-            'Regional Flasher' {
-              if     ($dev -eq '13R' -and $region -eq 'CN') { $batName = 'REGIONAL_CN_FULL_BUILD.bat' }
-              elseif ($dev -eq '13R')                        { $batName = 'REGIONAL_EUGLO_FULL_BUILD.bat' }
-              elseif ($dev -eq '13S')                        { $batName = 'REGIONAL_IN_FULL_BUILD.bat' }
-              elseif ($dev -eq 'Ace5Pro')                    { $batName = 'REGIONAL_ACE5PRO_CN_FULL_BUILD.bat' }
-              elseif ($dev -eq 'Ace5')                       { $batName = 'REGIONAL_CN_FULL_BUILD.bat' }
-              else                                            { $batName = 'REGIONALHYBRID_FULL_BUILD.bat' }
-            }
-            default { throw "Unknown flasher type: $ftype" }
-          }
+          # Linux-Scriptname annehmen (z.B. .sh)
+          builder_sh="${base_name}.sh"
 
-          "DEV=$dev"             | Out-File -FilePath $env:GITHUB_ENV -Append
-          "FTYPE=$ftype"         | Out-File -FilePath $env:GITHUB_ENV -Append
-          "REGION=$region"       | Out-File -FilePath $env:GITHUB_ENV -Append
-          "BUILDER_BAT=$batName" | Out-File -FilePath $env:GITHUB_ENV -Append
+          {
+            echo "DEV=$dev"
+            echo "FTYPE=$ftype"
+            echo "REGION=$region"
+            echo "BUILDER_SH=$builder_sh"
+          } >> "$GITHUB_ENV"
 
       - name: Stage files (13-series + Ace 5 / Ace 5 Pro; fix updater-script LF)
-        shell: pwsh
+        shell: bash
         run: |
-          function Copy-BloatFiles($base, $region, $dest) {
-            $map = @{
-              'EU'  = 'EUGLO_BLOAT'
-              'GLO' = 'EUGLO_BLOAT'
-              'IN'  = 'IN_BLOAT'
-              'NA'  = 'NA_BLOAT'
-              'CN'  = 'CN_BLOAT'
-              'A5'  = 'A5_DEBLOAT'
-              'A5P' = 'A5P_BLOAT'
-            }
-            $needed = @('my_preload.img','my_company.img','odm.img','oplusstanvbk.img','my_region.img')
-            $folder = $map[$region]; if (-not $folder) { return }
-            $src = Join-Path $base $folder; if (-not (Test-Path $src)) { return }
-            if (-not (Test-Path $dest)) { New-Item -ItemType Directory -Force -Path $dest | Out-Null }
-            foreach ($f in $needed) {
-              $imgPath = Join-Path $src $f
-              if (Test-Path $imgPath) { Copy-Item $imgPath -Destination $dest -Force; continue }
-              $stubPath = Join-Path $src ([System.IO.Path]::GetFileNameWithoutExtension($f))
-              if (Test-Path $stubPath) {
-                try {
-                  $url = (Get-Content $stubPath -Raw).Trim()
-                  if ($url) { Invoke-WebRequest -Uri $url -OutFile (Join-Path $dest $f) }
-                } catch {
-                  Write-Warning ("Failed to download {0} from {1}: {2}" -f $f, $stubPath, $_.Exception.Message)
-                }
-              }
-            }
+          set -euo pipefail
+
+          copy_bloat_files () {
+            local base="$1" region="$2" dest="$3"
+            declare -A map=( ["EU"]="EUGLO_BLOAT" ["GLO"]="EUGLO_BLOAT" ["IN"]="IN_BLOAT" ["NA"]="NA_BLOAT" ["CN"]="CN_BLOAT" ["A5"]="A5_DEBLOAT" ["A5P"]="A5P_BLOAT" )
+            local needed=( "my_preload.img" "my_company.img" "odm.img" "oplusstanvbk.img" "my_region.img" )
+            local folder="${map[$region]:-}"
+            [ -n "$folder" ] || return 0
+            local src="$base/$folder"
+            [ -d "$src" ] || return 0
+            mkdir -p "$dest"
+            for f in "${needed[@]}"; do
+              if [ -f "$src/$f" ]; then
+                cp -f "$src/$f" "$dest/"
+                continue
+              fi
+              # Stub = Datei ohne .img, deren Inhalt eine URL enthält
+              local stub="$src/${f%.img}"
+              if [ -f "$stub" ]; then
+                url="$(tr -d '\r' < "$stub" | xargs || true)"
+                if [ -n "$url" ]; then
+                  echo "Downloading $f from $url"
+                  curl -L --fail --retry 3 --retry-delay 5 -o "$dest/$f" "$url" || echo "WARN: download failed for $f"
+                fi
+              fi
+            done
           }
 
-          function Copy-Or-Download([string]$dir,[string]$basename,[string]$destFullPath) {
-            $img = Join-Path $dir ($basename + '.img')
-            if (Test-Path $img) { Copy-Item $img -Destination $destFullPath -Force; return }
-            $stub = Join-Path $dir $basename
-            if (Test-Path $stub) {
-              try {
-                $url = (Get-Content $stub -Raw).Trim()
-                if ($url) { Invoke-WebRequest -Uri $url -OutFile $destFullPath }
-              } catch {
-                Write-Warning ("Failed to download {0} from {1}: {2}" -f ($basename + '.img'), $stub, $_.Exception.Message)
-              }
-            }
+          copy_or_download () {
+            local dir="$1" base="$2" dest="$3"
+            if [ -f "$dir/${base}.img" ]; then
+              cp -f "$dir/${base}.img" "$dest"
+            else
+              local stub="$dir/${base}"
+              if [ -f "$stub" ]; then
+                url="$(tr -d '\r' < "$stub" | xargs || true)"
+                if [ -n "$url" ]; then
+                  echo "Downloading ${base}.img from $url"
+                  curl -L --fail --retry 3 --retry-delay 5 -o "$dest" "$url" || echo "WARN: download failed for ${base}.img"
+                fi
+              fi
+            fi
           }
 
-          $dev     = $env:DEV             # 13, 13R, 13S, 13T, Ace5, Ace5Pro
-          $ftype   = $env:FTYPE
-          $region  = $env:REGION
-          $root    = $env:GITHUB_WORKSPACE
+          dev="$DEV"
+          ftype="$FTYPE"
+          region="$REGION"
+          root="$GITHUB_WORKSPACE"
 
-          # Ace devices share build_scripts/Ace5 and bloat/Ace5
-          $builderBaseDev = if ($dev -in @('Ace5','Ace5Pro')) { 'Ace5' } else { $dev }
-          $builderDir = Join-Path $root ("build_scripts\" + $builderBaseDev)
-          $bloatBase  = if ($dev -in @('Ace5','Ace5Pro')) { Join-Path $root 'bloat\Ace5' } else { Join-Path $root ("bloat\" + $dev) }
+          # Ace Geräte teilen build_scripts/Ace5 und bloat/Ace5
+          if [[ "$dev" == "Ace5" || "$dev" == "Ace5Pro" ]]; then
+            builder_base_dev="Ace5"
+            bloat_base="$root/bloat/Ace5"
+          else
+            builder_base_dev="$dev"
+            bloat_base="$root/bloat/$dev"
+          fi
+          builder_dir="$root/build_scripts/$builder_base_dev"
 
           # Fresh OUT_DIR
-          if (Test-Path $env:OUT_DIR) { Remove-Item $env:OUT_DIR -Recurse -Force }
-          New-Item -ItemType Directory -Force -Path $env:OUT_DIR | Out-Null
+          rm -rf "$OUT_DIR"
+          mkdir -p "$OUT_DIR"
 
-          # Main folder: otaripper + builder
-          if (Test-Path (Join-Path $root 'otaripper\otaripper.exe')) {
-            Copy-Item (Join-Path $root 'otaripper\otaripper.exe') -Destination $env:OUT_DIR -Force
-          }
-          $builderSrc = Join-Path $builderDir $env:BUILDER_BAT
-          if (Test-Path $builderSrc) { Copy-Item $builderSrc -Destination $env:OUT_DIR -Force }
+          # otaripper (falls Linux Binary vorhanden)
+          if [ -f "$root/otaripper/otaripper" ]; then
+            cp -f "$root/otaripper/otaripper" "$OUT_DIR/"
+            chmod +x "$OUT_DIR/otaripper"
+          fi
+
+          # Builder-Script kopieren (Linux .sh)
+          builder_src="$builder_dir/$BUILDER_SH"
+          if [ -f "$builder_src" ]; then
+            cp -f "$builder_src" "$OUT_DIR/"
+            chmod +x "$OUT_DIR/$BUILDER_SH"
+          fi
 
           # Working folder name (CN variants)
-          $workName = switch ($ftype) {
-            'SuperHybrid Flasher'       { 'SuperHybrid Flasher' }
-            'RegionalHybrid Flasher'    { 'RegionalHybrid Flasher' }
-            'SuperHybrid SunOS Flasher' { 'SuperHybrid SunOS Flasher' }
-            'Super Flasher'             { if (($region -eq 'CN') -and ($dev -in @('13R','13T','Ace5'))) { 'Super Flasher CN' } else { 'Super Flasher' } }
-            'Regional Flasher'          { if (($region -eq 'CN') -and ($dev -in @('Ace5','Ace5Pro'))) { 'Regional Flasher CN' } else { 'Regional Flasher' } }
-          }
-          $workDir = Join-Path $env:OUT_DIR $workName
-          New-Item -ItemType Directory -Force -Path $workDir | Out-Null
+          case "$FTYPE" in
+            "SuperHybrid Flasher")        work_name="SuperHybrid Flasher" ;;
+            "RegionalHybrid Flasher")     work_name="RegionalHybrid Flasher" ;;
+            "SuperHybrid SunOS Flasher")  work_name="SuperHybrid SunOS Flasher" ;;
+            "Super Flasher")
+              if [[ "$REGION" == "CN" && ( "$DEV" == "13R" || "$DEV" == "13T" || "$DEV" == "Ace5" ) ]]; then
+                work_name="Super Flasher CN"
+              else
+                work_name="Super Flasher"
+              fi
+            ;;
+            "Regional Flasher")
+              if [[ "$REGION" == "CN" && ( "$DEV" == "Ace5" || "$DEV" == "Ace5Pro" ) ]]; then
+                work_name="Regional Flasher CN"
+              else
+                work_name="Regional Flasher"
+              fi
+            ;;
+          esac
+          work_dir="$OUT_DIR/$work_name"
+          mkdir -p "$work_dir"
 
           # Template root (Ace5Pro reuses Ace5)
-          $tplDev  = if ($dev -in @('Ace5','Ace5Pro')) { 'Ace5' } else { $dev }
-          $tplBase = Join-Path $root ("flasher_scripts\" + $tplDev)
-          if ($ftype -like '*Hybrid*') {
-            $tplBase = Join-Path $tplBase ($(if ($region -eq 'CN') { 'cos' } else { 'oos' }))
-            $tplBase = Join-Path $tplBase ($(if ($ftype -like '*Super*') { 'super' } else { 'regional' }))
-          } elseif ($ftype -eq 'Super Flasher') {
-            if     ($dev -eq '13T' -and $region -eq 'CN') { $tplBase = Join-Path $tplBase 'cos\super' }
-            elseif ($dev -eq 'Ace5' -and $region -eq 'CN'){ $tplBase = Join-Path $tplBase 'cos\super' }
-            elseif ($dev -eq 'Ace5')                      { $tplBase = Join-Path $tplBase 'oos\super' }
-            else                                          { $tplBase = Join-Path $tplBase 'oos\super' }
-          } elseif ($ftype -eq 'Regional Flasher') {
-            if ( ($region -eq 'CN') -and ($dev -in @('13R','Ace5','Ace5Pro')) ) { $tplBase = Join-Path $tplBase 'cos\regional' }
-            else                                                                { $tplBase = Join-Path $tplBase 'oos\regional' }
-          }
+          if [[ "$DEV" == "Ace5" || "$DEV" == "Ace5Pro" ]]; then
+            tpl_dev="Ace5"
+          else
+            tpl_dev="$DEV"
+          fi
+          tpl_base="$root/flasher_scripts/$tpl_dev"
+          if [[ "$FTYPE" == *Hybrid* ]]; then
+            if [[ "$REGION" == "CN" ]]; then os_root="cos"; else os_root="oos"; fi
+            if [[ "$FTYPE" == *Super* ]]; then kind="super"; else kind="regional"; fi
+            tpl_base="$tpl_base/$os_root/$kind"
+          elif [[ "$FTYPE" == "Super Flasher" ]]; then
+            if [[ "$DEV" == "13T" && "$REGION" == "CN" ]]; then tpl_base="$tpl_base/cos/super"
+            elif [[ "$DEV" == "Ace5" && "$REGION" == "CN" ]]; then tpl_base="$tpl_base/cos/super"
+            else tpl_base="$tpl_base/oos/super"
+            fi
+          elif [[ "$FTYPE" == "Regional Flasher" ]]; then
+            if [[ "$REGION" == "CN" && ( "$DEV" == "13R" || "$DEV" == "Ace5" || "$DEV" == "Ace5Pro" ) ]]; then
+              tpl_base="$tpl_base/cos/regional"
+            else
+              tpl_base="$tpl_base/oos/regional"
+            fi
+          fi
 
           # Copy entire template
-          Copy-Item "$tplBase\*" -Destination $workDir -Recurse -Force
+          rsync -a "$tpl_base/" "$work_dir/"
 
-          # Hybrid builds: ensure META-INF exists, then normalize updater-script to LF
-          if ($ftype -like '*Hybrid*') {
-            $mi = Join-Path $tplBase 'META-INF'
-            if (Test-Path $mi) {
-              $miDest = Join-Path $workDir 'META-INF'
-              if (-not (Test-Path $miDest)) {
-                New-Item -ItemType Directory -Force -Path $miDest | Out-Null
-                Copy-Item "$mi\*" -Destination $miDest -Recurse -Force
-              } else {
-                Write-Host ("META-INF already present in {0} - skipping duplicate copy." -f $miDest)
-              }
-            }
-            # Normalize only updater-script to LF (avoid CRLF on Windows)
-            $upd = Join-Path $workDir 'META-INF\com\google\android\updater-script'
-            if (Test-Path $upd) {
-              try {
-                $txt = [System.IO.File]::ReadAllText($upd, [System.Text.Encoding]::UTF8)
-                $txt = $txt -replace "`r`n", "`n"
-                [System.IO.File]::WriteAllText($upd, $txt, (New-Object System.Text.UTF8Encoding($false)))
-                Write-Host "Normalized line endings to LF for: $upd"
-              } catch {
-                Write-Warning ("Failed to normalize updater-script EOLs: {0}" -f $_.Exception.Message)
-              }
-            } else {
-              Write-Warning "Expected updater-script not found at: $upd"
-            }
-          }
+          # Hybrid builds: META-INF existiert + updater-script auf LF normalisieren
+          if [[ "$FTYPE" == *Hybrid* ]]; then
+            mi="$tpl_base/META-INF"
+            if [ -d "$mi" ]; then
+              if [ ! -d "$work_dir/META-INF" ]; then
+                mkdir -p "$work_dir/META-INF"
+                rsync -a "$mi/" "$work_dir/META-INF/"
+              else
+                echo "META-INF already present in $work_dir - skipping duplicate copy."
+              fi
+            fi
+            upd="$work_dir/META-INF/com/google/android/updater-script"
+            if [ -f "$upd" ]; then
+              # CRLF -> LF
+              awk '{ sub(/\r$/,""); print }' "$upd" > "$upd.tmp" && mv "$upd.tmp" "$upd"
+            else
+              echo "WARN: Expected updater-script not found at: $upd"
+            fi
+          fi
 
           # ALWAYS copy Platform-Tools into the flasher dir
-          $ptSrc  = Join-Path $root 'Platform-Tools'
-          if (Test-Path $ptSrc) {
-            $ptDst = Join-Path $workDir 'Platform-Tools'
-            New-Item -ItemType Directory -Force -Path $ptDst | Out-Null
-            Copy-Item "$ptSrc\*" -Destination $ptDst -Recurse -Force
-          } else {
-            Write-Warning ("Platform-Tools not found at repo root: {0}" -f $ptSrc)
-          }
+          pt_src="$root/Platform-Tools"
+          if [ -d "$pt_src" ]; then
+            mkdir -p "$work_dir/Platform-Tools"
+            rsync -a "$pt_src/" "$work_dir/Platform-Tools/"
+          else
+            echo "WARN: Platform-Tools not found at repo root: $pt_src"
+          fi
 
           # Super builds: tools + bloat
-          if ($ftype -match 'Super') {
-            $superDir = Join-Path $workDir 'Super'
-            New-Item -ItemType Directory -Force -Path $superDir | Out-Null
-            Copy-Item (Join-Path $root 'lpmake\lpmake.exe') -Destination $superDir -Force
-            Copy-Item (Join-Path $root 'lpmake\cygwin1.dll') -Destination $superDir -Force
+          if [[ "$FTYPE" =~ Super ]]; then
+            super_dir="$work_dir/Super"
+            mkdir -p "$super_dir"
+            # Linux lpmake
+            if [ -f "$root/lpmake/lpmake" ]; then
+              cp -f "$root/lpmake/lpmake" "$super_dir/"
+              chmod +x "$super_dir/lpmake"
+            fi
 
-            if     ($dev -eq '13T')  { $pdir = Join-Path $root 'super_packers\13T';  Copy-Item (Join-Path $pdir ($(if ($region -eq 'CN') {'super_cos.bat'} else {'super_oos.bat'}))) -Destination $superDir -Force }
-            elseif ($dev -eq 'Ace5') {
-              $pdir = Join-Path $root 'super_packers\Ace5'
-              if ($region -eq 'CN') { Copy-Item (Join-Path $pdir 'super_cos.bat') -Destination $superDir -Force }
-              else                  { Copy-Item (Join-Path $pdir 'super_oos.bat') -Destination $superDir -Force }
-            }
-            else {
-              $p = Join-Path $root ("super_packers\" + $tplDev + "\super_oos.bat")
-              if (Test-Path $p) { Copy-Item $p -Destination $superDir -Force }
-            }
+            # super packer scripts
+            if [[ "$DEV" == "13T" ]]; then
+              pdir="$root/super_packers/13T"
+              if [[ "$REGION" == "CN" ]]; then cp -f "$pdir/super_cos.sh" "$super_dir/super_cos.sh" && chmod +x "$super_dir/super_cos.sh"
+              else cp -f "$pdir/super_oos.sh" "$super_dir/super_oos.sh" && chmod +x "$super_dir/super_oos.sh"; fi
+            elif [[ "$DEV" == "Ace5" ]]; then
+              pdir="$root/super_packers/Ace5"
+              if [[ "$REGION" == "CN" ]]; then cp -f "$pdir/super_cos.sh" "$super_dir/super_cos.sh" && chmod +x "$super_dir/super_cos.sh"
+              else cp -f "$pdir/super_oos.sh" "$super_dir/super_oos.sh" && chmod +x "$super_dir/super_oos.sh"; fi
+            else
+              p="$root/super_packers/$tpl_dev/super_oos.sh"
+              [ -f "$p" ] && cp -f "$p" "$super_dir/" && chmod +x "$super_dir/super_oos.sh"
+            fi
 
             # ---- Bloat placement ----
-            if ($dev -eq 'Ace5') {
-              if ($region -eq 'CN') {
-                Copy-BloatFiles $bloatBase 'CN' $superDir
-              } else {
-                # OOS (EU/GLO/IN/NA): copy only these into Super/
-                $regFolder = switch ($region) {
-                  'EU'  { 'EUGLO_BLOAT' }
-                  'GLO' { 'EUGLO_BLOAT' }
-                  'IN'  { 'IN_BLOAT' }
-                  'NA'  { 'NA_BLOAT' }
-                  default { 'EUGLO_BLOAT' }
-                }
-                $srcDir = Join-Path $bloatBase $regFolder
-                Copy-Or-Download $srcDir 'my_preload' (Join-Path $superDir 'my_preload.img')
-                $mc = Join-Path $srcDir 'my_company.img'; if (Test-Path $mc) { Copy-Item $mc -Destination $superDir -Force }
-                Copy-Or-Download $srcDir 'odm' (Join-Path $superDir 'odm.img')
-              }
-            }
-            elseif ($dev -eq 'Ace5Pro') {
-              Copy-BloatFiles $bloatBase 'A5P' $superDir
-            }
-            else {
-              Copy-BloatFiles $bloatBase $region $superDir
-            }
+            if [[ "$DEV" == "Ace5" ]]; then
+              if [[ "$REGION" == "CN" ]]; then
+                copy_bloat_files "$bloat_base" "CN" "$super_dir"
+              else
+                case "$REGION" in
+                  EU|GLO) reg_folder="EUGLO_BLOAT" ;;
+                  IN)     reg_folder="IN_BLOAT" ;;
+                  NA)     reg_folder="NA_BLOAT" ;;
+                  *)      reg_folder="EUGLO_BLOAT" ;;
+                esac
+                src_dir="$bloat_base/$reg_folder"
+                copy_or_download "$src_dir" "my_preload" "$super_dir/my_preload.img"
+                [ -f "$src_dir/my_company.img" ] && cp -f "$src_dir/my_company.img" "$super_dir/"
+                copy_or_download "$src_dir" "odm" "$super_dir/odm.img"
+              fi
+            elif [[ "$DEV" == "Ace5Pro" ]]; then
+              copy_bloat_files "$bloat_base" "A5P" "$super_dir"
+            else
+              copy_bloat_files "$bloat_base" "$REGION" "$super_dir"
+            fi
 
-            # Special: 13T + Super Flasher + IN -> move 3 files to COS_FILES_HERE (not in Super/)
-            if ($dev -eq '13T' -and $ftype -eq 'Super Flasher' -and $region -eq 'IN') {
-              $cosHere = Join-Path $workDir 'COS_FILES_HERE'
-              New-Item -ItemType Directory -Force -Path $cosHere | Out-Null
-              $inBloat = Join-Path $bloatBase 'IN_BLOAT'
-              foreach ($f in 'my_region.img','oplusstanvbk.img','odm.img') {
-                $srcInSuper = Join-Path $superDir $f
-                $dstInCos   = Join-Path $cosHere $f
-                if (Test-Path $srcInSuper) { Move-Item $srcInSuper $dstInCos -Force }
-                elseif (Test-Path (Join-Path $inBloat $f)) { Copy-Item (Join-Path $inBloat $f) -Destination $dstInCos -Force }
-                $left = Join-Path $superDir $f
-                if (Test-Path $left) { Remove-Item $left -Force }
-              }
-            }
+            # Special: 13T + Super Flasher + IN -> move 3 files to COS_FILES_HERE
+            if [[ "$DEV" == "13T" && "$FTYPE" == "Super Flasher" && "$REGION" == "IN" ]]; then
+              cos_here="$work_dir/COS_FILES_HERE"
+              mkdir -p "$cos_here"
+              in_bloat="$bloat_base/IN_BLOAT"
+              for f in my_region.img oplusstanvbk.img odm.img; do
+                if [ -f "$super_dir/$f" ]; then mv -f "$super_dir/$f" "$cos_here/$f"; elif [ -f "$in_bloat/$f" ]; then cp -f "$in_bloat/$f" "$cos_here/$f"; fi
+                rm -f "$super_dir/$f"
+              done
+            fi
 
             # CN Super -> stage OOS_FILES_HERE
-            if ($region -eq 'CN') {
-              $oosHere = Join-Path $workDir 'OOS_FILES_HERE'
-              New-Item -ItemType Directory -Force -Path $oosHere | Out-Null
-              if     ($dev -eq '13R') { Copy-BloatFiles $bloatBase 'A5'  $oosHere }
-              elseif ($dev -eq 'Ace5') {
-                $debPath = Join-Path $bloatBase 'A5_DEBLOAT'
-                foreach ($f in 'my_preload.img','my_company.img') {
-                  $src = Join-Path $debPath $f
-                  if (Test-Path $src) { Copy-Item $src -Destination $oosHere -Force }
-                }
-              }
-              else { Copy-BloatFiles $bloatBase 'GLO' $oosHere }
-            }
-          }
+            if [[ "$REGION" == "CN" ]]; then
+              oos_here="$work_dir/OOS_FILES_HERE"
+              mkdir -p "$oos_here"
+              if [[ "$DEV" == "13R" ]]; then
+                copy_bloat_files "$bloat_base" "A5" "$oos_here"
+              elif [[ "$DEV" == "Ace5" ]]; then
+                deb="$bloat_base/A5_DEBLOAT"
+                for f in my_preload.img my_company.img; do
+                  [ -f "$deb/$f" ] && cp -f "$deb/$f" "$oos_here/"
+                done
+              else
+                copy_bloat_files "$bloat_base" "GLO" "$oos_here"
+              fi
+            fi
+          fi
 
           # Ace 5 • Regional Flasher • CN -> CN_BLOAT -> COS_FILES_HERE (my_preload/my_company)
-          if ($ftype -eq 'Regional Flasher' -and $dev -eq 'Ace5' -and $region -eq 'CN') {
-            $cosHere = Join-Path $workDir 'COS_FILES_HERE'
-            New-Item -ItemType Directory -Force -Path $cosHere | Out-Null
-            $cnBloat = Join-Path $bloatBase 'CN_BLOAT'
-            foreach ($b in 'my_preload','my_company') {
-              $img = Join-Path $cnBloat ($b + '.img')
-              if (Test-Path $img) { Copy-Item $img -Destination $cosHere -Force; continue }
-              $stub = Join-Path $cnBloat $b
-              if (Test-Path $stub) {
-                try {
-                  $url = (Get-Content $stub -Raw).Trim()
-                  if ($url) { Invoke-WebRequest -Uri $url -OutFile (Join-Path $cosHere ($b + '.img')) }
-                } catch {
-                  Write-Warning ("Failed to download {0} from {1}: {2}" -f ($b + '.img'), $stub, $_.Exception.Message)
-                }
-              }
-            }
-          }
+          if [[ "$FTYPE" == "Regional Flasher" && "$DEV" == "Ace5" && "$REGION" == "CN" ]]; then
+            cos_here="$work_dir/COS_FILES_HERE"
+            mkdir -p "$cos_here"
+            cn_bloat="$bloat_base/CN_BLOAT"
+            for b in my_preload my_company; do
+              if [ -f "$cn_bloat/${b}.img" ]; then
+                cp -f "$cn_bloat/${b}.img" "$cos_here/"
+              elif [ -f "$cn_bloat/$b" ]; then
+                url="$(tr -d '\r' < "$cn_bloat/$b" | xargs || true)"
+                [ -n "$url" ] && curl -L --fail --retry 3 --retry-delay 5 -o "$cos_here/${b}.img" "$url" || echo "WARN: download failed for ${b}.img"
+              fi
+            done
+          fi
 
           # Ace 5 Pro • Regional Flasher • CN -> A5P_BLOAT -> COS_FILES_HERE (my_preload/my_company)
-          if ($ftype -eq 'Regional Flasher' -and $dev -eq 'Ace5Pro' -and $region -eq 'CN') {
-            $cosHere = Join-Path $workDir 'COS_FILES_HERE'
-            New-Item -ItemType Directory -Force -Path $cosHere | Out-Null
-            $a5pBloat = Join-Path $bloatBase 'A5P_BLOAT'
-            foreach ($b in 'my_preload','my_company') {
-              $img = Join-Path $a5pBloat ($b + '.img')
-              if (Test-Path $img) { Copy-Item $img -Destination $cosHere -Force; continue }
-              $stub = Join-Path $a5pBloat $b
-              if (Test-Path $stub) {
-                try {
-                  $url = (Get-Content $stub -Raw).Trim()
-                  if ($url) { Invoke-WebRequest -Uri $url -OutFile (Join-Path $cosHere ($b + '.img')) }
-                } catch {
-                  Write-Warning ("Failed to download {0} from {1}: {2}" -f ($b + '.img'), $stub, $_.Exception.Message)
-                }
-              }
-            }
-          }
+          if [[ "$FTYPE" == "Regional Flasher" && "$DEV" == "Ace5Pro" && "$REGION" == "CN" ]]; then
+            cos_here="$work_dir/COS_FILES_HERE"
+            mkdir -p "$cos_here"
+            a5p_bloat="$bloat_base/A5P_BLOAT"
+            for b in my_preload my_company; do
+              if [ -f "$a5p_bloat/${b}.img" ]; then
+                cp -f "$a5p_bloat/${b}.img" "$cos_here/"
+              elif [ -f "$a5p_bloat/$b" ]; then
+                url="$(tr -d '\r' < "$a5p_bloat/$b" | xargs || true)"
+                [ -n "$url" ] && curl -L --fail --retry 3 --retry-delay 5 -o "$cos_here/${b}.img" "$url" || echo "WARN: download failed for ${b}.img"
+              fi
+            done
+          fi
 
           # Oneplus 13 + Hybrid extras: ensure 16DTBO in MAIN (for SuperHybrid & RegionalHybrid)
-          if ($dev -eq '13' -and ($ftype -eq 'SuperHybrid Flasher' -or $ftype -eq 'RegionalHybrid Flasher')) {
-            $repo16  = Join-Path $root '16DTBO'
-            $main16  = Join-Path $env:OUT_DIR '16DTBO'
-            if (Test-Path $repo16) {
-              if (Test-Path $main16) { Remove-Item $main16 -Recurse -Force }
-              New-Item -ItemType Directory -Force -Path $main16 | Out-Null
-              Copy-Item "$repo16\*" -Destination $main16 -Recurse -Force
-              Write-Host "Staged 16DTBO to MAIN: $main16"
-            } else {
-              Write-Warning "16DTBO folder not found at repo root."
-            }
+          if [[ "$DEV" == "13" && ( "$FTYPE" == "SuperHybrid Flasher" || "$FTYPE" == "RegionalHybrid Flasher" ) ]]; then
+            repo16="$root/16DTBO"
+            main16="$OUT_DIR/16DTBO"
+            if [ -d "$repo16" ]; then
+              rm -rf "$main16"
+              mkdir -p "$main16"
+              rsync -a "$repo16/" "$main16/"
+              echo "Staged 16DTBO to MAIN: $main16"
+            else
+              echo "WARN: 16DTBO folder not found at repo root."
+            fi
             # Move stray 16DTBO from working folder if present
-            $work16 = Join-Path $workDir '16DTBO'
-            if (Test-Path $work16) {
-              if (Test-Path $main16) { Remove-Item $main16 -Recurse -Force }
-              Move-Item $work16 $main16
-              Write-Host "Moved stray 16DTBO from working folder to MAIN."
-            }
-          }
+            work16="$work_dir/16DTBO"
+            if [ -d "$work16" ]; then
+              rm -rf "$main16"
+              mv "$work16" "$main16"
+              echo "Moved stray 16DTBO from working folder to MAIN."
+            fi
+          fi
 
           # Additional: for Oneplus 13 + SuperHybrid, inject COS_FILES_HERE bundle if available
-          if ($dev -eq '13' -and $ftype -eq 'SuperHybrid Flasher') {
-            $cosBloat = Join-Path $bloatBase 'COS_FILES_HERE'
-            if (Test-Path $cosBloat) {
-              $cosDest = Join-Path $workDir 'COS_FILES_HERE'
-              New-Item -ItemType Directory -Force -Path $cosDest | Out-Null
-              Copy-Item "$cosBloat\*" -Destination $cosDest -Recurse -Force
-            } else {
-              Write-Warning ("COS_FILES_HERE not found under {0}" -f $bloatBase)
-            }
-          }
+          if [[ "$DEV" == "13" && "$FTYPE" == "SuperHybrid Flasher" ]]; then
+            cos_bloat="$bloat_base/COS_FILES_HERE"
+            if [ -d "$cos_bloat" ]; then
+              cos_dest="$work_dir/COS_FILES_HERE"
+              mkdir -p "$cos_dest"
+              rsync -a "$cos_bloat/" "$cos_dest/"
+            else
+              echo "WARN: COS_FILES_HERE not found under $bloat_base"
+            fi
+          fi
 
-          "WORK_DIR=$workDir" | Out-File -FilePath $env:GITHUB_ENV -Append
+          echo "WORK_DIR=$work_dir" >> "$GITHUB_ENV"
 
       - name: Pre-stage flasher into OTA folder (bypass flaky XCOPY)
         if: ${{ inputs.flasher_type == 'RegionalHybrid Flasher' || inputs.flasher_type == 'SuperHybrid Flasher' }}
-        shell: pwsh
+        shell: bash
         run: |
-          $src = $env:WORK_DIR
-          if (-not (Test-Path $src)) { throw "WORK_DIR not found: $src" }
-      
-          $dst = Join-Path $env:OTA_DIR (Split-Path $src -Leaf)  # e.g. download\RegionalHybrid Flasher
-          New-Item -ItemType Directory -Force -Path $dst | Out-Null
-      
-          & robocopy "$src" "$dst" * /E /NFL /NDL /NJH /NJS /NC /NS | Out-Null
-          $rc = $LASTEXITCODE
-          if ($rc -gt 7) { throw "robocopy failed with code $rc" } else { $global:LASTEXITCODE = 0 }
-      
-          # put otaripper next to the ZIP so the BAT can find it
-          $ripper = Join-Path $env:OUT_DIR 'otaripper.exe'
-          if (Test-Path $ripper) { Copy-Item $ripper -Destination $env:OTA_DIR -Force }
+          set -euo pipefail
+          src="$WORK_DIR"
+          [ -d "$src" ] || { echo "WORK_DIR not found: $src"; exit 1; }
+          dst="$OTA_DIR/$(basename "$src")"
+          mkdir -p "$dst"
+          rsync -a --info=progress2 "$src/" "$dst/"
+          # put otaripper next to the ZIP so the script can find it
+          [ -f "$OUT_DIR/otaripper" ] && cp -f "$OUT_DIR/otaripper" "$OTA_DIR/"
 
-
-      - name: Run builder (Explorer-style drag & drop)
-        shell: cmd
+      - name: Run builder
+        shell: bash
         working-directory: ${{ env.OTA_DIR }}
         run: |
-          echo CWD is %CD%
-          echo Calling builder: "%GITHUB_WORKSPACE%\%OUT_DIR%\%BUILDER_BAT%" "%OTA_PATH%"
-          (echo.| call "%GITHUB_WORKSPACE%\%OUT_DIR%\%BUILDER_BAT%" "%OTA_PATH%") || exit /b 1
+          set -euo pipefail
+          echo "CWD is $(pwd)"
+          echo "Calling builder: \"$GITHUB_WORKSPACE/$OUT_DIR/$BUILDER_SH\" \"$OTA_PATH\""
+          bash "$GITHUB_WORKSPACE/$OUT_DIR/$BUILDER_SH" "$OTA_PATH"
 
-            
-      - name: "Package final output (tar -a; names: 13T OOS/COS + A5 region OOS+COS ODM)"
-        shell: pwsh
+      - name: Package final output (zip; names: 13T OOS/COS + A5 region OOS+COS ODM)
+        shell: bash
         run: |
-          $otaDir = $env:OTA_DIR
+          set -euo pipefail
+          ota_dir="$OTA_DIR"
 
-          $byFtype = switch ($env:FTYPE) {
-            'SuperHybrid Flasher'       { @('SuperHybrid Flasher') }
-            'RegionalHybrid Flasher'    { @('RegionalHybrid Flasher') }
-            'SuperHybrid SunOS Flasher' { @('SuperHybrid SunOS Flasher') }
-            'Super Flasher' {
-              if ( ($env:REGION -eq 'CN') -and ($env:DEV -in @('13R','13T','Ace5')) ) { @('Super Flasher CN') } else { @('Super Flasher') }
-            }
-            'Regional Flasher' {
-              if ( ($env:REGION -eq 'CN') -and ($env:DEV -in @('Ace5','Ace5Pro')) ) { @('Regional Flasher CN') } else { @('Regional Flasher') }
-            }
-            default { @() }
-          }
-          $fallback = @(
-            'SuperHybrid Flasher',
-            'RegionalHybrid Flasher',
-            'SuperHybrid SunOS Flasher',
-            'Super Flasher CN',
-            'Super Flasher',
-            'Regional Flasher CN',
-            'Regional Flasher'
-          )
-          $candidates = @() + $byFtype + $fallback | Select-Object -Unique
+          declare -a by_ftype
+          case "$FTYPE" in
+            "SuperHybrid Flasher")        by_ftype=("SuperHybrid Flasher") ;;
+            "RegionalHybrid Flasher")     by_ftype=("RegionalHybrid Flasher") ;;
+            "SuperHybrid SunOS Flasher")  by_ftype=("SuperHybrid SunOS Flasher") ;;
+            "Super Flasher")
+              if [[ "$REGION" == "CN" && ( "$DEV" == "13R" || "$DEV" == "13T" || "$DEV" == "Ace5" ) ]]; then
+                by_ftype=("Super Flasher CN")
+              else
+                by_ftype=("Super Flasher")
+              fi
+            ;;
+            "Regional Flasher")
+              if [[ "$REGION" == "CN" && ( "$DEV" == "Ace5" || "$DEV" == "Ace5Pro" ) ]]; then
+                by_ftype=("Regional Flasher CN")
+              else
+                by_ftype=("Regional Flasher")
+              fi
+            ;;
+          esac
+          fallback=("SuperHybrid Flasher" "RegionalHybrid Flasher" "SuperHybrid SunOS Flasher" "Super Flasher CN" "Super Flasher" "Regional Flasher CN" "Regional Flasher")
+          candidates=($(printf "%s\n" "${by_ftype[@]}" "${fallback[@]}" | awk '!seen[$0]++'))
 
-          $resultDir = $null
-          foreach ($name in $candidates) {
-            $p = Join-Path $otaDir $name
-            if (Test-Path $p) { $resultDir = $p; break }
-          }
-          if (-not $resultDir) {
-            throw ("Could not find builder output folder next to OTA in '{0}'. Looked for: {1}" -f $otaDir, ($candidates -join ', '))
-          }
+          result_dir=""
+          for name in "${candidates[@]}"; do
+            p="$ota_dir/$name"
+            if [ -d "$p" ]; then result_dir="$p"; break; fi
+          done
+          [ -n "$result_dir" ] || { echo "Could not find builder output folder next to OTA in '$ota_dir'."; echo "Looked for: ${candidates[*]}"; exit 1; }
 
-          $zipRoot  = Join-Path $env:GITHUB_WORKSPACE $env:OUT_DIR
-          New-Item -ItemType Directory -Force -Path $zipRoot | Out-Null
+          zip_root="$GITHUB_WORKSPACE/$OUT_DIR"
+          mkdir -p "$zip_root"
 
-          $ftypeName  = $env:FTYPE
-          $regionCode = $env:REGION
-          $ver        = $env:OTA_VERSION
-          if ([string]::IsNullOrWhiteSpace($ver)) { $ver = 'UNKNOWN' }
+          ftype_name="$FTYPE"
+          region_code="$REGION"
+          ver="${OTA_VERSION:-UNKNOWN}"
 
-          $regionDisp = switch ($regionCode) {
-            'CN'  { 'COS' }
-            'GLO' { 'Global' }
-            'EU'  { 'EU' }
-            'IN'  { 'IN' }
-            'NA'  { 'NA' }
-            default { $regionCode }
-          }
+          case "$region_code" in
+            CN)  region_disp="COS" ;;
+            GLO) region_disp="Global" ;;
+            EU)  region_disp="EU" ;;
+            IN)  region_disp="IN" ;;
+            NA)  region_disp="NA" ;;
+            *)   region_disp="$region_code" ;;
+          esac
 
-          switch ($env:DEV) {
-            '13T'     {
-              $osTag = if ($regionCode -eq 'CN') { 'COS' } else { 'OOS' }
-              $artifactBase = "{0} 13T {1} {2}" -f $ftypeName, $osTag, $ver
-              break
-            }
-            '13S'     { $artifactBase = "{0} 13S {1}" -f $ftypeName, $ver; break }
-            '13R'     { $artifactBase = "{0} 13R {1} {2}" -f $ftypeName, $regionDisp, $ver; break }
+          case "$DEV" in
+            "13T")
+              if [[ "$REGION" == "CN" ]]; then os_tag="COS"; else os_tag="OOS"; fi
+              artifact_base="${ftype_name} 13T ${os_tag} ${ver}"
+            ;;
+            "13S")
+              artifact_base="${ftype_name} 13S ${ver}"
+            ;;
+            "13R")
+              artifact_base="${ftype_name} 13R ${region_disp} ${ver}"
+            ;;
+            "Ace5")
+              region_tag="$region_code"
+              if [[ "$region_code" == "CN" ]]; then os_tag="COS"; else os_tag="OOS+COS"; fi
+              artifact_base="${ftype_name} A5 ${region_tag} ${os_tag} ODM ${ver}"
+            ;;
+            "Ace5Pro")
+              artifact_base="${ftype_name} A5P ${region_disp} ${ver}"
+            ;;
+            *)
+              artifact_base="${ftype_name} ${region_disp} ${ver}"
+            ;;
+          esac
 
-            # >>> New naming for Ace 5:
-            # Include region code (EU/IN/NA/GLO/CN) and add "OOS+COS ODM" for non-CN; "COS ODM" for CN
-            'Ace5'    {
-              $regionTag = $regionCode
-              if ($regionCode -eq 'GLO') { $regionTag = 'GLO' }  # keep short code, not "Global"
-              $osTag = if ($regionCode -eq 'CN') { 'COS' } else { 'OOS+COS' }
-              $artifactBase = "{0} A5 {1} {2} ODM {3}" -f $ftypeName, $regionTag, $osTag, $ver
-              break
-            }
+          zip_path="$zip_root/${artifact_base}.zip"
+          rm -f "$zip_path"
 
-            # Leave Ace 5 Pro as previously (can change later if you want same pattern)
-            'Ace5Pro' { $artifactBase = "{0} A5P {1} {2}" -f $ftypeName, $regionDisp, $ver; break }
+          shopt -s dotglob
+          mapfile -t items < <(cd "$result_dir" && printf "%s\n" *)
+          [ "${#items[@]}" -gt 0 ] || { echo "Nothing to archive in $result_dir"; exit 1; }
 
-            default   { $artifactBase = "{0} {1} {2}" -f $ftypeName, $regionDisp, $ver }
-          }
+          (cd "$result_dir" && zip -qr "$zip_path" "${items[@]}")
 
-          $zipPath = Join-Path $zipRoot ($artifactBase + '.zip')
-          if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
+          [ -f "$zip_path" ] || { echo "Packaging failed: ZIP not created at $zip_path"; exit 1; }
 
-          $tar = Get-Command tar -ErrorAction Stop
-          $items = Get-ChildItem -LiteralPath $resultDir -Force | ForEach-Object { $_.Name }
-          if ($items.Count -eq 0) { throw ("Nothing to archive in {0}" -f $resultDir) }
-
-          $args = @('-a','-c','-f',"$zipPath",'-C',"$resultDir") + $items
-          & $tar.Path @args
-
-          if (-not (Test-Path $zipPath)) { throw ("Packaging failed: ZIP not created at {0}" -f $zipPath) }
-
-          "ARTIFACT_NAME=$artifactBase" | Out-File -FilePath $env:GITHUB_ENV -Append
-          "ZIP_FILE=$zipPath"           | Out-File -FilePath $env:GITHUB_ENV -Append
-
-
+          {
+            echo "ARTIFACT_NAME=$artifact_base"
+            echo "ZIP_FILE=$zip_path"
+          } >> "$GITHUB_ENV"
 
       - name: Upload artifact (single zip only)
         if: ${{ inputs.upload_to == 'Artifact Only' }}
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.ARTIFACT_NAME }}
-          path: ${{ env.ARTIFACT_NAME }}.zip
+          path: ${{ env.ZIP_FILE }}
           retention-days: ${{ env.ARTIFACT_RETENTION_DAYS }}
 
       - name: Compute upload paths
-        shell: pwsh
+        shell: bash
         run: |
-          $device = "${{ inputs.device }}"
-          $ftype  = "${{ inputs.flasher_type }}"
-          $region = "${{ inputs.region }}"
+          set -euo pipefail
+          device="${{ inputs.device }}"
+          ftype="${{ inputs.flasher_type }}"
+          region="${{ inputs.region }}"
 
-          # Category baseline (some overrides below)
-          if ($device -eq 'Oneplus 13T' -and $ftype -eq 'Super Flasher' -and $region -eq 'IN') {
-            $category = 'OxygenOS Flashers'
-          } elseif ($device -eq 'Oneplus Ace 5 Pro') {
-            $category = 'Regional Flashers'
-          } else {
-            $category = switch -Regex ($ftype) {
-              '^(SuperHybrid Flasher|SuperHybrid SunOS Flasher|Super Flasher)$' { 'Super Flashers'; break }
-              default { 'Regional Flashers' }
-            }
-          }
+          if [[ "$device" == "Oneplus 13T" && "$ftype" == "Super Flasher" && "$region" == "IN" ]]; then
+            category="OxygenOS Flashers"
+          elif [[ "$device" == "Oneplus Ace 5 Pro" ]]; then
+            category="Regional Flashers"
+          else
+            if [[ "$ftype" =~ ^(SuperHybrid Flasher|SuperHybrid SunOS Flasher|Super Flasher)$ ]]; then
+              category="Super Flashers"
+            else
+              category="Regional Flashers"
+            fi
+          fi
 
-          # Devices without region folder by default
-          $noRegionDevices = @('Oneplus 13S','Oneplus 13T','Oneplus Ace 5','Oneplus Ace 5 Pro')
-          $needsRegion = -not ($noRegionDevices -contains $device)
+          no_region_devices=("Oneplus 13S" "Oneplus 13T" "Oneplus Ace 5" "Oneplus Ace 5 Pro")
+          needs_region=1
+          for n in "${no_region_devices[@]}"; do
+            [[ "$n" == "$device" ]] && needs_region=0
+          done
 
-          # Build base path (Ace 5 non-CN → inject "OxygenOS" segment)
-          if ($device -eq 'Oneplus Ace 5' -and $region -ne 'CN') {
-            $base = Join-Path (Join-Path $device 'OxygenOS') $category
-            $rel  = $base
-          } elseif ($needsRegion) {
-            $regionFolder = switch ($region) {
-              'CN'  { 'COS' }
-              'GLO' { 'Global' }
-              'EU'  { 'EU' }
-              'IN'  { 'IN' }
-              'NA'  { 'NA' }
-              default { $region }
-            }
-            $rel = Join-Path (Join-Path $device $category) $regionFolder
-          } else {
-            $rel = Join-Path $device $category
-          }
+          if [[ "$device" == "Oneplus Ace 5" && "$region" != "CN" ]]; then
+            base="$device/OxygenOS/$category"
+            rel="$base"
+          elif [[ $needs_region -eq 1 ]]; then
+            case "$region" in
+              CN)  region_folder="COS" ;;
+              GLO) region_folder="Global" ;;
+              EU)  region_folder="EU" ;;
+              IN)  region_folder="IN" ;;
+              NA)  region_folder="NA" ;;
+              *)   region_folder="$region" ;;
+            esac
+            rel="$device/$category/$region_folder"
+          else
+            rel="$device/$category"
+          fi
 
-          $rel = ($rel -replace '\\','/')
-          if (-not $rel.EndsWith('/')) { $rel += '/' }
-          "REL_UPLOAD_DIR=$rel" | Out-File -FilePath $env:GITHUB_ENV -Append
+          rel="${rel//\\//}"
+          [[ "${rel: -1}" == "/" ]] || rel="${rel}/"
+          echo "REL_UPLOAD_DIR=$rel" >> "$GITHUB_ENV"
 
-          $ftpBase = "${{ secrets.DS_FTP_PATH }}".Trim('/')
-          $ftpAbs  = ($ftpBase.Length -gt 0) ? "$ftpBase/$rel" : $rel
-          "FTP_UPLOAD_DIR=$ftpAbs" | Out-File -FilePath $env:GITHUB_ENV -Append
+          ftp_base="$(printf "%s" "${{ secrets.DS_FTP_PATH }}" | sed 's#^/*##; s#/*$##;')"
+          if [ -n "$ftp_base" ]; then ftp_abs="$ftp_base/$rel"; else ftp_abs="$rel"; fi
+          echo "FTP_UPLOAD_DIR=$ftp_abs" >> "$GITHUB_ENV"
 
-          $sfBaseAbs = "${{ secrets.SF_PROJECT_PATH }}".Trim()
-          if ([string]::IsNullOrWhiteSpace($sfBaseAbs) -or -not $sfBaseAbs.StartsWith('/')) {
-            throw "SF_PROJECT_PATH must be an absolute path like /home/frs/project/oneplus13flashers"
-          }
-          $sfBaseAbs = ($sfBaseAbs -replace '\\','/').TrimEnd('/')
-          "SF_UPLOAD_DIR=$sfBaseAbs/$rel" | Out-File -FilePath $env:GITHUB_ENV -Append
+          sf_base_abs="$(printf "%s" "${{ secrets.SF_PROJECT_PATH }}" | tr -d '\r')"
+          if [ -z "$sf_base_abs" ] || [[ "$sf_base_abs" != /* ]]; then
+            echo "SF_PROJECT_PATH must be an absolute path like /home/frs/project/oneplus13flashers"
+            exit 1
+          fi
+          sf_base_abs="$(printf "%s" "$sf_base_abs" | sed 's#\\#/#g; s#/*$##')"
+          echo "SF_UPLOAD_DIR=$sf_base_abs/$rel" >> "$GITHUB_ENV"
 
-      - name: Upload to DS_FTP (streamed, large-file safe)
+      - name: Upload to DS_FTP (curl, streamed)
         if: ${{ inputs.upload_to == 'DS_FTP' || inputs.upload_to == 'Both DS_FTP & Sourceforge' }}
-        shell: pwsh
         env:
           DS_FTP_HOST: ${{ secrets.DS_FTP_HOST }}
           DS_FTP_USER: ${{ secrets.DS_FTP_USER }}
           DS_FTP_PASS: ${{ secrets.DS_FTP_PASS }}
+        shell: bash
         run: |
-          if (-not $env:DS_FTP_HOST -or -not $env:DS_FTP_USER -or -not $env:DS_FTP_PASS) {
-            throw "Missing DS_FTP secrets. Required: DS_FTP_HOST, DS_FTP_USER, DS_FTP_PASS"
-          }
+          set -euo pipefail
+          : "${DS_FTP_HOST:?Missing DS_FTP_HOST}"
+          : "${DS_FTP_USER:?Missing DS_FTP_USER}"
+          : "${DS_FTP_PASS:?Missing DS_FTP_PASS}"
 
-          $ftpHost   = $env:DS_FTP_HOST
-          $user      = $env:DS_FTP_USER
-          $pass      = $env:DS_FTP_PASS
-          $remoteDir = "$env:FTP_UPLOAD_DIR".Trim('/')
-          $fileName  = "$($env:ARTIFACT_NAME).zip"
-          $zipPath   = $env:ZIP_FILE
+          remote_dir="$(printf "%s" "$FTP_UPLOAD_DIR" | sed 's#^/*##')"
+          file_name="${ARTIFACT_NAME}.zip"
+          zip_path="$ZIP_FILE"
+          [ -f "$zip_path" ] || { echo "ZIP not found: $zip_path"; exit 1; }
 
-          if (-not (Test-Path $zipPath)) { throw ("ZIP not found: {0}" -f $zipPath) }
-
-          $encPath = ($remoteDir.Split('/') | Where-Object { $_ -ne '' } | ForEach-Object { [System.Uri]::EscapeDataString($_) }) -join '/'
-
-          function New-FtpRequest([string]$uri,[string]$method){
-            $r=[System.Net.FtpWebRequest]::Create($uri)
-            $r.Credentials = New-Object System.Net.NetworkCredential($user,$pass)
-            $r.Method      = $method
-            $r.UsePassive  = $true
-            $r.UseBinary   = $true
-            $r.KeepAlive   = $false
-            return $r
-          }
-
-          $dirUri = if ($encPath) { "ftp://$ftpHost/$encPath" } else { "ftp://$ftpHost/" }
-          try {
-            (New-FtpRequest $dirUri ([System.Net.WebRequestMethods+Ftp]::ListDirectory)).GetResponse().Close()
-          } catch {
-            $detail = $_.Exception.Response?.StatusDescription
-            throw ("Target folder does not exist or is not accessible: {0} ({1})" -f $dirUri, $detail)
-          }
-
-          $uploadUri = if ($encPath) {
-            "ftp://$ftpHost/$encPath/$([System.Uri]::EscapeDataString($fileName))"
-          } else {
-            "ftp://$ftpHost/$([System.Uri]::EscapeDataString($fileName))"
-          }
-
-          try {
-            $req = New-FtpRequest $uploadUri ([System.Net.WebRequestMethods+Ftp]::UploadFile)
-            $req.ContentLength = (Get-Item $zipPath).Length
-
-            $bufferSize = 4MB
-            $buffer     = New-Object byte[] $bufferSize
-            $fs   = [System.IO.File]::OpenRead($zipPath)
-            $dest = $req.GetRequestStream()
-            try {
-              while (($read = $fs.Read($buffer,0,$buffer.Length)) -gt 0) {
-                $dest.Write($buffer,0,$read)
-              }
-            } finally {
-              $dest.Close()
-              $fs.Close()
-            }
-
-            $resp = $req.GetResponse()
-            Write-Host ("FTP server response: {0}" -f $resp.StatusDescription)
-            $resp.Close()
-          } catch {
-            Write-Warning ("Streaming FTP upload failed: {0}" -f $_.Exception.Message)
-            Write-Warning "Falling back to curl..."
-
-            $curlExe = Get-Command curl -ErrorAction SilentlyContinue
-            if (-not $curlExe) { throw "curl not found and FTP upload failed." }
-
-            $urlBase = if ($encPath) { "ftp://$ftpHost/$encPath/" } else { "ftp://$ftpHost/" }
-            $urlFull = $urlBase + [System.Uri]::EscapeDataString($fileName)
-            $userPwd = "$($user):$($pass)"
-            & $curlExe.Path --ftp-pasv --disable-eprt --user $userPwd -T "$zipPath" "$urlFull" --fail --show-error --silent
-          }
+          # Versuche Upload; --ftp-create-dirs legt ggf. Struktur an, falls erlaubt
+          url="ftp://${DS_FTP_HOST}/${remote_dir}${file_name}"
+          echo "Uploading via curl to: $url"
+          curl --ftp-pasv --disable-eprt --user "${DS_FTP_USER}:${DS_FTP_PASS}" \
+               --ftp-create-dirs -T "$zip_path" "$url" --fail --show-error --silent
 
       - name: Setup SSH for SourceForge
         if: ${{ inputs.upload_to == 'Sourceforge' || inputs.upload_to == 'Both DS_FTP & Sourceforge' }}
-        shell: pwsh
         env:
           SF_SSH_PRIVATE_KEY: ${{ secrets.SF_SSH_PRIVATE_KEY }}
+        shell: bash
         run: |
-          if (-not $env:SF_SSH_PRIVATE_KEY) { throw "Missing SF_SSH_PRIVATE_KEY secret." }
-
-          $sshDir  = Join-Path $env:USERPROFILE ".ssh"
-          New-Item -ItemType Directory -Force -Path $sshDir | Out-Null
-          $keyPath = Join-Path $sshDir "id_ed25519"
-
-          $key = ($env:SF_SSH_PRIVATE_KEY -replace "`r","").Trim() + "`n"
-          $first = ($key -split "`n")[0]
-          if ($first -notmatch "BEGIN OPENSSH PRIVATE KEY|BEGIN RSA PRIVATE KEY") {
-            throw "SF_SSH_PRIVATE_KEY doesn't look like an OpenSSH private key (bad header)."
-          }
-
-          Set-Content -Path $keyPath -Value $key -Encoding ascii
-          icacls $keyPath /inheritance:r | Out-Null
-          icacls $keyPath /grant:r "$($env:USERNAME):(R)" | Out-Null
-
-          $kh = Join-Path $sshDir "known_hosts"
-          ssh-keyscan -t rsa frs.sourceforge.net | Out-File -FilePath $kh -Encoding ascii
-
-          $cfgPath  = Join-Path $sshDir "config"
-          @(
-            "Host frs.sourceforge.net"
-            "  UserKnownHostsFile $kh"
-            "  IdentitiesOnly yes"
-            "  IdentityFile $keyPath"
-          ) | Set-Content -Path $cfgPath -Encoding ascii
+          set -euo pipefail
+          : "${SF_SSH_PRIVATE_KEY:?Missing SF_SSH_PRIVATE_KEY}"
+          ssh_dir="$HOME/.ssh"
+          mkdir -p "$ssh_dir"
+          key_path="$ssh_dir/id_ed25519"
+          printf "%s\n" "$SF_SSH_PRIVATE_KEY" | sed 's/\r$//' > "$key_path"
+          chmod 600 "$key_path"
+          ssh-keyscan -t rsa frs.sourceforge.net >> "$ssh_dir/known_hosts"
 
       - name: Upload to SourceForge (SCP)
         if: ${{ inputs.upload_to == 'Sourceforge' || inputs.upload_to == 'Both DS_FTP & Sourceforge' }}
-        shell: pwsh
         env:
           SF_USERNAME: ${{ secrets.SF_USERNAME }}
+        shell: bash
         run: |
-          if (-not $env:SF_USERNAME -or -not $env:SF_UPLOAD_DIR) {
-            throw "Missing SourceForge config at runtime. Need SF_USERNAME and computed SF_UPLOAD_DIR."
-          }
+          set -euo pipefail
+          : "${SF_USERNAME:?Missing SF_USERNAME}"
+          : "${SF_UPLOAD_DIR:?Missing SF_UPLOAD_DIR}"
+          zip="$ZIP_FILE"
+          [ -f "$zip" ] || { echo "ZIP file not found: $zip"; exit 1; }
+          dest_dir="$(printf "%s" "$SF_UPLOAD_DIR" | sed 's#\\#/#g; s#/*$##')"
+          dest="${dest_dir}/${ARTIFACT_NAME}.zip"
+          key="$HOME/.ssh/id_ed25519"
 
-          $zip = $env:ZIP_FILE
-          if (-not (Test-Path $zip)) { throw ("ZIP file not found: {0}" -f $zip) }
-
-          $destDir = ($env:SF_UPLOAD_DIR -replace '\\','/').TrimEnd('/')
-          $dest    = "$destDir/$($env:ARTIFACT_NAME).zip"
-          $key     = "$env:USERPROFILE\.ssh\id_ed25519"
-
-          ssh -i "$key" -o StrictHostKeyChecking=yes "$($env:SF_USERNAME)@frs.sourceforge.net" "test -d `"$destDir`" || { echo 'ERROR: Destination folder does not exist on SourceForge: ' `"$destDir`"; exit 66; }"
-
-          Write-Host ("Uploading to SourceForge: {0}" -f $dest)
-          scp -i "$key" -o StrictHostKeyChecking=yes "$zip" "$($env:SF_USERNAME)@frs.sourceforge.net:`"$dest`""
+          ssh -i "$key" -o StrictHostKeyChecking=yes "${SF_USERNAME}@frs.sourceforge.net" "test -d \"$dest_dir\" || { echo 'ERROR: Destination folder does not exist on SourceForge: ' \"$dest_dir\"; exit 66; }"
+          echo "Uploading to SourceForge: $dest"
+          scp -i "$key" -o StrictHostKeyChecking=yes "$zip" "${SF_USERNAME}@frs.sourceforge.net:\"$dest\""
