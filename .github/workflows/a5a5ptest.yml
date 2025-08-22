@@ -91,11 +91,11 @@ jobs:
             if [ "$(id -u)" -eq 0 ]; then
               apt-get update
               DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-                aria2 curl unzip zip rsync openssh-client ca-certificates tar coreutils grep sed gawk
+                aria2 curl unzip zip rsync openssh-client ca-certificates tar coreutils grep sed gawk p7zip-full
             elif sudo -n true 2>/dev/null; then
               sudo apt-get update
               sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-                aria2 curl unzip zip rsync openssh-client ca-certificates tar coreutils grep sed gawk
+                aria2 curl unzip zip rsync openssh-client ca-certificates tar coreutils grep sed gawk p7zip-full
             else
               echo "No passwordless sudo → skip apt install (assume deps present)."
             fi
@@ -548,15 +548,22 @@ jobs:
               fi
             ;;
           esac
-          fallback=("SuperHybrid Flasher" "RegionalHybrid Flasher" "SuperHybrid SunOS Flasher" "Super Flasher CN" "Super Flasher" "Regional Flasher CN" "Regional Flasher")
-          candidates=($(printf "%s\n" "${by_ftype[@]}" "${fallback[@]}" | awk '!seen[$0]++'))
+          # >>> Fix: mit mapfile zeilenweise lesen (Leerzeichen bleiben erhalten)
+          mapfile -t candidates < <(
+            printf "%s\n" "${by_ftype[@]}" "SuperHybrid Flasher" "RegionalHybrid Flasher" "SuperHybrid SunOS Flasher" "Super Flasher CN" "Super Flasher" "Regional Flasher CN" "Regional Flasher" \
+            | awk '!seen[$0]++'
+          )
+
+          # (Optional) Debug: zeige vorhandene Verzeichnisse
+          echo "Folders in OTA_DIR:"
+          ls -la "$ota_dir" || true
 
           result_dir=""
           for name in "${candidates[@]}"; do
             p="$ota_dir/$name"
             if [ -d "$p" ]; then result_dir="$p"; break; fi
           done
-          [ -n "$result_dir" ] || { echo "Could not find builder output folder next to OTA in '$ota_dir'."; echo "Looked for: ${candidates[*]}"; exit 1; }
+          [ -n "$result_dir" ] || { echo "Could not find builder output folder next to OTA in '$ota_dir'."; echo "Looked for:"; printf ' - %s\n' "${candidates[@]}"; exit 1; }
 
           zip_root="$GITHUB_WORKSPACE/$OUT_DIR"
           mkdir -p "$zip_root"
@@ -602,8 +609,6 @@ jobs:
           rm -f "$zip_path"
 
           # --- High-speed ZIP (multicore) ---
-          # Preferiere 7-Zip (7zz oder 7z). Fallback: Info-ZIP 'zip' (single-thread),
-          # aber mit -n für „store“ bei wenig komprimierbaren Endungen.
           cd "$result_dir"
 
           if command -v 7zz >/dev/null 2>&1; then
@@ -615,17 +620,13 @@ jobs:
           fi
 
           if [ -n "$seven" ]; then
-            # 1) Inkomprimierbares zuerst „store“ (Copy) hinzufügen – pfeilschnell
-            #    (Patterns dürfen leer sein; Fehler ignorieren)
+            # 1) Wenig komprimierbares "store"
             $seven a -tzip -mmt=on -mx=0 "$zip_path" \
               *.img *.bin *.apk *.jar *.zip *.7z *.rar *.iso *.xz *.zst 2>/dev/null || true
-
-            # 2) Rest moderat komprimieren (mx=5) und die oben schon gepackten Endungen ausschließen
+            # 2) Rest moderat komprimieren
             $seven a -tzip -mmt=on -mx=5 "$zip_path" \
               . -x!*.img -x!*.bin -x!*.apk -x!*.jar -x!*.zip -x!*.7z -x!*.rar -x!*.iso -x!*.xz -x!*.zst
           else
-            # Fallback: Info-ZIP (single-thread) – so schnell wie möglich:
-            # -1 minimaler Aufwand + -n: genannte Endungen nur „store“
             zip -qr -1 -n ".img:.bin:.apk:.jar:.zip:.7z:.rar:.iso:.xz:.zst" "$zip_path" .
           fi
 
@@ -635,7 +636,6 @@ jobs:
             echo "ARTIFACT_NAME=$artifact_base"
             echo "ZIP_FILE=$zip_path"
           } >> "$GITHUB_ENV"
-
 
       - name: Upload artifact (single zip only)
         if: ${{ inputs.upload_to == 'Artifact Only' }}
