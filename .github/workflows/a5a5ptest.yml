@@ -68,46 +68,38 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Make scripts executable
+      - name: Make scripts executable (+ normalize line endings)
         shell: bash
         run: |
           set -euo pipefail
-          # CRLF -> LF für alle Shell-Skripte im Repo
+          # CRLF -> LF für alle Shell-Skripte (verhindert $'\r'-Fehler)
           git ls-files '*.sh' | while read -r f; do sed -i 's/\r$//' "$f"; done
-          # Alle Builder
-          find build_scripts -type f -name "*.sh" -exec chmod +x {} +
-          # Super packer scripts
-          find super_packers -type f -name "*.sh" -exec chmod +x {} +
-          # **Flasher-Templates (hier liegt dtbo_patcher.sh)**
+          # Ausführbar machen
+          find build_scripts   -type f -name "*.sh" -exec chmod +x {} +
+          find super_packers   -type f -name "*.sh" -exec chmod +x {} +
           find flasher_scripts -type f -name "*.sh" -exec chmod +x {} +
           # Binaries (falls vorhanden)
           [ -f lpmake/lpmake ] && chmod +x lpmake/lpmake || true
           [ -f otaripper/otaripper ] && chmod +x otaripper/otaripper || true
 
-      - name: Ensure deps (nur wenn root oder sudo ohne Passwort)
+      - name: Ensure deps (optional, falls Runner schon alles hat)
         if: ${{ runner.os == 'Linux' }}
         shell: bash
         run: |
-          set -euo pipefail
-
-          # Pakete, die wir brauchen
-          pkgs=(aria2 curl unzip zip rsync openssh-client ca-certificates tar grep sed gawk)
-
+          set -e
           if command -v apt-get >/dev/null 2>&1; then
             if [ "$(id -u)" -eq 0 ]; then
               apt-get update
-              DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "${pkgs[@]}"
+              DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+                aria2 curl unzip zip rsync openssh-client ca-certificates tar coreutils grep sed gawk
             elif sudo -n true 2>/dev/null; then
               sudo apt-get update
-              sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "${pkgs[@]}"
+              sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+                aria2 curl unzip zip rsync openssh-client ca-certificates tar coreutils grep sed gawk
             else
-              echo "WARN: Keine Root-Rechte/kein passwordloses sudo. Überspringe Paketinstallation."
-              echo "Stelle sicher, dass diese Pakete bereits installiert sind: ${pkgs[*]}"
+              echo "No passwordless sudo → skip apt install (assume deps present)."
             fi
-          else
-            echo "INFO: apt-get nicht gefunden (kein Debian/Ubuntu). Überspringe Paketinstallation."
           fi
-
 
       - name: Prep dirs and placeholder
         shell: bash
@@ -518,6 +510,7 @@ jobs:
           dst="$OTA_DIR/$(basename "$src")"
           mkdir -p "$dst"
           rsync -a --info=progress2 "$src/" "$dst/"
+          # put otaripper next to the ZIP so the script can find it
           [ -f "$OUT_DIR/otaripper" ] && cp -f "$OUT_DIR/otaripper" "$OTA_DIR/"
 
       - name: Run builder
@@ -535,6 +528,7 @@ jobs:
           set -euo pipefail
           ota_dir="$OTA_DIR"
 
+          # 1) Kandidatenliste (mit Spaces) sauber als Array aufbauen + deduplizieren
           declare -a by_ftype
           case "$FTYPE" in
             "SuperHybrid Flasher")        by_ftype=("SuperHybrid Flasher") ;;
@@ -556,15 +550,24 @@ jobs:
             ;;
           esac
           fallback=("SuperHybrid Flasher" "RegionalHybrid Flasher" "SuperHybrid SunOS Flasher" "Super Flasher CN" "Super Flasher" "Regional Flasher CN" "Regional Flasher")
-          candidates=($(printf "%s\n" "${by_ftype[@]}" "${fallback[@]}" | awk '!seen[$0]++'))
+          declare -a candidates=()
+          declare -A seen=()
+          for n in "${by_ftype[@]}" "${fallback[@]}"; do
+            if [[ -z "${seen[$n]+x}" ]]; then
+              candidates+=("$n")
+              seen["$n"]=1
+            fi
+          done
 
+          # 2) Existierenden Output-Ordner finden (neben der OTA.zip)
           result_dir=""
           for name in "${candidates[@]}"; do
             p="$ota_dir/$name"
             if [ -d "$p" ]; then result_dir="$p"; break; fi
           done
-          [ -n "$result_dir" ] || { echo "Could not find builder output folder next to OTA in '$ota_dir'."; echo "Looked for: ${candidates[*]}"; exit 1; }
+          [ -n "$result_dir" ] || { echo "Could not find builder output folder next to OTA in '$ota_dir'."; printf "Looked for:\n"; printf '  - %s\n' "${candidates[@]}"; exit 1; }
 
+          # 3) ZIP bauen
           zip_root="$GITHUB_WORKSPACE/$OUT_DIR"
           mkdir -p "$zip_root"
 
@@ -620,7 +623,6 @@ jobs:
             echo "ARTIFACT_NAME=$artifact_base"
             echo "ZIP_FILE=$zip_path"
           } >> "$GITHUB_ENV"
-
 
       - name: Upload artifact (single zip only)
         if: ${{ inputs.upload_to == 'Artifact Only' }}
