@@ -15,7 +15,7 @@ input_dir="$(dirname "$input_file")"
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
 # Pfade
-tool="$script_dir/../../otaripper/otaripper"
+tool="$script_dir/otaripper"
 regional_flasher_src="$script_dir/RegionalHybrid Flasher CN"
 regional_flasher_dest="$input_dir/RegionalHybrid Flasher CN"
 
