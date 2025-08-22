@@ -1,4 +1,4 @@
-name: Upload Test (Linux)
+name: Build Tools (Linux)
 
 on:
   workflow_dispatch:
