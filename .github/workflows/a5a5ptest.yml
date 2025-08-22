@@ -200,8 +200,8 @@ jobs:
               'IN'  = 'IN_BLOAT'
               'NA'  = 'NA_BLOAT'
               'CN'  = 'CN_BLOAT'
-              'A5'  = 'A5_DEBLOAT'   # special token used by some flows
-              'A5P' = 'A5P_DEBLOAT'  # special token used when we want Ace5 Pro DEBLOAT
+              'A5'  = 'A5_DEBLOAT'   # token for Ace5 debloat set
+              'A5P' = 'A5P_DEBLOAT'  # token for Ace5 Pro debloat set
             }
             $needed = @('my_preload.img','my_company.img','odm.img','oplusstanvbk.img','my_region.img')
             $folder = $map[$region]; if (-not $folder) { return }
@@ -331,7 +331,7 @@ jobs:
               }
             }
       
-            # >>> NEW: Ace 5 • Super Flasher • CN → copy debloat pair into OOS_FILES_HERE <<<
+            # Ace 5 • Super Flasher • CN → copy debloat pair into OOS_FILES_HERE
             if ($dev -eq 'Ace5' -and $ftype -eq 'Super Flasher' -and $region -eq 'CN') {
               $oosHere = Join-Path $workDir 'OOS_FILES_HERE'
               New-Item -ItemType Directory -Force -Path $oosHere | Out-Null
@@ -406,6 +406,29 @@ jobs:
             }
           }
       
+          # NEW: Ace 5 • Regional Flasher • CN → also copy A5_DEBLOAT pair into OOS_FILES_HERE
+          if ($dev -eq 'Ace5' -and $ftype -eq 'Regional Flasher' -and $region -eq 'CN') {
+            $oosHere = Join-Path $workDir 'OOS_FILES_HERE'
+            New-Item -ItemType Directory -Force -Path $oosHere | Out-Null
+            $debloat = Join-Path $bloatBase 'A5_DEBLOAT'
+            foreach ($f in 'my_preload.img','my_company.img') {
+              $src = Join-Path $debloat $f
+              if (Test-Path $src) {
+                Copy-Item $src -Destination $oosHere -Force
+              } else {
+                $stub = Join-Path $debloat ([System.IO.Path]::GetFileNameWithoutExtension($f))
+                if (Test-Path $stub) {
+                  try {
+                    $url = (Get-Content $stub -Raw).Trim()
+                    if ($url) { Invoke-WebRequest -Uri $url -OutFile (Join-Path $oosHere $f) -UseBasicParsing }
+                  } catch {
+                    Write-Warning ("Ace5 CN OOS debloat fetch failed for {0}: {1}" -f $f, $_.Exception.Message)
+                  }
+                }
+              }
+            }
+          }
+      
           # 13S • Regional Flasher • IN -> put my_preload.img + my_company.img into OOS_FILES_HERE
           if ($dev -eq '13S' -and $ftype -eq 'Regional Flasher' -and $region -eq 'IN') {
             $oosHere = Join-Path $workDir 'OOS_FILES_HERE'
@@ -429,9 +452,7 @@ jobs:
             }
           }
       
-          # -------------------------------
-          # PRE-STAGE FOR HYBRIDS (make flasher tree exist next to OTA.zip)
-          # -------------------------------
+          # Pre-stage for hybrids (make flasher tree exist next to OTA.zip)
           if ($ftype -in @('RegionalHybrid Flasher','SuperHybrid Flasher')) {
             $dst = Join-Path $env:OTA_DIR (Split-Path $workDir -Leaf)  # e.g. download\RegionalHybrid Flasher
             New-Item -ItemType Directory -Force -Path $dst | Out-Null
@@ -443,6 +464,7 @@ jobs:
           }
       
           "WORK_DIR=$workDir" | Out-File -FilePath $env:GITHUB_ENV -Append
+
 
       - name: Run builder (Explorer-style drag & drop)
         shell: cmd
