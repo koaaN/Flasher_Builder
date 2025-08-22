@@ -583,8 +583,16 @@ jobs:
                 by_ftype=("SuperHybrid Flasher")
               fi
             ;;
-            "RegionalHybrid Flasher")     by_ftype=("Regional Hybrid Flasher") ;;
-            "SuperHybrid SunOS Flasher")  by_ftype=("SuperHybrid SunOS Flasher") ;;
+            "RegionalHybrid Flasher")
+              if [[ "$REGION" == "CN" ]]; then
+                by_ftype=("RegionalHybrid Flasher CN")
+              else
+                by_ftype=("Regional Hybrid Flasher")
+              fi
+            ;;
+            "SuperHybrid SunOS Flasher")
+              by_ftype=("SuperHybrid SunOS Flasher")
+            ;;
             "Super Flasher")
               if [[ "$REGION" == "CN" && ( "$DEV" == "13R" || "$DEV" == "13T" || "$DEV" == "Ace5" ) ]]; then
                 by_ftype=("Super Flasher CN")
@@ -600,6 +608,23 @@ jobs:
               fi
             ;;
           esac
+
+          # Fallbacks (beide Schreibweisen + CN-Varianten)
+          fallback=(
+            "RegionalHybrid Flasher CN"
+            "Regional Hybrid Flasher"
+            "RegionalHybrid Flasher"
+            "SuperHybrid Flasher CN"
+            "SuperHybrid Flasher"
+            "SuperHybrid SunOS Flasher"
+            "Super Flasher CN"
+            "Super Flasher"
+            "Regional Flasher CN"
+            "Regional Flasher"
+          )
+
+          mapfile -t candidates < <(printf "%s\n" "${by_ftype[@]}" "${fallback[@]}" | awk '!seen[$0]++')
+
 
           # Kandidaten robust (CN/Space/ohne Space)
           mapfile -t candidates < <(
