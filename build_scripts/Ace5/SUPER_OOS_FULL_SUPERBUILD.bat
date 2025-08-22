@@ -43,7 +43,7 @@ for /d %%D in ("%input_dir%*") do (
 :: Move files
 if defined new_folder (
     :: First move selected .img files to the super folder
-    if not exist "%super_flasher_dest%\super" mkdir "%super_flasher_dest%\super"
+    if not exist "%super_flasher_dest%\Super" mkdir "%super_flasher_dest%\Super"
 
     echo Moving logical partitions into super folder...
     for %%F in (
@@ -52,7 +52,7 @@ if defined new_folder (
         product.img system.img system_dlkm.img system_ext.img
         vendor.img vendor_dlkm.img
     ) do (
-        if exist "!new_folder!\%%F" move /Y "!new_folder!\%%F" "%super_flasher_dest%\super\"
+        if exist "!new_folder!\%%F" move /Y "!new_folder!\%%F" "%super_flasher_dest%\Super\"
     )
 
     :: Then move remaining files to OOS_FILES_HERE
