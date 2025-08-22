@@ -58,6 +58,9 @@ if defined new_folder (
     :: Then move remaining files to OOS_FILES_HERE
     if not exist "%super_flasher_dest%\OOS_FILES_HERE" mkdir "%super_flasher_dest%\OOS_FILES_HERE"
     move /Y "!new_folder!\*" "%super_flasher_dest%\OOS_FILES_HERE\" >nul
+    
+    :: Delete odm.img from OOS_FILES_HERE
+    if exist "%super_flasher_dest%\OOS_FILES_HERE\odm.img" del /F /Q "%super_flasher_dest%\OOS_FILES_HERE\odm.img"
 
     rd /s /q "!new_folder!"
 )
