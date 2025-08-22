@@ -62,7 +62,6 @@ env:
 jobs:
   build:
     name: Build • ${{ inputs.device }} • ${{ inputs.flasher_type }} • ${{ inputs.region }}
-    # Passe an: self-hosted Linux Runner ODER ubuntu-latest
     runs-on: [self-hosted, Linux, X64]
 
     steps:
@@ -83,12 +82,13 @@ jobs:
 
       - name: Ensure deps (optional if dein Runner already has them)
         if: ${{ runner.os == 'Linux' }}
+        shell: bash
         run: |
-          set -e
+          set -euo pipefail
           if command -v apt-get >/dev/null 2>&1; then
             sudo apt-get update
             sudo apt-get install -y --no-install-recommends \
-              aria2 curl unzip zip rsync openssh-client ca-certificates tar coreutils grep sed awk
+              aria2 curl unzip zip rsync openssh-client ca-certificates tar coreutils grep sed gawk
           fi
 
       - name: Prep dirs and placeholder
@@ -139,7 +139,6 @@ jobs:
           [ -n "$content" ] || { echo "metadata not found in OTA.zip"; exit 1; }
           version_line="$(printf "%s" "$content" | grep -E '^version_name=')" || { echo "version_name not found in metadata"; exit 1; }
           val="${version_line#version_name=}"
-          # Greife die längste numerische Form (x.y[.z...]) ab
           numeric="$(printf "%s" "$val" | grep -oE '[0-9]+(\.[0-9]+){1,4}' | awk '{ print length, $0 }' | sort -nr | head -n1 | cut -d" " -f2-)"
           [ -n "$numeric" ] || { echo "Could not parse numeric version from '$val'"; exit 1; }
           echo "Parsed OTA version: $numeric"
@@ -163,8 +162,6 @@ jobs:
           ftype="${{ inputs.flasher_type }}"
           region="${{ inputs.region }}"
 
-          # Wir nehmen an, dass es Linux-Builder-Skripte (.sh) mit analogen Namen gibt.
-          # Passe ggf. die Namen/Orte an dein Repo an.
           pick_bat() {
             case "$ftype" in
               "SuperHybrid Flasher")
@@ -209,7 +206,6 @@ jobs:
             exit 1
           fi
 
-          # Linux-Scriptname annehmen (z.B. .sh)
           builder_sh="${base_name}.sh"
 
           {
@@ -238,7 +234,6 @@ jobs:
                 cp -f "$src/$f" "$dest/"
                 continue
               fi
-              # Stub = Datei ohne .img, deren Inhalt eine URL enthält
               local stub="$src/${f%.img}"
               if [ -f "$stub" ]; then
                 url="$(tr -d '\r' < "$stub" | xargs || true)"
@@ -271,7 +266,6 @@ jobs:
           region="$REGION"
           root="$GITHUB_WORKSPACE"
 
-          # Ace Geräte teilen build_scripts/Ace5 und bloat/Ace5
           if [[ "$dev" == "Ace5" || "$dev" == "Ace5Pro" ]]; then
             builder_base_dev="Ace5"
             bloat_base="$root/bloat/Ace5"
@@ -281,24 +275,20 @@ jobs:
           fi
           builder_dir="$root/build_scripts/$builder_base_dev"
 
-          # Fresh OUT_DIR
           rm -rf "$OUT_DIR"
           mkdir -p "$OUT_DIR"
 
-          # otaripper (falls Linux Binary vorhanden)
           if [ -f "$root/otaripper/otaripper" ]; then
             cp -f "$root/otaripper/otaripper" "$OUT_DIR/"
             chmod +x "$OUT_DIR/otaripper"
           fi
 
-          # Builder-Script kopieren (Linux .sh)
           builder_src="$builder_dir/$BUILDER_SH"
           if [ -f "$builder_src" ]; then
             cp -f "$builder_src" "$OUT_DIR/"
             chmod +x "$OUT_DIR/$BUILDER_SH"
           fi
 
-          # Working folder name (CN variants)
           case "$FTYPE" in
             "SuperHybrid Flasher")        work_name="SuperHybrid Flasher" ;;
             "RegionalHybrid Flasher")     work_name="RegionalHybrid Flasher" ;;
@@ -321,7 +311,6 @@ jobs:
           work_dir="$OUT_DIR/$work_name"
           mkdir -p "$work_dir"
 
-          # Template root (Ace5Pro reuses Ace5)
           if [[ "$DEV" == "Ace5" || "$DEV" == "Ace5Pro" ]]; then
             tpl_dev="Ace5"
           else
@@ -345,10 +334,8 @@ jobs:
             fi
           fi
 
-          # Copy entire template
           rsync -a "$tpl_base/" "$work_dir/"
 
-          # Hybrid builds: META-INF existiert + updater-script auf LF normalisieren
           if [[ "$FTYPE" == *Hybrid* ]]; then
             mi="$tpl_base/META-INF"
             if [ -d "$mi" ]; then
@@ -361,14 +348,12 @@ jobs:
             fi
             upd="$work_dir/META-INF/com/google/android/updater-script"
             if [ -f "$upd" ]; then
-              # CRLF -> LF
               awk '{ sub(/\r$/,""); print }' "$upd" > "$upd.tmp" && mv "$upd.tmp" "$upd"
             else
               echo "WARN: Expected updater-script not found at: $upd"
             fi
           fi
 
-          # ALWAYS copy Platform-Tools into the flasher dir
           pt_src="$root/Platform-Tools"
           if [ -d "$pt_src" ]; then
             mkdir -p "$work_dir/Platform-Tools"
@@ -377,17 +362,14 @@ jobs:
             echo "WARN: Platform-Tools not found at repo root: $pt_src"
           fi
 
-          # Super builds: tools + bloat
           if [[ "$FTYPE" =~ Super ]]; then
             super_dir="$work_dir/Super"
             mkdir -p "$super_dir"
-            # Linux lpmake
             if [ -f "$root/lpmake/lpmake" ]; then
               cp -f "$root/lpmake/lpmake" "$super_dir/"
               chmod +x "$super_dir/lpmake"
             fi
 
-            # super packer scripts
             if [[ "$DEV" == "13T" ]]; then
               pdir="$root/super_packers/13T"
               if [[ "$REGION" == "CN" ]]; then cp -f "$pdir/super_cos.sh" "$super_dir/super_cos.sh" && chmod +x "$super_dir/super_cos.sh"
@@ -401,7 +383,6 @@ jobs:
               [ -f "$p" ] && cp -f "$p" "$super_dir/" && chmod +x "$super_dir/super_oos.sh"
             fi
 
-            # ---- Bloat placement ----
             if [[ "$DEV" == "Ace5" ]]; then
               if [[ "$REGION" == "CN" ]]; then
                 copy_bloat_files "$bloat_base" "CN" "$super_dir"
@@ -423,7 +404,6 @@ jobs:
               copy_bloat_files "$bloat_base" "$REGION" "$super_dir"
             fi
 
-            # Special: 13T + Super Flasher + IN -> move 3 files to COS_FILES_HERE
             if [[ "$DEV" == "13T" && "$FTYPE" == "Super Flasher" && "$REGION" == "IN" ]]; then
               cos_here="$work_dir/COS_FILES_HERE"
               mkdir -p "$cos_here"
@@ -434,7 +414,6 @@ jobs:
               done
             fi
 
-            # CN Super -> stage OOS_FILES_HERE
             if [[ "$REGION" == "CN" ]]; then
               oos_here="$work_dir/OOS_FILES_HERE"
               mkdir -p "$oos_here"
@@ -451,7 +430,6 @@ jobs:
             fi
           fi
 
-          # Ace 5 • Regional Flasher • CN -> CN_BLOAT -> COS_FILES_HERE (my_preload/my_company)
           if [[ "$FTYPE" == "Regional Flasher" && "$DEV" == "Ace5" && "$REGION" == "CN" ]]; then
             cos_here="$work_dir/COS_FILES_HERE"
             mkdir -p "$cos_here"
@@ -466,7 +444,6 @@ jobs:
             done
           fi
 
-          # Ace 5 Pro • Regional Flasher • CN -> A5P_BLOAT -> COS_FILES_HERE (my_preload/my_company)
           if [[ "$FTYPE" == "Regional Flasher" && "$DEV" == "Ace5Pro" && "$REGION" == "CN" ]]; then
             cos_here="$work_dir/COS_FILES_HERE"
             mkdir -p "$cos_here"
@@ -481,7 +458,6 @@ jobs:
             done
           fi
 
-          # Oneplus 13 + Hybrid extras: ensure 16DTBO in MAIN (for SuperHybrid & RegionalHybrid)
           if [[ "$DEV" == "13" && ( "$FTYPE" == "SuperHybrid Flasher" || "$FTYPE" == "RegionalHybrid Flasher" ) ]]; then
             repo16="$root/16DTBO"
             main16="$OUT_DIR/16DTBO"
@@ -493,7 +469,6 @@ jobs:
             else
               echo "WARN: 16DTBO folder not found at repo root."
             fi
-            # Move stray 16DTBO from working folder if present
             work16="$work_dir/16DTBO"
             if [ -d "$work16" ]; then
               rm -rf "$main16"
@@ -502,7 +477,6 @@ jobs:
             fi
           fi
 
-          # Additional: for Oneplus 13 + SuperHybrid, inject COS_FILES_HERE bundle if available
           if [[ "$DEV" == "13" && "$FTYPE" == "SuperHybrid Flasher" ]]; then
             cos_bloat="$bloat_base/COS_FILES_HERE"
             if [ -d "$cos_bloat" ]; then
@@ -526,7 +500,6 @@ jobs:
           dst="$OTA_DIR/$(basename "$src")"
           mkdir -p "$dst"
           rsync -a --info=progress2 "$src/" "$dst/"
-          # put otaripper next to the ZIP so the script can find it
           [ -f "$OUT_DIR/otaripper" ] && cp -f "$OUT_DIR/otaripper" "$OTA_DIR/"
 
       - name: Run builder
@@ -645,6 +618,7 @@ jobs:
           device="${{ inputs.device }}"
           ftype="${{ inputs.flasher_type }}"
           region="${{ inputs.region }}"
+          upload_to="${{ inputs.upload_to }}"
 
           if [[ "$device" == "Oneplus 13T" && "$ftype" == "Super Flasher" && "$region" == "IN" ]]; then
             category="OxygenOS Flashers"
@@ -689,13 +663,17 @@ jobs:
           if [ -n "$ftp_base" ]; then ftp_abs="$ftp_base/$rel"; else ftp_abs="$rel"; fi
           echo "FTP_UPLOAD_DIR=$ftp_abs" >> "$GITHUB_ENV"
 
-          sf_base_abs="$(printf "%s" "${{ secrets.SF_PROJECT_PATH }}" | tr -d '\r')"
-          if [ -z "$sf_base_abs" ] || [[ "$sf_base_abs" != /* ]]; then
-            echo "SF_PROJECT_PATH must be an absolute path like /home/frs/project/oneplus13flashers"
-            exit 1
+          if [[ "$upload_to" == "Sourceforge" || "$upload_to" == "Both DS_FTP & Sourceforge" ]]; then
+            sf_base_abs="$(printf "%s" "${{ secrets.SF_PROJECT_PATH }}" | tr -d '\r')"
+            if [ -z "$sf_base_abs" ] || [[ "$sf_base_abs" != /* ]]; then
+              echo "SF_PROJECT_PATH must be an absolute path like /home/frs/project/oneplus13flashers"
+              exit 1
+            fi
+            sf_base_abs="$(printf "%s" "$sf_base_abs" | sed 's#\\#/#g; s#/*$##')"
+            echo "SF_UPLOAD_DIR=$sf_base_abs/$rel" >> "$GITHUB_ENV"
+          else
+            echo "SF_UPLOAD_DIR=" >> "$GITHUB_ENV"
           fi
-          sf_base_abs="$(printf "%s" "$sf_base_abs" | sed 's#\\#/#g; s#/*$##')"
-          echo "SF_UPLOAD_DIR=$sf_base_abs/$rel" >> "$GITHUB_ENV"
 
       - name: Upload to DS_FTP (curl, streamed)
         if: ${{ inputs.upload_to == 'DS_FTP' || inputs.upload_to == 'Both DS_FTP & Sourceforge' }}
@@ -715,7 +693,6 @@ jobs:
           zip_path="$ZIP_FILE"
           [ -f "$zip_path" ] || { echo "ZIP not found: $zip_path"; exit 1; }
 
-          # Versuche Upload; --ftp-create-dirs legt ggf. Struktur an, falls erlaubt
           url="ftp://${DS_FTP_HOST}/${remote_dir}${file_name}"
           echo "Uploading via curl to: $url"
           curl --ftp-pasv --disable-eprt --user "${DS_FTP_USER}:${DS_FTP_PASS}" \
@@ -734,7 +711,7 @@ jobs:
           key_path="$ssh_dir/id_ed25519"
           printf "%s\n" "$SF_SSH_PRIVATE_KEY" | sed 's/\r$//' > "$key_path"
           chmod 600 "$key_path"
-          ssh-keyscan -t rsa frs.sourceforge.net >> "$ssh_dir/known_hosts"
+          ssh-keyscan -t rsa frs.sourceforge.net >> "$ssh_dir/known_hosts" 2>/dev/null
 
       - name: Upload to SourceForge (SCP)
         if: ${{ inputs.upload_to == 'Sourceforge' || inputs.upload_to == 'Both DS_FTP & Sourceforge' }}
