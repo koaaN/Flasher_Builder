@@ -359,16 +359,41 @@ jobs:
 
           rsync -a "$tpl_base/" "$work_dir/"
 
-                    # CN-RegionalHybrid erwartet EUGLO_BLOAT neben dem Builder (im OUT_DIR)
-          if [[ "$FTYPE" == "RegionalHybrid Flasher" && "$REGION" == "CN" ]]; then
-            src_bloat="$bloat_base/EUGLO_BLOAT"
-            if [ -d "$src_bloat" ]; then
-              mkdir -p "$OUT_DIR/EUGLO_BLOAT"
-              rsync -a "$src_bloat/" "$OUT_DIR/EUGLO_BLOAT/"
-            else
-              echo "WARN: expected EUGLO_BLOAT at $src_bloat not found"
+          # === Regional / RegionalHybrid parity mit Windows ===
+          # OOS_FILES_HERE immer befüllen (region-spezifisch). Bei CN zusätzlich COS_FILES_HERE.
+          if [[ "$FTYPE" == "RegionalHybrid Flasher" || "$FTYPE" == "Regional Flasher" ]]; then
+            # OOS_FILES_HERE nach Region (bei CN => CN_BLOAT)
+            oos_here="$work_dir/OOS_FILES_HERE"
+            mkdir -p "$oos_here"
+            copy_bloat_files "$bloat_base" "$REGION" "$oos_here"
+
+            if [[ "$REGION" == "CN" ]]; then
+              # COS_FILES_HERE: CN-BLOAT (Ace5Pro: A5P_BLOAT)
+              cos_here="$work_dir/COS_FILES_HERE"
+              mkdir -p "$cos_here"
+              if [[ "$DEV" == "Ace5Pro" ]]; then
+                copy_bloat_files "$bloat_base" "A5P" "$cos_here"
+              else
+                copy_bloat_files "$bloat_base" "CN" "$cos_here"
+              fi
+
+              # Ace5/Ace5Pro CN: Switchback-Paar in OOS_FILES_HERE (my_preload.img, my_company.img)
+              if [[ "$DEV" == "Ace5" ]]; then
+                deb="$bloat_base/A5_DEBLOAT"
+                for f in my_preload.img my_company.img; do
+                  [ -f "$deb/$f" ] && cp -f "$deb/$f" "$oos_here/"
+                done
+              elif [[ "$DEV" == "Ace5Pro" ]]; then
+                # bevorzugt A5P_DEBLOAT, fallback auf A5P_BLOAT falls Repo so benannt ist
+                deb="$bloat_base/A5P_DEBLOAT"; [ -d "$deb" ] || deb="$bloat_base/A5P_BLOAT"
+                for f in my_preload.img my_company.img; do
+                  [ -f "$deb/$f" ] && cp -f "$deb/$f" "$oos_here/"
+                done
+              fi
             fi
           fi
+
+
 
 
           if [[ "$FTYPE" == *Hybrid* ]]; then
