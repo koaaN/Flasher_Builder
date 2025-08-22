@@ -521,43 +521,45 @@ jobs:
           "WORK_DIR=$workDir" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       # --- Patch RegionalHybrid builder to avoid "Invalid drive specification"
-      - name: Patch RegionalHybrid builder (force pushd, fix %~dN/%~pN)
+      - name: Patch RegionalHybrid builder (force pushd, fix %~d1/%~p1)
         if: contains(env.BUILDER_BAT, 'REGIONALHYBRID')
         shell: pwsh
         working-directory: ${{ env.OUT_DIR }}
         run: |
           $bat = Join-Path $PWD $env:BUILDER_BAT
           if (-not (Test-Path $bat)) { throw "Builder not found: $bat" }
-
+      
           Copy-Item $bat ($bat + '.orig') -Force
           $txt = Get-Content -LiteralPath $bat -Raw
-
-          $prelude = @"
-@echo off
-setlocal enableextensions
-set "_ARG1=%~f1"
-set "_ARGDIR=%~dp1"
-set "_ARGDRIVE=%~d1"
-if not defined _ARG1 (
-  echo ERROR: No OTA argument passed.& exit /b 2
-)
-rem Force drive+folder to the OTA’s directory (cross-drive safe)
-pushd "%_ARGDIR%" || (echo ERROR: pushd "%_ARGDIR%" failed.& exit /b 3)
-"@
+      
+          # Prelude (no here-strings)
+          $preludeLines = @(
+            '@echo off'
+            'setlocal enableextensions'
+            'set "_ARG1=%~f1"'
+            'set "_ARGDIR=%~dp1"'
+            'set "_ARGDRIVE=%~d1"'
+            'if not defined _ARG1 ('
+            '  echo ERROR: No OTA argument passed.& exit /b 2'
+            ')'
+            'rem Force drive+folder to the OTA''s directory (cross-drive safe)'
+            'pushd "%_ARGDIR%" || (echo ERROR: pushd "%_ARGDIR%" failed.& exit /b 3)'
+          ) -join "`r`n"
+      
           if ($txt -notmatch '(?im)^\s*set\s+"?_ARG1=') {
-            $txt = $prelude + "`r`n" + $txt
+            $txt = $preludeLines + "`r`n" + $txt
           }
-
-          # Fix common drag&drop patterns
+      
+          # Fix common drag & drop patterns that break on cross-drive calls
           $txt = [regex]::Replace($txt, '(?im)^\s*cd\s+%~d([0-9])\b', 'cd /d %~d$1\')
           $txt = [regex]::Replace($txt, '(?im)^\s*cd\s+%~dp([0-9])\b', 'cd /d "%~dp$1"')
           $txt = [regex]::Replace($txt, '(?im)%~d([0-9])\s*&&\s*cd\s+%~p\1', 'pushd "%~dp$1"')
           $txt = $txt -replace '%~d([0-9])%~p\1','%~dp$1'
           $txt = $txt -replace '%~d([0-9])\\%~p\1','%~dp$1'
-
+      
           Set-Content -LiteralPath $bat -Value $txt -Encoding ascii
-          Write-Host "Patched $($env:BUILDER_BAT). Preview of drive/dir lines:"
-          (Select-String -Path $bat -Pattern '%~d','%~dp','pushd','cd /d' -SimpleMatch) | ForEach-Object { $_.ToString() }
+          Write-Host "Patched $($env:BUILDER_BAT)."
+
 
       - name: Run builder (Explorer-style drag & drop)
         shell: cmd
