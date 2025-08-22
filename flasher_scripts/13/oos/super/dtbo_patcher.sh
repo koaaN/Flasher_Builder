@@ -1,38 +1,34 @@
 #!/usr/bin/env bash
+# dtbo_patcher.sh
 set -eu
+# pipefail optional, falls Shell das Flag nicht kennt
 set -o pipefail 2>/dev/null || true
 
-# Pfade relativ zum Skript (wie im .bat)
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-input="${script_dir}/dtbo.img"
-output="${script_dir}/dtbo_patched.img"
+in="$script_dir/dtbo.img"
+out="$script_dir/dtbo_patched.img"
 
-# 1) dtbo.img -> dtbo_patched.img kopieren
-if [[ ! -f "$input" ]]; then
-  echo "ERROR: ${input} nicht gefunden."
+if [[ ! -f "$in" ]]; then
+  echo "ERROR: $in nicht gefunden."
   exit 1
 fi
-cp -f "$input" "$output"
 
-# 2) Binär-String ersetzen (erstes Vorkommen)
-#    sucht ASCII "oplus,hmbird" und ersetzt durch "oplus,xxbird"
-python3 - << 'PY' "$output"
-import sys
-from pathlib import Path
+# 1) Ausgang nach *_patched kopieren
+cp -f "$in" "$out"
 
-out_path = Path(sys.argv[1])
-data = out_path.read_bytes()
+# 2) Erstes Vorkommen binär ersetzen (gleiche Länge -> sicher)
+search='oplus,hmbird'
+replace='oplus,xxbird'
 
-search = b'oplus,hmbird'
-replace = b'oplus,xxbird'
+# Byte-Offset des ersten Treffers holen (-a: binär, -b: Offset, -o: nur Match, -m1: erstes Vorkommen)
+off="$(LC_ALL=C grep -abo -m1 "$search" "$out" | cut -d: -f1 || true)"
 
-idx = data.find(search)
-if idx != -1:
-    data = data[:idx] + replace + data[idx+len(search):]
-    out_path.write_bytes(data)
-    print("dtbo patched successfully!")
-    print(f"Saved as {out_path}")
-else:
-    print("WARN: pattern 'oplus,hmbird' nicht gefunden – keine Änderung vorgenommen.")
-    print(f"Left as {out_path}")
-PY
+if [[ -n "${off:-}" ]]; then
+  # Bytes ab Offset überschreiben (keine Größenänderung)
+  printf '%s' "$replace" | dd of="$out" bs=1 seek="$off" conv=notrunc status=none
+  echo "dtbo patched successfully!"
+else
+  echo "WARN: pattern '$search' nicht gefunden – Datei unverändert."
+fi
+
+echo "Saved as $out"
