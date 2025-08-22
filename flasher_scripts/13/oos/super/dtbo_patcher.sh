@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -eu
+set -o pipefail 2>/dev/null || true
 
 # Pfade relativ zum Skript (wie im .bat)
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
@@ -32,7 +33,6 @@ if idx != -1:
     print("dtbo patched successfully!")
     print(f"Saved as {out_path}")
 else:
-    # kein Vorkommen -> Datei bleibt unverändert (wie dein PS-Skript ohne Effekt)
     print("WARN: pattern 'oplus,hmbird' nicht gefunden – keine Änderung vorgenommen.")
     print(f"Left as {out_path}")
 PY
