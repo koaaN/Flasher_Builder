@@ -528,7 +528,6 @@ jobs:
           set -euo pipefail
           ota_dir="$OTA_DIR"
 
-          # 1) Kandidatenliste (mit Spaces) sauber als Array aufbauen + deduplizieren
           declare -a by_ftype
           case "$FTYPE" in
             "SuperHybrid Flasher")        by_ftype=("SuperHybrid Flasher") ;;
@@ -550,24 +549,15 @@ jobs:
             ;;
           esac
           fallback=("SuperHybrid Flasher" "RegionalHybrid Flasher" "SuperHybrid SunOS Flasher" "Super Flasher CN" "Super Flasher" "Regional Flasher CN" "Regional Flasher")
-          declare -a candidates=()
-          declare -A seen=()
-          for n in "${by_ftype[@]}" "${fallback[@]}"; do
-            if [[ -z "${seen[$n]+x}" ]]; then
-              candidates+=("$n")
-              seen["$n"]=1
-            fi
-          done
+          candidates=($(printf "%s\n" "${by_ftype[@]}" "${fallback[@]}" | awk '!seen[$0]++'))
 
-          # 2) Existierenden Output-Ordner finden (neben der OTA.zip)
           result_dir=""
           for name in "${candidates[@]}"; do
             p="$ota_dir/$name"
             if [ -d "$p" ]; then result_dir="$p"; break; fi
           done
-          [ -n "$result_dir" ] || { echo "Could not find builder output folder next to OTA in '$ota_dir'."; printf "Looked for:\n"; printf '  - %s\n' "${candidates[@]}"; exit 1; }
+          [ -n "$result_dir" ] || { echo "Could not find builder output folder next to OTA in '$ota_dir'."; echo "Looked for: ${candidates[*]}"; exit 1; }
 
-          # 3) ZIP bauen
           zip_root="$GITHUB_WORKSPACE/$OUT_DIR"
           mkdir -p "$zip_root"
 
@@ -611,11 +601,33 @@ jobs:
           zip_path="$zip_root/${artifact_base}.zip"
           rm -f "$zip_path"
 
-          shopt -s dotglob
-          mapfile -t items < <(cd "$result_dir" && printf "%s\n" *)
-          [ "${#items[@]}" -gt 0 ] || { echo "Nothing to archive in $result_dir"; exit 1; }
+          # --- High-speed ZIP (multicore) ---
+          # Preferiere 7-Zip (7zz oder 7z). Fallback: Info-ZIP 'zip' (single-thread),
+          # aber mit -n für „store“ bei wenig komprimierbaren Endungen.
+          cd "$result_dir"
 
-          (cd "$result_dir" && zip -qr "$zip_path" "${items[@]}")
+          if command -v 7zz >/dev/null 2>&1; then
+            seven=7zz
+          elif command -v 7z >/dev/null 2>&1; then
+            seven=7z
+          else
+            seven=""
+          fi
+
+          if [ -n "$seven" ]; then
+            # 1) Inkomprimierbares zuerst „store“ (Copy) hinzufügen – pfeilschnell
+            #    (Patterns dürfen leer sein; Fehler ignorieren)
+            $seven a -tzip -mmt=on -mx=0 "$zip_path" \
+              *.img *.bin *.apk *.jar *.zip *.7z *.rar *.iso *.xz *.zst 2>/dev/null || true
+
+            # 2) Rest moderat komprimieren (mx=5) und die oben schon gepackten Endungen ausschließen
+            $seven a -tzip -mmt=on -mx=5 "$zip_path" \
+              . -x!*.img -x!*.bin -x!*.apk -x!*.jar -x!*.zip -x!*.7z -x!*.rar -x!*.iso -x!*.xz -x!*.zst
+          else
+            # Fallback: Info-ZIP (single-thread) – so schnell wie möglich:
+            # -1 minimaler Aufwand + -n: genannte Endungen nur „store“
+            zip -qr -1 -n ".img:.bin:.apk:.jar:.zip:.7z:.rar:.iso:.xz:.zst" "$zip_path" .
+          fi
 
           [ -f "$zip_path" ] || { echo "Packaging failed: ZIP not created at $zip_path"; exit 1; }
 
@@ -623,6 +635,7 @@ jobs:
             echo "ARTIFACT_NAME=$artifact_base"
             echo "ZIP_FILE=$zip_path"
           } >> "$GITHUB_ENV"
+
 
       - name: Upload artifact (single zip only)
         if: ${{ inputs.upload_to == 'Artifact Only' }}
