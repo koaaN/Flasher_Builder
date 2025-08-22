@@ -137,117 +137,129 @@ jobs:
         run: |
           $devDisp = "${{ inputs.device }}"
           $dev = switch ($devDisp) {
-            'Oneplus 13'        { '13' }
-            'Oneplus 13R'       { '13R' }
-            'Oneplus 13S'       { '13S' }
-            'Oneplus 13T'       { '13T' }
-            'Oneplus Ace 5'     { 'Ace5' }
-            'Oneplus Ace 5 Pro' { 'Ace5Pro' }
+            'Oneplus 13'         { '13' }
+            'Oneplus 13R'        { '13R' }
+            'Oneplus 13S'        { '13S' }
+            'Oneplus 13T'        { '13T' }
+            'Oneplus Ace 5'      { 'Ace5' }
+            'Oneplus Ace 5 PRO'  { 'Ace5Pro' }
             default { throw "Unknown device: $devDisp" }
           }
-
+      
           $ftype  = "${{ inputs.flasher_type }}"
           $region = "${{ inputs.region }}"
-
-          $batName = $null
-          switch ($ftype) {
+      
+          # Ace 5 PRO is regional-only
+          if ($dev -eq 'Ace5Pro' -and $ftype -eq 'Super Flasher') {
+            throw "Oneplus Ace 5 PRO does not support 'Super Flasher'. Please choose 'Regional Flasher'."
+          }
+      
+          # ---- Builder BAT selection ----
+          $batName = switch ($ftype) {
             'SuperHybrid Flasher' {
-              if ($dev -in @('Ace5','Ace5Pro')) { throw "Hybrid flashers are not supported for $devDisp." }
-              $batName = if ($region -eq 'CN') { 'SUPERHYBRID_CN_FULL_SUPERBUILD.bat' } else { 'SUPERHYBRID_FULL_SUPERBUILD.bat' }
+              if ($region -eq 'CN') { 'SUPERHYBRID_CN_FULL_SUPERBUILD.bat' }
+              else                  { 'SUPERHYBRID_FULL_SUPERBUILD.bat' }
             }
             'RegionalHybrid Flasher' {
-              if ($dev -in @('Ace5','Ace5Pro')) { throw "Hybrid flashers are not supported for $devDisp." }
-              $batName = if ($region -eq 'CN') { 'REGIONALHYBRID_CN_FULL_BUILD.bat' } else { 'REGIONALHYBRID_FULL_BUILD.bat' }
+              if ($region -eq 'CN') { 'REGIONALHYBRID_CN_FULL_BUILD.bat' }
+              else                  { 'REGIONALHYBRID_FULL_BUILD.bat' }
             }
-            'SuperHybrid SunOS Flasher' {
-              if ($dev -in @('Ace5','Ace5Pro')) { throw "Hybrid flashers are not supported for $devDisp." }
-              $batName = 'SUPERHYBRID_SUNOS_FULL_SUPERBUILD.bat'
-            }
+            'SuperHybrid SunOS Flasher' { 'SUPERHYBRID_SUNOS_FULL_SUPERBUILD.bat' }
+      
             'Super Flasher' {
-              if     ($dev -eq '13R' -and $region -eq 'CN') { $batName = 'SUPER_CN_FULL_SUPERBUILD.bat' }
-              elseif ($dev -eq '13R')                        { $batName = 'SUPER_EUGLO_FULL_SUPERBUILD.bat' }
-              elseif ($dev -eq '13S')                        { $batName = 'SUPER_IN_FULL_SUPERBUILD.bat' }
-              elseif ($dev -eq '13T' -and $region -eq 'CN') { $batName = 'SUPER_CN_FULL_SUPERBUILD.bat' }
-              elseif ($dev -eq '13T')                        { $batName = 'SUPER_IN_FULL_SUPERBUILD.bat' }
-              elseif ($dev -eq 'Ace5' -and $region -eq 'CN') { $batName = 'SUPER_CN_FULL_SUPERBUILD.bat' }
-              elseif ($dev -eq 'Ace5')                       { $batName = 'SUPER_OOS_FULL_SUPERBUILD.bat' }
-              elseif ($dev -eq 'Ace5Pro')                    { throw "Ace 5 Pro supports Regional Flasher only." }
-              else                                            { $batName = 'SUPERHYBRID_FULL_SUPERBUILD.bat' }
+              if ($dev -in @('13R','13T')) {
+                if ($region -eq 'CN') { 'SUPER_CN_FULL_SUPERBUILD.bat' }
+                elseif ($dev -eq '13R') { 'SUPER_EUGLO_FULL_SUPERBUILD.bat' }
+                elseif ($dev -eq '13T') { 'SUPER_IN_FULL_SUPERBUILD.bat' }
+                else { 'SUPER_EUGLO_FULL_SUPERBUILD.bat' }
+              }
+              elseif ($dev -eq 'Ace5') {
+                if ($region -eq 'CN') { 'SUPER_CN_FULL_SUPERBUILD.bat' }
+                else                  { 'SUPER_OOS_FULL_SUPERBUILD.bat' }   # Ace5 non-CN super
+              }
+              else {
+                # 13 (fallback)
+                'SUPERHYBRID_FULL_SUPERBUILD.bat'
+              }
             }
+      
             'Regional Flasher' {
-              if     ($dev -eq '13R' -and $region -eq 'CN') { $batName = 'REGIONAL_CN_FULL_BUILD.bat' }
-              elseif ($dev -eq '13R')                        { $batName = 'REGIONAL_EUGLO_FULL_BUILD.bat' }
-              elseif ($dev -eq '13S')                        { $batName = 'REGIONAL_IN_FULL_BUILD.bat' }
-              elseif ($dev -eq 'Ace5Pro')                    { $batName = 'REGIONAL_ACE5PRO_CN_FULL_BUILD.bat' }
-              elseif ($dev -eq 'Ace5')                       { $batName = 'REGIONAL_CN_FULL_BUILD.bat' }
-              else                                            { $batName = 'REGIONALHYBRID_FULL_BUILD.bat' }
+              if ($dev -eq '13R') {
+                if ($region -eq 'CN') { 'REGIONAL_CN_FULL_BUILD.bat' }
+                else                  { 'REGIONAL_EUGLO_FULL_BUILD.bat' }
+              }
+              elseif ($dev -eq '13S') { 'REGIONAL_IN_FULL_BUILD.bat' }
+              elseif ($dev -in @('Ace5','Ace5Pro')) {
+                if ($region -eq 'CN') { 'REGIONAL_CN_FULL_BUILD.bat' }
+                else                  { 'REGIONAL_EUGLO_FULL_BUILD.bat' }
+              }
+              else {
+                'REGIONALHYBRID_FULL_BUILD.bat'
+              }
             }
+      
             default { throw "Unknown flasher type: $ftype" }
           }
-
+      
           "DEV=$dev"             | Out-File -FilePath $env:GITHUB_ENV -Append
           "FTYPE=$ftype"         | Out-File -FilePath $env:GITHUB_ENV -Append
           "REGION=$region"       | Out-File -FilePath $env:GITHUB_ENV -Append
           "BUILDER_BAT=$batName" | Out-File -FilePath $env:GITHUB_ENV -Append
 
-      - name: Stage files (13-series + Ace 5 / Ace 5 Pro; fix updater-script LF)
+
+      - name: Stage files (13-series + Ace 5 / Ace 5 Pro; hybrid LF fix)
         shell: pwsh
         run: |
-          function Copy-BloatFiles($base, $region, $dest) {
-            # Accept both odm and odm.img targets to be safe across devices
-            $needed = @(
-              'my_preload.img','my_company.img','oplusstanvbk.img','my_region.img','odm.img','odm'
-            )
-      
-            # Resolve the bloat folder by region for generic devices.
-            $mapGeneric = @{
-              'EU'  = 'EUGLO_BLOAT'
-              'GLO' = 'EUGLO_BLOAT'
-              'IN'  = 'IN_BLOAT'
-              'NA'  = 'NA_BLOAT'
-              'CN'  = 'CN_BLOAT'
+          function Copy-BloatFiles($base, $dev, $region, $dest) {
+            # Decide bloat folder
+            $folder = $null
+            if ($dev -eq 'Ace5Pro') {
+              if ($region -eq 'CN') { $folder = 'A5P_BLOAT' }
+            } elseif ($dev -eq 'Ace5') {
+              switch ($region) {
+                'CN'  { $folder = 'CN_BLOAT' }
+                'EU'  { $folder = 'EUGLO_BLOAT' }
+                'GLO' { $folder = 'EUGLO_BLOAT' }
+                'IN'  { $folder = 'IN_BLOAT' }
+                'NA'  { $folder = 'NA_BLOAT' }
+              }
+            } else {
+              $mapGeneric = @{ 'EU'='EUGLO_BLOAT'; 'GLO'='EUGLO_BLOAT'; 'IN'='IN_BLOAT'; 'NA'='NA_BLOAT'; 'CN'='CN_BLOAT' }
+              $folder = $mapGeneric[$region]
             }
       
-            $folder = $mapGeneric[$region]
             if (-not $folder) { return }
-      
             $src = Join-Path $base $folder
             if (-not (Test-Path $src)) { return }
-      
             if (-not (Test-Path $dest)) { New-Item -ItemType Directory -Force -Path $dest | Out-Null }
       
+            # Also support stub-based downloads (no extension files like "odm")
+            $needed = @('my_preload.img','my_company.img','oplusstanvbk.img','my_region.img','odm.img','odm')
             foreach ($f in $needed) {
               $imgPath = Join-Path $src $f
               if (Test-Path $imgPath) { Copy-Item $imgPath -Destination $dest -Force; continue }
-              # Try "stub" URL file having the same name w/o extension (works for odm/img and my_preload)
-              $stubName = [System.IO.Path]::GetFileNameWithoutExtension($f)
-              $stubPath = Join-Path $src $stubName
-              if (Test-Path $stubPath) {
+              $stub = Join-Path $src ([System.IO.Path]::GetFileNameWithoutExtension($f))
+              if (Test-Path $stub) {
                 try {
-                  $url = (Get-Content $stubPath -Raw).Trim()
-                  if ($url) {
-                    $outFile = Join-Path $dest $f
-                    Invoke-WebRequest -Uri $url -OutFile $outFile -UseBasicParsing
-                  }
+                  $url = (Get-Content $stub -Raw).Trim()
+                  if ($url) { Invoke-WebRequest -Uri $url -OutFile (Join-Path $dest $f) -UseBasicParsing }
                 } catch {
-                  Write-Warning ("Failed to download {0} from {1}: {2}" -f $f, $stubPath, $_.Exception.Message)
+                  Write-Warning ("Failed to download {0} from {1}: {2}" -f $f, $stub, $_.Exception.Message)
                 }
               }
             }
           }
       
           function Copy-Debloat-Pair($base, $folderName, $dest) {
+            # Copies/downloads my_preload.img + my_company.img from a DEBLOAT folder
             $src = Join-Path $base $folderName
             if (-not (Test-Path $src)) { return }
             if (-not (Test-Path $dest)) { New-Item -ItemType Directory -Force -Path $dest | Out-Null }
-            # Two files (or stubs) we expect in *DEBLOAT folders
-            $items = @('my_preload.img','my_company.img')
-            foreach ($f in $items) {
+            foreach ($f in 'my_preload.img','my_company.img') {
               $p = Join-Path $src $f
               if (Test-Path $p) {
                 Copy-Item $p -Destination $dest -Force
               } else {
-                # Try stub URL w/o extension (for my_preload)
                 $stub = Join-Path $src ([System.IO.Path]::GetFileNameWithoutExtension($f))
                 if (Test-Path $stub) {
                   try {
@@ -265,26 +277,24 @@ jobs:
             $up = Join-Path $dir 'META-INF\com\google\android\updater-script'
             if (Test-Path $up) {
               $raw = Get-Content -LiteralPath $up -Raw
-              # normalize to LF only, no CR
               $lf  = $raw -replace "`r`n","`n" -replace "`r",""
               if ($lf -ne $raw) {
-                # write as ASCII to avoid BOM; content is textual commands
                 Set-Content -LiteralPath $up -Value $lf -Encoding ascii
                 Write-Host "Normalized line endings to LF for: $up"
               }
             }
           }
       
-          $dev     = $env:DEV
+          $dev     = $env:DEV          # '13','13R','13S','13T','Ace5','Ace5Pro'
           $ftype   = $env:FTYPE
           $region  = $env:REGION
       
-          $root        = $env:GITHUB_WORKSPACE
-          $builderDir  = Join-Path $root ("build_scripts\" + $dev)
+          $root = $env:GITHUB_WORKSPACE
       
-          # Ace5 / Ace5P share bloat in bloat\Ace5
-          $bloatDev    = if ($dev -in @('Ace5','Ace5P')) { 'Ace5' } else { $dev }
-          $bloatBase   = Join-Path $root ("bloat\" + $bloatDev)
+          # Ace 5 / Ace 5 Pro share the Ace5 script tree and bloat root
+          $scriptDev = if ($dev -in @('Ace5','Ace5Pro')) { 'Ace5' } else { $dev }
+          $builderDir = Join-Path $root ("build_scripts\" + $scriptDev)
+          $bloatBase  = Join-Path $root ("bloat\" + (if ($dev -in @('Ace5','Ace5Pro')) { 'Ace5' } else { $dev }))
       
           # Fresh OUT_DIR
           if (Test-Path $env:OUT_DIR) { Remove-Item $env:OUT_DIR -Recurse -Force }
@@ -296,50 +306,42 @@ jobs:
           $builderSrc = Join-Path $builderDir $env:BUILDER_BAT
           if (Test-Path $builderSrc) { Copy-Item $builderSrc -Destination $env:OUT_DIR -Force }
       
-          # Working folder name
+          # Working folder names (CN variants)
           $workName = switch ($ftype) {
-            'SuperHybrid Flasher'       { if ($dev -in @('Ace5','Ace5P') -and $region -eq 'CN') { 'SuperHybrid Flasher CN' } else { 'SuperHybrid Flasher' } }
-            'RegionalHybrid Flasher'    { if ($dev -in @('Ace5','Ace5P') -and $region -eq 'CN') { 'RegionalHybrid Flasher CN' } else { 'RegionalHybrid Flasher' } }
+            'SuperHybrid Flasher'       { if ($region -eq 'CN') { 'SuperHybrid Flasher CN' } else { 'SuperHybrid Flasher' } }
+            'RegionalHybrid Flasher'    { if ($region -eq 'CN') { 'RegionalHybrid Flasher CN' } else { 'RegionalHybrid Flasher' } }
             'SuperHybrid SunOS Flasher' { 'SuperHybrid SunOS Flasher' }
-            'Super Flasher'             { if ( ($dev -in @('13R','13T','Ace5','Ace5P')) -and ($region -eq 'CN') ) { 'Super Flasher CN' } else { 'Super Flasher' } }
-            'Regional Flasher'          { if ( ($dev -in @('Ace5','Ace5P')) -and ($region -eq 'CN') ) { 'Regional Flasher CN' } else { 'Regional Flasher' } }
+            'Super Flasher' {
+              if ( ($dev -in @('13R','13T','Ace5')) -and ($region -eq 'CN') ) { 'Super Flasher CN' } else { 'Super Flasher' }
+            }
+            'Regional Flasher' {
+              if ( ($dev -in @('Ace5','Ace5Pro')) -and ($region -eq 'CN') ) { 'Regional Flasher CN' } else { 'Regional Flasher' }
+            }
           }
           $workDir = Join-Path $env:OUT_DIR $workName
           New-Item -ItemType Directory -Force -Path $workDir | Out-Null
       
-          # ---------------- Template root selection (Ace5P → Ace5; CN→cos, else oos) ----------------
-          $scriptDev = if ($dev -in @('Ace5','Ace5P')) { 'Ace5' } else { $dev }
-          $tplBase   = Join-Path $root ("flasher_scripts\" + $scriptDev)
-      
+          # Template root (Ace5/Ace5Pro use Ace5 paths)
+          $tplBase = Join-Path $root ("flasher_scripts\" + $scriptDev)
           if ($ftype -like '*Hybrid*') {
             $tplBase = Join-Path $tplBase ($(if ($region -eq 'CN') { 'cos' } else { 'oos' }))
             $tplBase = Join-Path $tplBase ($(if ($ftype -like '*Super*') { 'super' } else { 'regional' }))
           }
           elseif ($ftype -eq 'Super Flasher') {
-            if ($scriptDev -eq 'Ace5') {
-              $tplBase = Join-Path $tplBase ($(if ($region -eq 'CN') { 'cos\super' } else { 'oos\super' }))
-            } elseif ($dev -eq '13T' -and $region -eq 'CN') {
-              $tplBase = Join-Path $tplBase 'cos\super'
-            } else {
-              $tplBase = Join-Path $tplBase 'oos\super'
-            }
+            if ($dev -eq '13T' -and $region -eq 'CN') { $tplBase = Join-Path $tplBase 'cos\super' }
+            elseif ($scriptDev -eq 'Ace5')            { $tplBase = Join-Path $tplBase ($(if ($region -eq 'CN') { 'cos\super' } else { 'oos\super' })) }
+            else                                       { $tplBase = Join-Path $tplBase 'oos\super' }
           }
           elseif ($ftype -eq 'Regional Flasher') {
-            if ($scriptDev -eq 'Ace5') {
-              $tplBase = Join-Path $tplBase ($(if ($region -eq 'CN') { 'cos\regional' } else { 'oos\regional' }))
-            } elseif ($dev -eq '13R' -and $region -eq 'CN') {
-              $tplBase = Join-Path $tplBase 'cos\regional'
-            } else {
-              $tplBase = Join-Path $tplBase 'oos\regional'
-            }
+            if ($dev -eq '13R' -and $region -eq 'CN') { $tplBase = Join-Path $tplBase 'cos\regional' }
+            else                                      { $tplBase = Join-Path $tplBase ($(if ($region -eq 'CN') { 'cos\regional' } else { 'oos\regional' })) }
           }
           Write-Host "Using template root: $tplBase"
-          # ------------------------------------------------------------------------------------------
       
           # Copy template files
           Copy-Item "$tplBase\*" -Destination $workDir -Recurse -Force
       
-          # Hybrid builds: ensure META-INF exists only once and LF normalize the updater-script
+          # Hybrid: bring META-INF only once and LF-normalize updater-script
           if ($ftype -like '*Hybrid*') {
             $mi = Join-Path $tplBase 'META-INF'
             if (Test-Path $mi) {
@@ -354,7 +356,7 @@ jobs:
             Normalize-UpdaterScriptLF $workDir
           }
       
-          # ALWAYS copy Platform-Tools into the flasher dir
+          # Always copy Platform-Tools into flasher dir (capital P/T)
           $ptSrc  = Join-Path $root 'Platform-Tools'
           if (Test-Path $ptSrc) {
             $ptDst = Join-Path $workDir 'Platform-Tools'
@@ -364,16 +366,16 @@ jobs:
             Write-Warning ("Platform-Tools not found at repo root: {0}" -f $ptSrc)
           }
       
-          # ---------------------------- Super builds: tools + bloat + packers ----------------------------
+          # ---------- Super builds: tools + packers + bloat ----------
           if ($ftype -match 'Super') {
             $superDir = Join-Path $workDir 'Super'
             New-Item -ItemType Directory -Force -Path $superDir | Out-Null
             Copy-Item (Join-Path $root 'lpmake\lpmake.exe') -Destination $superDir -Force
             Copy-Item (Join-Path $root 'lpmake\cygwin1.dll') -Destination $superDir -Force
       
-            # Packer
+            # Packer (Ace5 uses Ace5 packers; 13T has its own)
             if ($scriptDev -eq 'Ace5') {
-              $pdir = Join-Path $root 'super_packers\Ace5'
+              $pdir   = Join-Path $root 'super_packers\Ace5'
               $packer = if ($region -eq 'CN') { 'super_cos.bat' } else { 'super_oos.bat' }
               Copy-Item (Join-Path $pdir $packer) -Destination $superDir -Force
             } elseif ($dev -eq '13T') {
@@ -384,34 +386,33 @@ jobs:
               if (Test-Path $p) { Copy-Item $p -Destination $superDir -Force }
             }
       
-            # Standard bloat → Super/
-            Copy-BloatFiles $bloatBase $region $superDir
+            # Standard bloat into Super/
+            Copy-BloatFiles $bloatBase $dev $region $superDir
       
-            # 13T • Super Flasher • IN → move 3 files to COS_FILES_HERE (not in Super/)
+            # 13T Super Flasher IN → move 3 files to COS_FILES_HERE (not in Super/)
             if ($dev -eq '13T' -and $ftype -eq 'Super Flasher' -and $region -eq 'IN') {
               $cosHere = Join-Path $workDir 'COS_FILES_HERE'
               New-Item -ItemType Directory -Force -Path $cosHere | Out-Null
               foreach ($f in 'my_region.img','oplusstanvbk.img','odm.img') {
-                $srcInSuper = Join-Path $superDir $f
-                if (Test-Path $srcInSuper) { Move-Item $srcInSuper (Join-Path $cosHere $f) -Force }
+                $from = Join-Path $superDir $f
+                if (Test-Path $from) { Move-Item $from (Join-Path $cosHere $f) -Force }
               }
-              # Make sure any leftover duplicates are removed from Super/
               foreach ($f in 'my_region.img','oplusstanvbk.img','odm.img') {
                 $left = Join-Path $superDir $f
                 if (Test-Path $left) { Remove-Item $left -Force }
               }
             }
       
-            # CN extras for Super builds on 13-series
+            # CN extras (13-series only): stage OOS set for COS conversion
             if ($region -eq 'CN' -and $scriptDev -ne 'Ace5') {
               $oosHere = Join-Path $workDir 'OOS_FILES_HERE'
               New-Item -ItemType Directory -Force -Path $oosHere | Out-Null
-              if ($dev -eq '13R') { Copy-BloatFiles $bloatBase 'A5' $oosHere } else { Copy-BloatFiles $bloatBase 'GLO' $oosHere }
+              if ($dev -eq '13R') { Copy-BloatFiles $bloatBase $dev 'A5' $oosHere } else { Copy-BloatFiles $bloatBase $dev 'GLO' $oosHere }
             }
           }
-          # -----------------------------------------------------------------------------------------------
+          # -----------------------------------------------------------
       
-          # OnePlus 13 + SuperHybrid extras (16DTBO to main; copy COS_FILES_HERE from bloat/13/COS_FILES_HERE)
+          # OnePlus 13 + SuperHybrid extras (16DTBO to main + COS_FILES_HERE)
           if ($dev -eq '13' -and $ftype -eq 'SuperHybrid Flasher') {
             $repo16  = Join-Path $root '16DTBO'
             $main16  = Join-Path $env:OUT_DIR '16DTBO'
@@ -425,7 +426,6 @@ jobs:
             if (Test-Path $work16) {
               if (Test-Path $main16) { Remove-Item $main16 -Recurse -Force }
               Move-Item $work16 $main16
-              Write-Host "Moved stray 16DTBO from working folder to MAIN."
             }
             $cosBloat = Join-Path (Join-Path $root 'bloat\13') 'COS_FILES_HERE'
             if (Test-Path $cosBloat) {
@@ -435,18 +435,18 @@ jobs:
             }
           }
       
-          # 13S Regional IN → copy IN_BLOAT (preload/company) into OOS_FILES_HERE
+          # 13S Regional IN → put debloat pair in OOS_FILES_HERE
           if ($dev -eq '13S' -and $ftype -eq 'Regional Flasher' -and $region -eq 'IN') {
             $oosHere = Join-Path $workDir 'OOS_FILES_HERE'
             New-Item -ItemType Directory -Force -Path $oosHere | Out-Null
             Copy-Debloat-Pair $bloatBase 'IN_BLOAT' $oosHere
           }
       
-          # Ace 5 / Ace 5 Pro: CN Regional/Super → add debloat pair into OOS_FILES_HERE
-          if ($scriptDev -eq 'Ace5' -and $region -eq 'CN' -and ($ftype -in @('Regional Flasher','Super Flasher'))) {
+          # Ace 5 / Ace 5 Pro CN (Regional or Super) → add debloat pair into OOS_FILES_HERE
+          if ($dev -in @('Ace5','Ace5Pro') -and $region -eq 'CN' -and ($ftype -in @('Regional Flasher','Super Flasher'))) {
             $oosHere = Join-Path $workDir 'OOS_FILES_HERE'
             New-Item -ItemType Directory -Force -Path $oosHere | Out-Null
-            $debFolder = if ($dev -eq 'Ace5P') { 'A5P_DEBLOAT' } else { 'A5_DEBLOAT' }
+            $debFolder = if ($dev -eq 'Ace5Pro') { 'A5P_DEBLOAT' } else { 'A5_DEBLOAT' }
             Copy-Debloat-Pair $bloatBase $debFolder $oosHere
           }
       
