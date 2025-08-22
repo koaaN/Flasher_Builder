@@ -80,16 +80,30 @@ jobs:
           [ -f lpmake/lpmake ] && chmod +x lpmake/lpmake || true
           [ -f otaripper/otaripper ] && chmod +x otaripper/otaripper || true
 
-      - name: Ensure deps (optional if dein Runner already has them)
+      - name: Ensure deps (nur wenn root oder sudo ohne Passwort)
         if: ${{ runner.os == 'Linux' }}
         shell: bash
         run: |
           set -euo pipefail
+
+          # Pakete, die wir brauchen
+          pkgs=(aria2 curl unzip zip rsync openssh-client ca-certificates tar grep sed gawk)
+
           if command -v apt-get >/dev/null 2>&1; then
-            sudo apt-get update
-            sudo apt-get install -y --no-install-recommends \
-              aria2 curl unzip zip rsync openssh-client ca-certificates tar coreutils grep sed gawk
+            if [ "$(id -u)" -eq 0 ]; then
+              apt-get update
+              DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "${pkgs[@]}"
+            elif sudo -n true 2>/dev/null; then
+              sudo apt-get update
+              sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "${pkgs[@]}"
+            else
+              echo "WARN: Keine Root-Rechte/kein passwordloses sudo. Überspringe Paketinstallation."
+              echo "Stelle sicher, dass diese Pakete bereits installiert sind: ${pkgs[*]}"
+            fi
+          else
+            echo "INFO: apt-get nicht gefunden (kein Debian/Ubuntu). Überspringe Paketinstallation."
           fi
+
 
       - name: Prep dirs and placeholder
         shell: bash
