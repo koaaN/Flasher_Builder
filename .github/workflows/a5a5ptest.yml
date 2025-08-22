@@ -307,9 +307,9 @@ jobs:
             ;;
             "RegionalHybrid Flasher")
               if [[ "$REGION" == "CN" ]]; then
-                work_name="RegionalHybrid Flasher CN"   # <- exakt so, ohne Leerzeichen zw. Regional/Hybrid + CN
+                work_name="RegionalHybrid Flasher CN"   # exakt so, ohne Leerzeichen zw. Regional/Hybrid + CN
               else
-                work_name="Regional Hybrid Flasher"      # <- non-CN behält das Leerzeichen
+                work_name="Regional Hybrid Flasher"      # non-CN behält das Leerzeichen
               fi
             ;;
             "SuperHybrid SunOS Flasher")
@@ -359,42 +359,48 @@ jobs:
 
           rsync -a "$tpl_base/" "$work_dir/"
 
-          # === Regional / RegionalHybrid parity mit Windows ===
-          # OOS_FILES_HERE immer befüllen (region-spezifisch). Bei CN zusätzlich COS_FILES_HERE.
+          # === Regional / RegionalHybrid ===
+          # OOS_FILES_HERE immer befüllen. Für OP13+CN (RegionalHybrid) gilt:
+          #   - OOS_FILES_HERE ← EUGLO_BLOAT
+          #   - COS_FILES_HERE ← CN_BLOAT
           if [[ "$FTYPE" == "RegionalHybrid Flasher" || "$FTYPE" == "Regional Flasher" ]]; then
-            # OOS_FILES_HERE nach Region (bei CN => CN_BLOAT)
             oos_here="$work_dir/OOS_FILES_HERE"
             mkdir -p "$oos_here"
-            copy_bloat_files "$bloat_base" "$REGION" "$oos_here"
 
-            if [[ "$REGION" == "CN" ]]; then
-              # COS_FILES_HERE: CN-BLOAT (Ace5Pro: A5P_BLOAT)
+            if [[ "$FTYPE" == "RegionalHybrid Flasher" && "$DEV" == "13" && "$REGION" == "CN" ]]; then
+              # *** SPECIAL: Oneplus 13 CN (RegionalHybrid) ***
+              copy_bloat_files "$bloat_base" "GLO" "$oos_here"   # EUGLO_BLOAT → OOS
               cos_here="$work_dir/COS_FILES_HERE"
               mkdir -p "$cos_here"
-              if [[ "$DEV" == "Ace5Pro" ]]; then
-                copy_bloat_files "$bloat_base" "A5P" "$cos_here"
-              else
-                copy_bloat_files "$bloat_base" "CN" "$cos_here"
-              fi
+              copy_bloat_files "$bloat_base" "CN" "$cos_here"    # CN_BLOAT → COS
+            else
+              # Default Verhalten: OOS by region + bei CN zusätzlich COS (CN_BLOAT/A5P_BLOAT)
+              copy_bloat_files "$bloat_base" "$REGION" "$oos_here"
 
-              # Ace5/Ace5Pro CN: Switchback-Paar in OOS_FILES_HERE (my_preload.img, my_company.img)
-              if [[ "$DEV" == "Ace5" ]]; then
-                deb="$bloat_base/A5_DEBLOAT"
-                for f in my_preload.img my_company.img; do
-                  [ -f "$deb/$f" ] && cp -f "$deb/$f" "$oos_here/"
-                done
-              elif [[ "$DEV" == "Ace5Pro" ]]; then
-                # bevorzugt A5P_DEBLOAT, fallback auf A5P_BLOAT falls Repo so benannt ist
-                deb="$bloat_base/A5P_DEBLOAT"; [ -d "$deb" ] || deb="$bloat_base/A5P_BLOAT"
-                for f in my_preload.img my_company.img; do
-                  [ -f "$deb/$f" ] && cp -f "$deb/$f" "$oos_here/"
-                done
+              if [[ "$REGION" == "CN" ]]; then
+                cos_here="$work_dir/COS_FILES_HERE"
+                mkdir -p "$cos_here"
+                if [[ "$DEV" == "Ace5Pro" ]]; then
+                  copy_bloat_files "$bloat_base" "A5P" "$cos_here"
+                else
+                  copy_bloat_files "$bloat_base" "CN" "$cos_here"
+                fi
+
+                # Ace5/Ace5Pro: Switchback-Paar in OOS_FILES_HERE
+                if [[ "$DEV" == "Ace5" ]]; then
+                  deb="$bloat_base/A5_DEBLOAT"
+                  for f in my_preload.img my_company.img; do
+                    [ -f "$deb/$f" ] && cp -f "$deb/$f" "$oos_here/"
+                  done
+                elif [[ "$DEV" == "Ace5Pro" ]]; then
+                  deb="$bloat_base/A5P_DEBLOAT"; [ -d "$deb" ] || deb="$bloat_base/A5P_BLOAT"
+                  for f in my_preload.img my_company.img; do
+                    [ -f "$deb/$f" ] && cp -f "$deb/$f" "$oos_here/"
+                  done
+                fi
               fi
             fi
           fi
-
-
-
 
           if [[ "$FTYPE" == *Hybrid* ]]; then
             mi="$tpl_base/META-INF"
@@ -430,40 +436,40 @@ jobs:
               chmod +x "$super_dir/lpmake"
             fi
 
-          # --- Select & copy correct super packer (CN => super_cos.sh, else super_oos.sh)
-          if [[ "$DEV" == "13T" ]]; then
-            pdir="$root/super_packers/13T"
-            if [[ "$REGION" == "CN" && -f "$pdir/super_cos.sh" ]]; then
-              cp -f "$pdir/super_cos.sh" "$super_dir/super_cos.sh" && chmod +x "$super_dir/super_cos.sh"
-            elif [[ -f "$pdir/super_oos.sh" ]]; then
-              cp -f "$pdir/super_oos.sh" "$super_dir/super_oos.sh" && chmod +x "$super_dir/super_oos.sh"
+            # --- Select & copy correct super packer (CN => super_cos.sh, else super_oos.sh)
+            if [[ "$DEV" == "13T" ]]; then
+              pdir="$root/super_packers/13T"
+              if [[ "$REGION" == "CN" && -f "$pdir/super_cos.sh" ]]; then
+                cp -f "$pdir/super_cos.sh" "$super_dir/super_cos.sh" && chmod +x "$super_dir/super_cos.sh"
+              elif [[ -f "$pdir/super_oos.sh" ]]; then
+                cp -f "$pdir/super_oos.sh" "$super_dir/super_oos.sh" && chmod +x "$super_dir/super_oos.sh"
+              else
+                echo "WARN: no super packer found for 13T"
+              fi
+
+            elif [[ "$DEV" == "Ace5" ]]; then
+              pdir="$root/super_packers/Ace5"
+              if [[ "$REGION" == "CN" && -f "$pdir/super_cos.sh" ]]; then
+                cp -f "$pdir/super_cos.sh" "$super_dir/super_cos.sh" && chmod +x "$super_dir/super_cos.sh"
+              elif [[ -f "$pdir/super_oos.sh" ]]; then
+                cp -f "$pdir/super_oos.sh" "$super_dir/super_oos.sh" && chmod +x "$super_dir/super_oos.sh"
+              else
+                echo "WARN: no super packer found for Ace5"
+              fi
+
             else
-              echo "WARN: no super packer found for 13T"
+              pdir="$root/super_packers/$tpl_dev"
+              if [[ "$REGION" == "CN" && -f "$pdir/super_cos.sh" ]]; then
+                cp -f "$pdir/super_cos.sh" "$super_dir/super_cos.sh" && chmod +x "$super_dir/super_cos.sh"
+              elif [[ -f "$pdir/super_oos.sh" ]]; then
+                cp -f "$pdir/super_oos.sh" "$super_dir/super_oos.sh" && chmod +x "$super_dir/super_oos.sh"
+              else
+                echo "ERROR: no super packer (cos/oos) found for $tpl_dev" >&2
+                exit 1
+              fi
             fi
 
-          elif [[ "$DEV" == "Ace5" ]]; then
-            pdir="$root/super_packers/Ace5"
-            if [[ "$REGION" == "CN" && -f "$pdir/super_cos.sh" ]]; then
-              cp -f "$pdir/super_cos.sh" "$super_dir/super_cos.sh" && chmod +x "$super_dir/super_cos.sh"
-            elif [[ -f "$pdir/super_oos.sh" ]]; then
-              cp -f "$pdir/super_oos.sh" "$super_dir/super_oos.sh" && chmod +x "$super_dir/super_oos.sh"
-            else
-              echo "WARN: no super packer found for Ace5"
-            fi
-
-          else
-            pdir="$root/super_packers/$tpl_dev"
-            if [[ "$REGION" == "CN" && -f "$pdir/super_cos.sh" ]]; then
-              cp -f "$pdir/super_cos.sh" "$super_dir/super_cos.sh" && chmod +x "$super_dir/super_cos.sh"
-            elif [[ -f "$pdir/super_oos.sh" ]]; then
-              cp -f "$pdir/super_oos.sh" "$super_dir/super_oos.sh" && chmod +x "$super_dir/super_oos.sh"
-            else
-              echo "ERROR: no super packer (cos/oos) found for $tpl_dev" >&2
-              exit 1
-            fi
-          fi
-
-
+            # Bloat → Super (by region) + special cases
             if [[ "$DEV" == "Ace5" ]]; then
               if [[ "$REGION" == "CN" ]]; then
                 copy_bloat_files "$bloat_base" "CN" "$super_dir"
@@ -485,6 +491,7 @@ jobs:
               copy_bloat_files "$bloat_base" "$REGION" "$super_dir"
             fi
 
+            # 13T Super IN: move 3 files to COS_FILES_HERE
             if [[ "$DEV" == "13T" && "$FTYPE" == "Super Flasher" && "$REGION" == "IN" ]]; then
               cos_here="$work_dir/COS_FILES_HERE"
               mkdir -p "$cos_here"
@@ -495,6 +502,7 @@ jobs:
               done
             fi
 
+            # CN extra OOS staging (for non-Ace5/Pro)
             if [[ "$REGION" == "CN" ]]; then
               oos_here="$work_dir/OOS_FILES_HERE"
               mkdir -p "$oos_here"
@@ -506,7 +514,7 @@ jobs:
                   [ -f "$deb/$f" ] && cp -f "$deb/$f" "$oos_here/"
                 done
               else
-                copy_bloat_files "$bloat_base" "GLO" "$oos_here"
+                copy_bloat_files "$bloat_base" "GLO" "$oos_here"   # EUGLO_BLOAT → OOS_FILES_HERE (matches your rule)
               fi
             fi
           fi
@@ -650,7 +658,6 @@ jobs:
 
           mapfile -t candidates < <(printf "%s\n" "${by_ftype[@]}" "${fallback[@]}" | awk '!seen[$0]++')
 
-
           # Kandidaten robust (CN/Space/ohne Space)
           mapfile -t candidates < <(
             printf "%s\n" "${by_ftype[@]}" \
@@ -728,10 +735,8 @@ jobs:
           fi
 
           if [ -n "$seven" ]; then
-            # Standard-ZIP: Deflate, Level 5, mfb=32, Multithread
             "$seven" a -tzip -mm=Deflate -mx=5 -mfb=32 -mmt=on "$zip_path" .
           else
-            # Fallback: Info-ZIP (single-thread) – Level 5
             zip -qr -5 "$zip_path" .
           fi
 
