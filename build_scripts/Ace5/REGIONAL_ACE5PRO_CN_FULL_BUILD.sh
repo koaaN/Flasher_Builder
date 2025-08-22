@@ -15,7 +15,7 @@ input_dir="$(dirname "$input_file")"
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
 # otaripper (Linux)
-otaripper_bin="$script_dir/../../otaripper/otaripper"
+otaripper_bin="$script_dir/otaripper"
 if [[ ! -x "$otaripper_bin" ]]; then
   echo "ERROR: otaripper (Linux) nicht gefunden/ausführbar: $otaripper_bin"
   exit 1
