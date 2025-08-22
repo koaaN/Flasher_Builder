@@ -529,22 +529,33 @@ jobs:
       - name: "Package final output (tar -a; names: 13T OOS/COS + A5/A5P; no COS ODM for CN)"
         shell: pwsh
         run: |
-          $otaDir = $env:OTA_DIR
+          $otaDir  = $env:OTA_DIR
+          $dev     = $env:DEV
+          $ftype   = $env:FTYPE
+          $region  = $env:REGION
       
-          # Find builder output next to the OTA
-          $byFtype = switch ($env:FTYPE) {
+          # --- Find builder output next to the OTA ---
+          $byFtype = switch ($ftype) {
             'SuperHybrid Flasher'       { @('SuperHybrid Flasher') }
             'RegionalHybrid Flasher'    { @('RegionalHybrid Flasher') }
             'SuperHybrid SunOS Flasher' { @('SuperHybrid SunOS Flasher') }
             'Super Flasher' {
-              if ( ($env:DEV -in @('13R','13T','Ace5','Ace5P')) -and ($env:REGION -eq 'CN') ) { @('Super Flasher CN') } else { @('Super Flasher') }
+              if ( ($dev -in @('13R','13T','Ace5','Ace5P','Ace5Pro')) -and ($region -eq 'CN') ) { @('Super Flasher CN') } else { @('Super Flasher') }
             }
             'Regional Flasher' {
-              if ( ($env:DEV -in @('Ace5','Ace5P')) -and ($env:REGION -eq 'CN') ) { @('Regional Flasher CN') } else { @('Regional Flasher') }
+              if ( ($dev -in @('13R','Ace5','Ace5P','Ace5Pro')) -and ($region -eq 'CN') ) { @('Regional Flasher CN') } else { @('Regional Flasher') }
             }
             default { @() }
           }
-          $fallback = @('SuperHybrid Flasher','RegionalHybrid Flasher','SuperHybrid SunOS Flasher','Super Flasher CN','Super Flasher','Regional Flasher')
+          $fallback = @(
+            'Regional Flasher CN',
+            'Regional Flasher',
+            'Super Flasher CN',
+            'Super Flasher',
+            'SuperHybrid Flasher',
+            'RegionalHybrid Flasher',
+            'SuperHybrid SunOS Flasher'
+          )
           $candidates = @() + $byFtype + $fallback | Select-Object -Unique
       
           $resultDir = $null
@@ -556,56 +567,59 @@ jobs:
             throw ("Could not find builder output folder next to OTA in '{0}'. Looked for: {1}" -f $otaDir, ($candidates -join ', '))
           }
       
-          $zipRoot  = Join-Path $env:GITHUB_WORKSPACE $env:OUT_DIR
+          # --- Output root ---
+          $zipRoot = Join-Path $env:GITHUB_WORKSPACE $env:OUT_DIR
           New-Item -ItemType Directory -Force -Path $zipRoot | Out-Null
       
           # ---------- Naming ----------
-          $ftypeName  = $env:FTYPE
-          $regionCode = $env:REGION
-          $ver        = if ([string]::IsNullOrWhiteSpace($env:OTA_VERSION)) { 'UNKNOWN' } else { $env:OTA_VERSION }
-          $devCode    = $env:DEV
+          $ver     = if ([string]::IsNullOrWhiteSpace($env:OTA_VERSION)) { 'UNKNOWN' } else { $env:OTA_VERSION }
+          $devCode = $dev
+          # Accept both Ace5Pro and Ace5P
+          if ($devCode -eq 'Ace5Pro') { $devCode = 'Ace5P' }
       
-          $regionDisp = switch ($regionCode) {
-            'CN'  { 'CN' }
-            'GLO' { 'Global' }
-            'EU'  { 'EU' }
-            'IN'  { 'IN' }
-            'NA'  { 'NA' }
-            default { $regionCode }
+          function RegionDisp([string]$r) {
+            switch ($r) {
+              'CN'  { 'COS' }    # show COS instead of CN
+              'GLO' { 'Global' }
+              'EU'  { 'EU' }
+              'IN'  { 'IN' }
+              'NA'  { 'NA' }
+              default { $r }
+            }
           }
       
           switch ($devCode) {
             '13T' {
-              $osTag = if ($regionCode -eq 'CN') { 'COS' } else { 'OOS' }
-              $artifactBase = "{0} 13T {1} {2}" -f $ftypeName, $osTag, $ver
+              $osTag = if ($region -eq 'CN') { 'COS' } else { 'OOS' }
+              $artifactBase = "{0} 13T {1} {2}" -f $ftype, $osTag, $ver
             }
             '13S' {
-              $artifactBase = "{0} 13S {1}" -f $ftypeName, $ver
+              $artifactBase = "{0} 13S {1}" -f $ftype, $ver
             }
             '13R' {
-              $artifactBase = "{0} 13R {1} {2}" -f $ftypeName, $regionDisp, $ver
+              $artifactBase = "{0} 13R {1} {2}" -f $ftype, (RegionDisp $region), $ver
             }
             '13' {
-              $artifactBase = "{0} {1} {2}" -f $ftypeName, $regionDisp, $ver
+              $artifactBase = "{0} {1} {2}" -f $ftype, (RegionDisp $region), $ver
             }
             'Ace5' {  # A5
-              $model = 'A5'
-              if ($regionCode -eq 'CN') {
-                $artifactBase = "{0} {1} CN COS {2}" -f $ftypeName, $model, $ver
+              if ($region -eq 'CN') {
+                # CN: COS only (no 'OOS+COS ODM')
+                $artifactBase = "{0} A5 COS {1}" -f $ftype, $ver
               } else {
-                $artifactBase = "{0} {1} {2} OOS+COS ODM {3}" -f $ftypeName, $model, $regionDisp, $ver
+                # non-CN: include region + OOS+COS ODM
+                $artifactBase = "{0} A5 {1} OOS+COS ODM {2}" -f $ftype, (RegionDisp $region), $ver
               }
             }
-            'Ace5P' { # A5P
-              $model = 'A5P'
-              if ($regionCode -eq 'CN') {
-                $artifactBase = "{0} {1} CN COS {2}" -f $ftypeName, $model, $ver
+            'Ace5P' { # A5P (Ace 5 Pro)
+              if ($region -eq 'CN') {
+                $artifactBase = "{0} A5P COS {1}" -f $ftype, $ver
               } else {
-                $artifactBase = "{0} {1} {2} OOS+COS ODM {3}" -f $ftypeName, $model, $regionDisp, $ver
+                $artifactBase = "{0} A5P {1} OOS+COS ODM {2}" -f $ftype, (RegionDisp $region), $ver
               }
             }
             default {
-              $artifactBase = "{0} {1} {2}" -f $ftypeName, $regionDisp, $ver
+              $artifactBase = "{0} {1} {2}" -f $ftype, (RegionDisp $region), $ver
             }
           }
           # ----------------------------
@@ -613,12 +627,11 @@ jobs:
           $zipPath = Join-Path $zipRoot ($artifactBase + '.zip')
           if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
       
-          $tar = Get-Command tar -ErrorAction Stop
+          $tar   = Get-Command tar -ErrorAction Stop
           $items = Get-ChildItem -LiteralPath $resultDir -Force | ForEach-Object { $_.Name }
           if ($items.Count -eq 0) { throw ("Nothing to archive in {0}" -f $resultDir) }
       
-          $args = @('-a','-c','-f',"$zipPath",'-C',"$resultDir") + $items
-          & $tar.Path @args
+          & $tar.Path -a -c -f "$zipPath" -C "$resultDir" @items
       
           if (-not (Test-Path $zipPath)) { throw ("Packaging failed: ZIP not created at {0}" -f $zipPath) }
       
