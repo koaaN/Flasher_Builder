@@ -475,27 +475,6 @@ jobs:
 
           "WORK_DIR=$workDir" | Out-File -FilePath $env:GITHUB_ENV -Append
 
-      - name: Pre-stage flasher into OTA folder (bypass XCOPY for hybrids)
-        if: ${{ inputs.flasher_type == 'RegionalHybrid Flasher' || inputs.flasher_type == 'SuperHybrid Flasher' }}
-        shell: pwsh
-        run: |
-          $src = $env:WORK_DIR                                  # e.g. out\RegionalHybrid Flasher
-          if (-not (Test-Path $src)) { throw "WORK_DIR not found: $src" }
-
-          $dst = Join-Path $env:OTA_DIR (Split-Path $src -Leaf) # e.g. download\RegionalHybrid Flasher
-          New-Item -ItemType Directory -Force -Path $dst | Out-Null
-
-          # Robust mirror; success codes 0..7 are OK, >7 is hard failure
-          $null = robocopy "$src" "$dst" * /E /NFL /NDL /NJH /NJS /NC /NS
-          if ($LASTEXITCODE -gt 7) { throw "robocopy failed with code $LASTEXITCODE" }
-
-          # Some builders also look for otaripper.exe next to the ZIP
-          $ripper = Join-Path $env:OUT_DIR 'otaripper.exe'
-          if (Test-Path $ripper) { Copy-Item $ripper -Destination $env:OTA_DIR -Force }
-
-          Write-Host "Pre-staged flasher to: $dst"
-
-
       - name: Run builder (Explorer-style drag & drop)
         shell: cmd
         working-directory: ${{ env.OTA_DIR }}
