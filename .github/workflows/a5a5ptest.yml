@@ -72,10 +72,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # CRLF -> LF
           git ls-files '*.sh' | while read -r f; do sed -i 's/\r$//' "$f"; done
+          # Ausführbar machen
           find build_scripts   -type f -name "*.sh" -exec chmod +x {} +
           find super_packers   -type f -name "*.sh" -exec chmod +x {} +
           find flasher_scripts -type f -name "*.sh" -exec chmod +x {} +
+          # Binaries (falls vorhanden)
           [ -f lpmake/lpmake ] && chmod +x lpmake/lpmake || true
           [ -f otaripper/otaripper ] && chmod +x otaripper/otaripper || true
 
@@ -88,11 +91,11 @@ jobs:
             if [ "$(id -u)" -eq 0 ]; then
               apt-get update
               DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-                aria2 curl unzip zip rsync openssh-client ca-certificates tar coreutils grep sed gawk p7zip-full
+                aria2 curl unzip zip rsync openssh-client ca-certificates tar coreutils grep sed gawk p7zip-full python3
             elif sudo -n true 2>/dev/null; then
               sudo apt-get update
               sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-                aria2 curl unzip zip rsync openssh-client ca-certificates tar coreutils grep sed gawk p7zip-full
+                aria2 curl unzip zip rsync openssh-client ca-certificates tar coreutils grep sed gawk p7zip-full python3
             else
               echo "No passwordless sudo → skip apt install (assume deps present)."
             fi
@@ -104,7 +107,7 @@ jobs:
           set -euo pipefail
           mkdir -p download "${OUT_DIR}"
           url="${{ inputs.ota_url }}"
-          url="$(printf "%s" "$url" | xargs)"
+          url="$(printf "%s" "$url" | xargs)"  # trim
           if [ -z "$url" ]; then
             echo "Placeholder OTA for dry-run" > download/PLACEHOLDER.txt
             rm -f download/OTA.zip
@@ -295,8 +298,14 @@ jobs:
           fi
 
           case "$FTYPE" in
-            "SuperHybrid Flasher")        work_name="SuperHybrid Flasher" ;;
-            "RegionalHybrid Flasher")     work_name="Regional Hybrid Flasher" ;;   # <- SPACE!
+            "SuperHybrid Flasher")
+              if [[ "$REGION" == "CN" ]]; then
+                work_name="SuperHybrid Flasher CN"
+              else
+                work_name="SuperHybrid Flasher"
+              fi
+            ;;
+            "RegionalHybrid Flasher")     work_name="Regional Hybrid Flasher" ;;
             "SuperHybrid SunOS Flasher")  work_name="SuperHybrid SunOS Flasher" ;;
             "Super Flasher")
               if [[ "$REGION" == "CN" && ( "$DEV" == "13R" || "$DEV" == "13T" || "$DEV" == "Ace5" ) ]]; then
@@ -505,6 +514,7 @@ jobs:
           dst="$OTA_DIR/$(basename "$src")"
           mkdir -p "$dst"
           rsync -a --info=progress2 "$src/" "$dst/"
+          # otaripper neben die ZIP legen
           [ -f "$OUT_DIR/otaripper" ] && cp -f "$OUT_DIR/otaripper" "$OTA_DIR/"
 
       - name: Run builder
@@ -524,8 +534,14 @@ jobs:
 
           declare -a by_ftype
           case "$FTYPE" in
-            "SuperHybrid Flasher")        by_ftype=("SuperHybrid Flasher") ;;
-            "RegionalHybrid Flasher")     by_ftype=("Regional Hybrid Flasher") ;;   # <- SPACE!
+            "SuperHybrid Flasher")
+              if [[ "$REGION" == "CN" ]]; then
+                by_ftype=("SuperHybrid Flasher CN")
+              else
+                by_ftype=("SuperHybrid Flasher")
+              fi
+            ;;
+            "RegionalHybrid Flasher")     by_ftype=("Regional Hybrid Flasher") ;;
             "SuperHybrid SunOS Flasher")  by_ftype=("SuperHybrid SunOS Flasher") ;;
             "Super Flasher")
               if [[ "$REGION" == "CN" && ( "$DEV" == "13R" || "$DEV" == "13T" || "$DEV" == "Ace5" ) ]]; then
@@ -533,19 +549,20 @@ jobs:
               else
                 by_ftype=("Super Flasher")
               fi
-              ;;
+            ;;
             "Regional Flasher")
               if [[ "$REGION" == "CN" && ( "$DEV" == "Ace5" || "$DEV" == "Ace5Pro" ) ]]; then
                 by_ftype=("Regional Flasher CN")
               else
                 by_ftype=("Regional Flasher")
               fi
-              ;;
+            ;;
           esac
 
-          # Kandidaten robust (beide Schreibweisen, uniq)
+          # Kandidaten robust (CN/Space/ohne Space)
           mapfile -t candidates < <(
             printf "%s\n" "${by_ftype[@]}" \
+              "SuperHybrid Flasher CN" \
               "Regional Hybrid Flasher" "RegionalHybrid Flasher" \
               "SuperHybrid Flasher" "SuperHybrid SunOS Flasher" \
               "Super Flasher CN" "Super Flasher" "Regional Flasher CN" "Regional Flasher" \
@@ -585,24 +602,24 @@ jobs:
             "13T")
               if [[ "$REGION" == "CN" ]]; then os_tag="COS"; else os_tag="OOS"; fi
               artifact_base="${ftype_name} 13T ${os_tag} ${ver}"
-              ;;
+            ;;
             "13S")
               artifact_base="${ftype_name} 13S ${ver}"
-              ;;
+            ;;
             "13R")
               artifact_base="${ftype_name} 13R ${region_disp} ${ver}"
-              ;;
+            ;;
             "Ace5")
               region_tag="$region_code"
               if [[ "$region_code" == "CN" ]]; then os_tag="COS"; else os_tag="OOS+COS"; fi
               artifact_base="${ftype_name} A5 ${region_tag} ${os_tag} ODM ${ver}"
-              ;;
+            ;;
             "Ace5Pro")
               artifact_base="${ftype_name} A5P ${region_disp} ${ver}"
-              ;;
+            ;;
             *)
               artifact_base="${ftype_name} ${region_disp} ${ver}"
-              ;;
+            ;;
           esac
 
           zip_path="$zip_root/${artifact_base}.zip"
@@ -619,8 +636,10 @@ jobs:
           fi
 
           if [ -n "$seven" ]; then
+            # Standard-ZIP: Deflate, Level 5, mfb=32, Multithread
             "$seven" a -tzip -mm=Deflate -mx=5 -mfb=32 -mmt=on "$zip_path" .
           else
+            # Fallback: Info-ZIP (single-thread) – Level 5
             zip -qr -5 "$zip_path" .
           fi
 
@@ -716,11 +735,12 @@ jobs:
           : "${DS_FTP_USER:?Missing DS_FTP_USER}"
           : "${DS_FTP_PASS:?Missing DS_FTP_PASS}"
 
-          remote_dir="$(printf "%s" "$FTP_UPLOAD_DIR" | sed 's#^/*##')"
+          remote_dir="$(printf "%s" "$FTP_UPLOAD_DIR" | sed 's#^/*##')"  # e.g. "Oneplus 13/Super Flashers/Global/"
           file_name="${ARTIFACT_NAME}.zip"
           zip_path="$ZIP_FILE"
           [ -f "$zip_path" ] || { echo "ZIP not found: $zip_path"; exit 1; }
 
+          # URL-encode (Slash bleibt erhalten)
           if command -v python3 >/dev/null 2>&1; then
             enc_path="$(python3 -c "import sys,urllib.parse;print(urllib.parse.quote(sys.argv[1], safe='/'))" "${remote_dir}${file_name}")"
           else
@@ -750,7 +770,9 @@ jobs:
           key_path="$ssh_dir/id_ed25519"
           printf "%s\n" "$SF_SSH_PRIVATE_KEY" | sed 's/\r$//' > "$key_path"
           chmod 600 "$key_path"
+          # beide Host-Key-Typen aufnehmen
           ssh-keyscan -t rsa frs.sourceforge.net >> "$ssh_dir/known_hosts" 2>/dev/null
+          ssh-keyscan -t ed25519 frs.sourceforge.net >> "$ssh_dir/known_hosts" 2>/dev/null
 
       - name: Upload to SourceForge (SCP)
         if: ${{ inputs.upload_to == 'Sourceforge' || inputs.upload_to == 'Both DS_FTP & Sourceforge' }}
