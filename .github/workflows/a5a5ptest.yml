@@ -149,7 +149,6 @@ jobs:
           $ftype  = "${{ inputs.flasher_type }}"
           $region = "${{ inputs.region }}"
 
-          # Builder BAT selection
           $batName = $null
           switch ($ftype) {
             'SuperHybrid Flasher' {
@@ -171,7 +170,7 @@ jobs:
               elseif ($dev -eq '13T' -and $region -eq 'CN') { $batName = 'SUPER_CN_FULL_SUPERBUILD.bat' }
               elseif ($dev -eq '13T')                        { $batName = 'SUPER_IN_FULL_SUPERBUILD.bat' }
               elseif ($dev -eq 'Ace5' -and $region -eq 'CN') { $batName = 'SUPER_CN_FULL_SUPERBUILD.bat' }
-              elseif ($dev -eq 'Ace5')                       { $batName = 'SUPER_OOS_FULL_SUPERBUILD.bat' }   # NEW: Ace 5 OOS
+              elseif ($dev -eq 'Ace5')                       { $batName = 'SUPER_OOS_FULL_SUPERBUILD.bat' }
               elseif ($dev -eq 'Ace5Pro')                    { throw "Ace 5 Pro supports Regional Flasher only." }
               else                                            { $batName = 'SUPERHYBRID_FULL_SUPERBUILD.bat' }
             }
@@ -240,10 +239,8 @@ jobs:
           $dev     = $env:DEV
           $ftype   = $env:FTYPE
           $region  = $env:REGION
+          $root    = $env:GITHUB_WORKSPACE
 
-          $root = $env:GITHUB_WORKSPACE
-
-          # builder scripts for Ace devices live in build_scripts/Ace5
           $builderBaseDev = if ($dev -in @('Ace5','Ace5Pro')) { 'Ace5' } else { $dev }
           $builderDir = Join-Path $root ("build_scripts\" + $builderBaseDev)
 
@@ -261,17 +258,13 @@ jobs:
           $builderSrc = Join-Path $builderDir $env:BUILDER_BAT
           if (Test-Path $builderSrc) { Copy-Item $builderSrc -Destination $env:OUT_DIR -Force }
 
-          # Work folder name (CN variants for Ace devices/others)
+          # Working folder names (CN variants)
           $workName = switch ($ftype) {
             'SuperHybrid Flasher'       { 'SuperHybrid Flasher' }
             'RegionalHybrid Flasher'    { 'RegionalHybrid Flasher' }
             'SuperHybrid SunOS Flasher' { 'SuperHybrid SunOS Flasher' }
-            'Super Flasher' {
-              if ( ($region -eq 'CN') -and ($dev -in @('13R','13T','Ace5')) ) { 'Super Flasher CN' } else { 'Super Flasher' }
-            }
-            'Regional Flasher' {
-              if ( ($region -eq 'CN') -and ($dev -in @('Ace5','Ace5Pro')) ) { 'Regional Flasher CN' } else { 'Regional Flasher' }
-            }
+            'Super Flasher'             { if (($region -eq 'CN') -and ($dev -in @('13R','13T','Ace5'))) { 'Super Flasher CN' } else { 'Super Flasher' } }
+            'Regional Flasher'          { if (($region -eq 'CN') -and ($dev -in @('Ace5','Ace5Pro'))) { 'Regional Flasher CN' } else { 'Regional Flasher' } }
           }
           $workDir = Join-Path $env:OUT_DIR $workName
           New-Item -ItemType Directory -Force -Path $workDir | Out-Null
@@ -281,36 +274,21 @@ jobs:
           $tplBase = Join-Path $root ("flasher_scripts\" + $tplDev)
           if ($ftype -like '*Hybrid*') {
             $tplBase = Join-Path $tplBase ($(if ($region -eq 'CN') { 'cos' } else { 'oos' }))
-            $tplBase = Join-Path $tplBase ($(if ($ftype -like '*Super*') { 'super' } else { 'regional' }))
+            $tplBase = Join-Path $tplBase ($(if ($ftype -like '*Super*') { 'super' } else { 'regional' } ))
           }
           elseif ($ftype -eq 'Super Flasher') {
             if     ($dev -eq '13T' -and $region -eq 'CN') { $tplBase = Join-Path $tplBase 'cos\super' }
             elseif ($dev -eq 'Ace5' -and $region -eq 'CN'){ $tplBase = Join-Path $tplBase 'cos\super' }
-            elseif ($dev -eq 'Ace5')                      { $tplBase = Join-Path $tplBase 'oos\super' }   # NEW: Ace5 OOS
+            elseif ($dev -eq 'Ace5')                      { $tplBase = Join-Path $tplBase 'oos\super' }
             else                                          { $tplBase = Join-Path $tplBase 'oos\super' }
           }
           elseif ($ftype -eq 'Regional Flasher') {
-            if ( ($region -eq 'CN') -and ($dev -in @('13R','Ace5','Ace5Pro')) ) {
-              $tplBase = Join-Path $tplBase 'cos\regional'
-            } else {
-              $tplBase = Join-Path $tplBase 'oos\regional'
-            }
+            if ( ($region -eq 'CN') -and ($dev -in @('13R','Ace5','Ace5Pro')) ) { $tplBase = Join-Path $tplBase 'cos\regional' }
+            else                                                                { $tplBase = Join-Path $tplBase 'oos\regional' }
           }
 
           # Copy template files
           Copy-Item "$tplBase\*" -Destination $workDir -Recurse -Force
-
-          # META-INF only for hybrids (avoid duplicates)
-          if ($ftype -like '*Hybrid*') {
-            $mi = Join-Path $tplBase 'META-INF'
-            if (Test-Path $mi) {
-              $miDest = Join-Path $workDir 'META-INF'
-              if (-not (Test-Path $miDest)) {
-                New-Item -ItemType Directory -Force -Path $miDest | Out-Null
-                Copy-Item "$mi\*" -Destination $miDest -Recurse -Force
-              }
-            }
-          }
 
           # ALWAYS copy Platform-Tools
           $ptSrc  = Join-Path $root 'Platform-Tools'
@@ -320,7 +298,7 @@ jobs:
             Copy-Item "$ptSrc\*" -Destination $ptDst -Recurse -Force
           }
 
-          # Super builds: tools + bloat
+          # Super builds
           if ($ftype -match 'Super') {
             $superDir = Join-Path $workDir 'Super'
             New-Item -ItemType Directory -Force -Path $superDir | Out-Null
@@ -331,7 +309,7 @@ jobs:
             elseif ($dev -eq 'Ace5') {
               $pdir = Join-Path $root 'super_packers\Ace5'
               if ($region -eq 'CN') { Copy-Item (Join-Path $pdir 'super_cos.bat') -Destination $superDir -Force }
-              else                  { Copy-Item (Join-Path $pdir 'super_oos.bat') -Destination $superDir -Force }  # NEW: OOS packer
+              else                  { Copy-Item (Join-Path $pdir 'super_oos.bat') -Destination $superDir -Force }
             }
             else {
               $p = Join-Path $root ("super_packers\" + $tplDev + "\super_oos.bat")
@@ -343,7 +321,7 @@ jobs:
               if ($region -eq 'CN') {
                 Copy-BloatFiles $bloatBase 'CN' $superDir
               } else {
-                # NEW: Ace5 OOS → only these three go to Super/
+                # OOS (EU/GLO/IN/NA) → ONLY these three into Super/
                 $regFolder = switch ($region) {
                   'EU'  { 'EUGLO_BLOAT' }
                   'GLO' { 'EUGLO_BLOAT' }
@@ -373,32 +351,26 @@ jobs:
                 $srcInSuper = Join-Path $superDir $f
                 $dstInCos   = Join-Path $cosHere $f
                 if (Test-Path $srcInSuper) { Move-Item $srcInSuper $dstInCos -Force }
-                else {
-                  $fromBloat = Join-Path $inBloat $f
-                  if (Test-Path $fromBloat) { Copy-Item $fromBloat -Destination $dstInCos -Force }
-                }
+                elseif (Test-Path (Join-Path $inBloat $f)) { Copy-Item (Join-Path $inBloat $f) -Destination $dstInCos -Force }
                 $left = Join-Path $superDir $f
                 if (Test-Path $left) { Remove-Item $left -Force }
               }
             }
 
-            # CN Super extra OOS staging
+            # CN Super → stage OOS_FILES_HERE (13R uses A5 debloat; others use GLO)
             if ($region -eq 'CN') {
               $oosHere = Join-Path $workDir 'OOS_FILES_HERE'
               New-Item -ItemType Directory -Force -Path $oosHere | Out-Null
-              if ($dev -eq '13R') { Copy-BloatFiles $bloatBase 'A5' $oosHere } else { Copy-BloatFiles $bloatBase 'GLO' $oosHere }
-            }
-          }
-
-          # Ace extras: copy DEBLOAT {my_preload.img,my_company.img} -> OOS_FILES_HERE
-          if ($dev -in @('Ace5','Ace5Pro')) {
-            $oosHere = Join-Path $workDir 'OOS_FILES_HERE'
-            New-Item -ItemType Directory -Force -Path $oosHere | Out-Null
-            $debFolder = if ($dev -eq 'Ace5Pro') { 'A5P_DEBLOAT' } else { 'A5_DEBLOAT' }
-            $debPath   = Join-Path $bloatBase $debFolder
-            foreach ($f in 'my_preload.img','my_company.img') {
-              $src = Join-Path $debPath $f
-              if (Test-Path $src) { Copy-Item $src -Destination $oosHere -Force }
+              if     ($dev -eq '13R') { Copy-BloatFiles $bloatBase 'A5'  $oosHere }
+              elseif ($dev -eq 'Ace5') {
+                # << CHANGE: Ace 5 DEBLOAT pair only for CN >>
+                $debPath = Join-Path $bloatBase 'A5_DEBLOAT'
+                foreach ($f in 'my_preload.img','my_company.img') {
+                  $src = Join-Path $debPath $f
+                  if (Test-Path $src) { Copy-Item $src -Destination $oosHere -Force }
+                }
+              }
+              else                    { Copy-BloatFiles $bloatBase 'GLO' $oosHere }
             }
           }
 
@@ -438,7 +410,7 @@ jobs:
             }
           }
 
-          # Oneplus 13 + SuperHybrid extras
+          # Oneplus 13 + SuperHybrid extras (16DTBO + COS_FILES_HERE)
           if ($dev -eq '13' -and $ftype -eq 'SuperHybrid Flasher') {
             $repo16  = Join-Path $root '16DTBO'
             $main16  = Join-Path $env:OUT_DIR '16DTBO'
@@ -469,7 +441,7 @@ jobs:
           echo Calling builder: "%GITHUB_WORKSPACE%\%OUT_DIR%\%BUILDER_BAT%" "%OTA_PATH%"
           (echo.| call "%GITHUB_WORKSPACE%\%OUT_DIR%\%BUILDER_BAT%" "%OTA_PATH%") || exit /b 1
 
-      - name: "Package final output (tar -a; names: 13T OOS/COS + A5/A5P codes)"
+      - name: "Package final output (tar -a; names: 13T OOS/COS + A5 OOS/COS, A5P COS)"
         shell: pwsh
         run: |
           $otaDir = $env:OTA_DIR
@@ -509,7 +481,6 @@ jobs:
           $zipRoot  = Join-Path $env:GITHUB_WORKSPACE $env:OUT_DIR
           New-Item -ItemType Directory -Force -Path $zipRoot | Out-Null
 
-          # Naming rules
           $ftypeName  = $env:FTYPE
           $regionCode = $env:REGION
           $ver        = $env:OTA_VERSION
@@ -528,7 +499,11 @@ jobs:
             '13T'     { $osTag = if ($regionCode -eq 'CN') { 'COS' } else { 'OOS' }; $artifactBase = "{0} 13T {1} {2}" -f $ftypeName, $osTag, $ver; break }
             '13S'     { $artifactBase = "{0} 13S {1}" -f $ftypeName, $ver; break }
             '13R'     { $artifactBase = "{0} 13R {1} {2}" -f $ftypeName, $regionDisp, $ver; break }
-            'Ace5'    { $artifactBase = "{0} A5 {1} {2}"  -f $ftypeName, $regionDisp, $ver; break }
+            'Ace5'    {
+              if ($regionCode -eq 'CN') { $artifactBase = "{0} A5 COS {1}" -f $ftypeName, $ver }
+              else                       { $artifactBase = "{0} A5 OOS {1}" -f $ftypeName, $ver }  # << add OOS for non-CN
+              break
+            }
             'Ace5Pro' { $artifactBase = "{0} A5P {1} {2}" -f $ftypeName, $regionDisp, $ver; break }
             default   { $artifactBase = "{0} {1} {2}" -f $ftypeName, $regionDisp, $ver }
           }
@@ -563,6 +538,7 @@ jobs:
           $ftype  = "${{ inputs.flasher_type }}"
           $region = "${{ inputs.region }}"
 
+          # Category baseline (some overrides below)
           if ($device -eq 'Oneplus 13T' -and $ftype -eq 'Super Flasher' -and $region -eq 'IN') {
             $category = 'OxygenOS Flashers'
           } elseif ($device -eq 'Oneplus Ace 5 Pro') {
@@ -574,11 +550,15 @@ jobs:
             }
           }
 
-          # devices WITHOUT region folder
+          # Devices without region folder by default
           $noRegionDevices = @('Oneplus 13S','Oneplus 13T','Oneplus Ace 5','Oneplus Ace 5 Pro')
           $needsRegion = -not ($noRegionDevices -contains $device)
 
-          if ($needsRegion) {
+          # Build base path (Ace 5 non-CN → inject "OxygenOS" segment)
+          if ($device -eq 'Oneplus Ace 5' -and $region -ne 'CN') {
+            $base = Join-Path (Join-Path $device 'OxygenOS') $category
+            $rel  = $base
+          } elseif ($needsRegion) {
             $regionFolder = switch ($region) {
               'CN'  { 'COS' }
               'GLO' { 'Global' }
@@ -741,4 +721,3 @@ jobs:
 
           Write-Host ("Uploading to SourceForge: {0}" -f $dest)
           scp -i "$key" -o StrictHostKeyChecking=yes "$zip" "$($env:SF_USERNAME)@frs.sourceforge.net:`"$dest`""
-
