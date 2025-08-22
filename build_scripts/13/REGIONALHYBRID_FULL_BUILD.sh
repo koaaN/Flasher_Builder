@@ -2,36 +2,35 @@
 set -euo pipefail
 
 # Usage: ./REGIONALHYBRID_FULL_BUILD.sh /path/to/OTA.zip
+
 if [[ $# -lt 1 ]]; then
   echo "Usage: $0 /path/to/OTA.zip"
   exit 64
 fi
 
-# Eingaben/Orte
+# Pfade
 input_file="$(realpath "$1")"
 input_dir="$(dirname "$input_file")"
-
-# Ordner dieses Skripts
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
-# Tools & Templates
-otaripper_bin="$script_dir/otaripper"                # Linux-Binary erwartet
-otaripper_name="otaripper"                           # so wird sie neben der ZIP platziert
-hybrid_src="$script_dir/Regional Hybrid Flasher"     # Template-Ordner im Repo
-hybrid_dest="$input_dir/Regional Hybrid Flasher"     # Zielordner neben der ZIP
-oos_here="$hybrid_dest/OOS_FILES_HERE"
+otaripper_bin="$script_dir/otaripper"                       # Linux-Binary im OUT_DIR
+template_src="$script_dir/Regional Hybrid Flasher"          # Template-Quelle (immer von hier!)
+flasher_dest="$input_dir/Regional Hybrid Flasher"           # Ziel neben der ZIP
+oos_here="$flasher_dest/OOS_FILES_HERE"
 
 # Checks
 [[ -x "$otaripper_bin" ]] || { echo "ERROR: otaripper nicht gefunden/ausführbar: $otaripper_bin"; exit 1; }
-[[ -d "$hybrid_src" ]]     || { echo "ERROR: Template-Ordner fehlt: $hybrid_src"; exit 1; }
+[[ -d "$template_src" ]] || { echo "ERROR: Template-Ordner fehlt: $template_src"; exit 1; }
 
-# 1) Template spiegeln
-mkdir -p "$hybrid_dest"
-rsync -a "$hybrid_src/" "$hybrid_dest/"
+# 1) Zielordner NEU anlegen (immer frisch)
+echo "Refreshing template at: $flasher_dest"
+rm -rf "$flasher_dest"
+mkdir -p "$flasher_dest"
+rsync -a "$template_src/" "$flasher_dest/"
 
-# 2) otaripper neben die ZIP legen (wie im BAT)
-cp -f "$otaripper_bin" "$input_dir/$otaripper_name"
-chmod +x "$input_dir/$otaripper_name"
+# 2) otaripper neben der ZIP ablegen
+cp -f "$otaripper_bin" "$input_dir/otaripper"
+chmod +x "$input_dir/otaripper"
 
 # 3) Ordnerliste vor der Extraktion merken
 declare -A before
@@ -39,15 +38,15 @@ while IFS= read -r -d '' d; do
   before["$(basename "$d")"]=1
 done < <(find "$input_dir" -mindepth 1 -maxdepth 1 -type d -print0)
 
-# 4) otaripper ausführen (ohne --partitions)
+# 4) OTA extrahieren (ohne --partitions)
 pushd "$input_dir" >/dev/null
-"./$otaripper_name" "$input_file"
+"./otaripper" "$input_file"
 popd >/dev/null
 
-# 5) otaripper wieder löschen
-rm -f "$input_dir/$otaripper_name"
+# 5) otaripper wieder weg
+rm -f "$input_dir/otaripper"
 
-# 6) neu entstandenen Ordner finden
+# 6) Neu entstandenen Ordner ermitteln
 new_folder=""
 while IFS= read -r -d '' d; do
   base="$(basename "$d")"
@@ -69,13 +68,13 @@ fi
 shopt -u dotglob
 rm -rf "$new_folder"
 
-# 8) 16DTBO dtbo ins Flasher-Ziel kopieren (optional)
+# 8) Optional: 16DTBO ins Flasher-Root kopieren (falls vorhanden)
 dtbo_src="$script_dir/16DTBO/16.0.0.1_dtbo.img"
 if [[ -f "$dtbo_src" ]]; then
   echo "Copying 16.0.0.1_dtbo.img into Regional Hybrid Flasher..."
-  cp -f "$dtbo_src" "$hybrid_dest/"
+  cp -f "$dtbo_src" "$flasher_dest/"
 else
-  echo "NOTE: dtbo nicht gefunden: $dtbo_src (überspringe)."
+  echo "NOTE: dtbo nicht gefunden (übersprungen): $dtbo_src"
 fi
 
 echo "Done moving files into Regional Hybrid Flasher."
