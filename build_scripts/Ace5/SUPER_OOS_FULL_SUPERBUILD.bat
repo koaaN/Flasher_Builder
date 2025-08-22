@@ -49,15 +49,11 @@ if defined new_folder (
     for %%F in (
         my_bigball.img my_carrier.img my_engineering.img my_heytap.img
         my_manifest.img my_product.img my_region.img my_stock.img
-        odm.img product.img system.img system_dlkm.img system_ext.img
+        product.img system.img system_dlkm.img system_ext.img
         vendor.img vendor_dlkm.img
     ) do (
         if exist "!new_folder!\%%F" move /Y "!new_folder!\%%F" "%super_flasher_dest%\super\"
     )
-
-    echo Copying my_preload.img ^& my_company.img from EUGLO_BLOAT into super folder
-copy /Y "%~dp0EUGLO_BLOAT\my_preload.img" "%super_flasher_dest%\super\" 
-copy /Y "%~dp0EUGLO_BLOAT\my_company.img" "%super_flasher_dest%\super\"
 
     :: Then move remaining files to OOS_FILES_HERE
     if not exist "%super_flasher_dest%\OOS_FILES_HERE" mkdir "%super_flasher_dest%\OOS_FILES_HERE"
