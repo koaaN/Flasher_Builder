@@ -55,14 +55,6 @@ if defined new_folder (
         if exist "!new_folder!\%%F" move /Y "!new_folder!\%%F" "%super_flasher_dest%\super\"
     )
 
-    echo Copying my_preload.img ^& my_company.img from CN_BLOAT into super folder
-copy /Y "%~dp0CN_BLOAT\my_preload.img" "%super_flasher_dest%\super\" 
-copy /Y "%~dp0CN_BLOAT\my_company.img" "%super_flasher_dest%\super\"
-
-    echo Copying my_preload.img ^& my_company.img from EUGLO_BLOAT into OOS_FILES_HERE
-copy /Y "%~dp0EUGLO_BLOAT\my_preload.img" "%super_flasher_dest%\OOS_FILES_HERE\"
-copy /Y "%~dp0EUGLO_BLOAT\my_company.img" "%super_flasher_dest%\OOS_FILES_HERE\"
-
     :: Then move remaining files to COS_FILES_HERE
     if not exist "%super_flasher_dest%\COS_FILES_HERE" mkdir "%super_flasher_dest%\COS_FILES_HERE"
     move /Y "!new_folder!\*" "%super_flasher_dest%\COS_FILES_HERE\" >nul
