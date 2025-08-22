@@ -384,18 +384,39 @@ jobs:
               chmod +x "$super_dir/lpmake"
             fi
 
-            if [[ "$DEV" == "13T" ]]; then
-              pdir="$root/super_packers/13T"
-              if [[ "$REGION" == "CN" ]]; then cp -f "$pdir/super_cos.sh" "$super_dir/super_cos.sh" && chmod +x "$super_dir/super_cos.sh"
-              else cp -f "$pdir/super_oos.sh" "$super_dir/super_oos.sh" && chmod +x "$super_dir/super_oos.sh"; fi
-            elif [[ "$DEV" == "Ace5" ]]; then
-              pdir="$root/super_packers/Ace5"
-              if [[ "$REGION" == "CN" ]]; then cp -f "$pdir/super_cos.sh" "$super_dir/super_cos.sh" && chmod +x "$super_dir/super_cos.sh"
-              else cp -f "$pdir/super_oos.sh" "$super_dir/super_oos.sh" && chmod +x "$super_dir/super_oos.sh"; fi
+          # --- Select & copy correct super packer (CN => super_cos.sh, else super_oos.sh)
+          if [[ "$DEV" == "13T" ]]; then
+            pdir="$root/super_packers/13T"
+            if [[ "$REGION" == "CN" && -f "$pdir/super_cos.sh" ]]; then
+              cp -f "$pdir/super_cos.sh" "$super_dir/super_cos.sh" && chmod +x "$super_dir/super_cos.sh"
+            elif [[ -f "$pdir/super_oos.sh" ]]; then
+              cp -f "$pdir/super_oos.sh" "$super_dir/super_oos.sh" && chmod +x "$super_dir/super_oos.sh"
             else
-              p="$root/super_packers/$tpl_dev/super_oos.sh"
-              [ -f "$p" ] && cp -f "$p" "$super_dir/" && chmod +x "$super_dir/super_oos.sh"
+              echo "WARN: no super packer found for 13T"
             fi
+
+          elif [[ "$DEV" == "Ace5" ]]; then
+            pdir="$root/super_packers/Ace5"
+            if [[ "$REGION" == "CN" && -f "$pdir/super_cos.sh" ]]; then
+              cp -f "$pdir/super_cos.sh" "$super_dir/super_cos.sh" && chmod +x "$super_dir/super_cos.sh"
+            elif [[ -f "$pdir/super_oos.sh" ]]; then
+              cp -f "$pdir/super_oos.sh" "$super_dir/super_oos.sh" && chmod +x "$super_dir/super_oos.sh"
+            else
+              echo "WARN: no super packer found for Ace5"
+            fi
+
+          else
+            pdir="$root/super_packers/$tpl_dev"
+            if [[ "$REGION" == "CN" && -f "$pdir/super_cos.sh" ]]; then
+              cp -f "$pdir/super_cos.sh" "$super_dir/super_cos.sh" && chmod +x "$super_dir/super_cos.sh"
+            elif [[ -f "$pdir/super_oos.sh" ]]; then
+              cp -f "$pdir/super_oos.sh" "$super_dir/super_oos.sh" && chmod +x "$super_dir/super_oos.sh"
+            else
+              echo "ERROR: no super packer (cos/oos) found for $tpl_dev" >&2
+              exit 1
+            fi
+          fi
+
 
             if [[ "$DEV" == "Ace5" ]]; then
               if [[ "$REGION" == "CN" ]]; then
