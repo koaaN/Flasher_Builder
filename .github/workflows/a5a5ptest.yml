@@ -511,7 +511,7 @@ jobs:
           echo "Calling builder: \"$GITHUB_WORKSPACE/$OUT_DIR/$BUILDER_SH\" \"$OTA_PATH\""
           bash "$GITHUB_WORKSPACE/$OUT_DIR/$BUILDER_SH" "$OTA_PATH"
 
-      - name: Package final output (zip; names: 13T OOS/COS + A5 region OOS+COS ODM)
+      - name: "Package final output (zip; names: 13T OOS/COS + A5 region OOS+COS ODM)"
         shell: bash
         run: |
           set -euo pipefail
@@ -602,6 +602,7 @@ jobs:
             echo "ARTIFACT_NAME=$artifact_base"
             echo "ZIP_FILE=$zip_path"
           } >> "$GITHUB_ENV"
+
 
       - name: Upload artifact (single zip only)
         if: ${{ inputs.upload_to == 'Artifact Only' }}
