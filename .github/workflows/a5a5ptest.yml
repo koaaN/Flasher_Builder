@@ -441,99 +441,100 @@ jobs:
           echo Calling builder: "%GITHUB_WORKSPACE%\%OUT_DIR%\%BUILDER_BAT%" "%OTA_PATH%"
           (echo.| call "%GITHUB_WORKSPACE%\%OUT_DIR%\%BUILDER_BAT%" "%OTA_PATH%") || exit /b 1
 
-            - name: "Package final output (tar -a; names: 13T OOS/COS + A5 region OOS+COS ODM)"
-              shell: pwsh
-              run: |
-                $otaDir = $env:OTA_DIR
-      
-                $byFtype = switch ($env:FTYPE) {
-                  'SuperHybrid Flasher'       { @('SuperHybrid Flasher') }
-                  'RegionalHybrid Flasher'    { @('RegionalHybrid Flasher') }
-                  'SuperHybrid SunOS Flasher' { @('SuperHybrid SunOS Flasher') }
-                  'Super Flasher' {
-                    if ( ($env:REGION -eq 'CN') -and ($env:DEV -in @('13R','13T','Ace5')) ) { @('Super Flasher CN') } else { @('Super Flasher') }
-                  }
-                  'Regional Flasher' {
-                    if ( ($env:REGION -eq 'CN') -and ($env:DEV -in @('Ace5','Ace5Pro')) ) { @('Regional Flasher CN') } else { @('Regional Flasher') }
-                  }
-                  default { @() }
-                }
-                $fallback = @(
-                  'SuperHybrid Flasher',
-                  'RegionalHybrid Flasher',
-                  'SuperHybrid SunOS Flasher',
-                  'Super Flasher CN',
-                  'Super Flasher',
-                  'Regional Flasher CN',
-                  'Regional Flasher'
-                )
-                $candidates = @() + $byFtype + $fallback | Select-Object -Unique
-      
-                $resultDir = $null
-                foreach ($name in $candidates) {
-                  $p = Join-Path $otaDir $name
-                  if (Test-Path $p) { $resultDir = $p; break }
-                }
-                if (-not $resultDir) {
-                  throw ("Could not find builder output folder next to OTA in '{0}'. Looked for: {1}" -f $otaDir, ($candidates -join ', '))
-                }
-      
-                $zipRoot  = Join-Path $env:GITHUB_WORKSPACE $env:OUT_DIR
-                New-Item -ItemType Directory -Force -Path $zipRoot | Out-Null
-      
-                $ftypeName  = $env:FTYPE
-                $regionCode = $env:REGION
-                $ver        = $env:OTA_VERSION
-                if ([string]::IsNullOrWhiteSpace($ver)) { $ver = 'UNKNOWN' }
-      
-                $regionDisp = switch ($regionCode) {
-                  'CN'  { 'COS' }
-                  'GLO' { 'Global' }
-                  'EU'  { 'EU' }
-                  'IN'  { 'IN' }
-                  'NA'  { 'NA' }
-                  default { $regionCode }
-                }
-      
-                switch ($env:DEV) {
-                  '13T'     {
-                    $osTag = if ($regionCode -eq 'CN') { 'COS' } else { 'OOS' }
-                    $artifactBase = "{0} 13T {1} {2}" -f $ftypeName, $osTag, $ver
-                    break
-                  }
-                  '13S'     { $artifactBase = "{0} 13S {1}" -f $ftypeName, $ver; break }
-                  '13R'     { $artifactBase = "{0} 13R {1} {2}" -f $ftypeName, $regionDisp, $ver; break }
-      
-                  # >>> New naming for Ace 5:
-                  # Include region code (EU/IN/NA/GLO/CN) and add "OOS+COS ODM" for non-CN; "COS ODM" for CN
-                  'Ace5'    {
-                    $regionTag = $regionCode
-                    if ($regionCode -eq 'GLO') { $regionTag = 'GLO' }  # keep short code, not "Global"
-                    $osTag = if ($regionCode -eq 'CN') { 'COS' } else { 'OOS+COS' }
-                    $artifactBase = "{0} A5 {1} {2} ODM {3}" -f $ftypeName, $regionTag, $osTag, $ver
-                    break
-                  }
-      
-                  # Leave Ace 5 Pro as previously (can change later if you want same pattern)
-                  'Ace5Pro' { $artifactBase = "{0} A5P {1} {2}" -f $ftypeName, $regionDisp, $ver; break }
-      
-                  default   { $artifactBase = "{0} {1} {2}" -f $ftypeName, $regionDisp, $ver }
-                }
-      
-                $zipPath = Join-Path $zipRoot ($artifactBase + '.zip')
-                if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
-      
-                $tar = Get-Command tar -ErrorAction Stop
-                $items = Get-ChildItem -LiteralPath $resultDir -Force | ForEach-Object { $_.Name }
-                if ($items.Count -eq 0) { throw ("Nothing to archive in {0}" -f $resultDir) }
-      
-                $args = @('-a','-c','-f',"$zipPath",'-C',"$resultDir") + $items
-                & $tar.Path @args
-      
-                if (-not (Test-Path $zipPath)) { throw ("Packaging failed: ZIP not created at {0}" -f $zipPath) }
-      
-                "ARTIFACT_NAME=$artifactBase" | Out-File -FilePath $env:GITHUB_ENV -Append
-                "ZIP_FILE=$zipPath"           | Out-File -FilePath $env:GITHUB_ENV -Append
+      - name: "Package final output (tar -a; names: 13T OOS/COS + A5 region OOS+COS ODM)"
+        shell: pwsh
+        run: |
+          $otaDir = $env:OTA_DIR
+
+          $byFtype = switch ($env:FTYPE) {
+            'SuperHybrid Flasher'       { @('SuperHybrid Flasher') }
+            'RegionalHybrid Flasher'    { @('RegionalHybrid Flasher') }
+            'SuperHybrid SunOS Flasher' { @('SuperHybrid SunOS Flasher') }
+            'Super Flasher' {
+              if ( ($env:REGION -eq 'CN') -and ($env:DEV -in @('13R','13T','Ace5')) ) { @('Super Flasher CN') } else { @('Super Flasher') }
+            }
+            'Regional Flasher' {
+              if ( ($env:REGION -eq 'CN') -and ($env:DEV -in @('Ace5','Ace5Pro')) ) { @('Regional Flasher CN') } else { @('Regional Flasher') }
+            }
+            default { @() }
+          }
+          $fallback = @(
+            'SuperHybrid Flasher',
+            'RegionalHybrid Flasher',
+            'SuperHybrid SunOS Flasher',
+            'Super Flasher CN',
+            'Super Flasher',
+            'Regional Flasher CN',
+            'Regional Flasher'
+          )
+          $candidates = @() + $byFtype + $fallback | Select-Object -Unique
+
+          $resultDir = $null
+          foreach ($name in $candidates) {
+            $p = Join-Path $otaDir $name
+            if (Test-Path $p) { $resultDir = $p; break }
+          }
+          if (-not $resultDir) {
+            throw ("Could not find builder output folder next to OTA in '{0}'. Looked for: {1}" -f $otaDir, ($candidates -join ', '))
+          }
+
+          $zipRoot  = Join-Path $env:GITHUB_WORKSPACE $env:OUT_DIR
+          New-Item -ItemType Directory -Force -Path $zipRoot | Out-Null
+
+          $ftypeName  = $env:FTYPE
+          $regionCode = $env:REGION
+          $ver        = $env:OTA_VERSION
+          if ([string]::IsNullOrWhiteSpace($ver)) { $ver = 'UNKNOWN' }
+
+          $regionDisp = switch ($regionCode) {
+            'CN'  { 'COS' }
+            'GLO' { 'Global' }
+            'EU'  { 'EU' }
+            'IN'  { 'IN' }
+            'NA'  { 'NA' }
+            default { $regionCode }
+          }
+
+          switch ($env:DEV) {
+            '13T'     {
+              $osTag = if ($regionCode -eq 'CN') { 'COS' } else { 'OOS' }
+              $artifactBase = "{0} 13T {1} {2}" -f $ftypeName, $osTag, $ver
+              break
+            }
+            '13S'     { $artifactBase = "{0} 13S {1}" -f $ftypeName, $ver; break }
+            '13R'     { $artifactBase = "{0} 13R {1} {2}" -f $ftypeName, $regionDisp, $ver; break }
+
+            # >>> New naming for Ace 5:
+            # Include region code (EU/IN/NA/GLO/CN) and add "OOS+COS ODM" for non-CN; "COS ODM" for CN
+            'Ace5'    {
+              $regionTag = $regionCode
+              if ($regionCode -eq 'GLO') { $regionTag = 'GLO' }  # keep short code, not "Global"
+              $osTag = if ($regionCode -eq 'CN') { 'COS' } else { 'OOS+COS' }
+              $artifactBase = "{0} A5 {1} {2} ODM {3}" -f $ftypeName, $regionTag, $osTag, $ver
+              break
+            }
+
+            # Leave Ace 5 Pro as previously (can change later if you want same pattern)
+            'Ace5Pro' { $artifactBase = "{0} A5P {1} {2}" -f $ftypeName, $regionDisp, $ver; break }
+
+            default   { $artifactBase = "{0} {1} {2}" -f $ftypeName, $regionDisp, $ver }
+          }
+
+          $zipPath = Join-Path $zipRoot ($artifactBase + '.zip')
+          if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
+
+          $tar = Get-Command tar -ErrorAction Stop
+          $items = Get-ChildItem -LiteralPath $resultDir -Force | ForEach-Object { $_.Name }
+          if ($items.Count -eq 0) { throw ("Nothing to archive in {0}" -f $resultDir) }
+
+          $args = @('-a','-c','-f',"$zipPath",'-C',"$resultDir") + $items
+          & $tar.Path @args
+
+          if (-not (Test-Path $zipPath)) { throw ("Packaging failed: ZIP not created at {0}" -f $zipPath) }
+
+          "ARTIFACT_NAME=$artifactBase" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "ZIP_FILE=$zipPath"           | Out-File -FilePath $env:GITHUB_ENV -Append
+
 
 
       - name: Upload artifact (single zip only)
