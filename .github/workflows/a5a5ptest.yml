@@ -236,7 +236,7 @@ jobs:
             }
           }
 
-          $dev     = $env:DEV
+          $dev     = $env:DEV             # 13, 13R, 13S, 13T, Ace5, Ace5Pro
           $ftype   = $env:FTYPE
           $region  = $env:REGION
           $root    = $env:GITHUB_WORKSPACE
@@ -244,7 +244,7 @@ jobs:
           # Ace devices share build_scripts/Ace5 and bloat/Ace5
           $builderBaseDev = if ($dev -in @('Ace5','Ace5Pro')) { 'Ace5' } else { $dev }
           $builderDir = Join-Path $root ("build_scripts\" + $builderBaseDev)
-          $bloatBase = if ($dev -in @('Ace5','Ace5Pro')) { Join-Path $root 'bloat\Ace5' } else { Join-Path $root ("bloat\" + $dev) }
+          $bloatBase  = if ($dev -in @('Ace5','Ace5Pro')) { Join-Path $root 'bloat\Ace5' } else { Join-Path $root ("bloat\" + $dev) }
 
           # Fresh OUT_DIR
           if (Test-Path $env:OUT_DIR) { Remove-Item $env:OUT_DIR -Recurse -Force }
@@ -299,7 +299,7 @@ jobs:
                 Write-Host ("META-INF already present in {0} - skipping duplicate copy." -f $miDest)
               }
             }
-            # Always normalize updater-script (if present) to LF to avoid Windows CRLF issues
+            # Normalize only updater-script to LF (avoid CRLF on Windows)
             $upd = Join-Path $workDir 'META-INF\com\google\android\updater-script'
             if (Test-Path $upd) {
               try {
@@ -348,7 +348,7 @@ jobs:
               if ($region -eq 'CN') {
                 Copy-BloatFiles $bloatBase 'CN' $superDir
               } else {
-                # OOS (EU/GLO/IN/NA) → ONLY these three into Super/
+                # OOS (EU/GLO/IN/NA): copy only these into Super/
                 $regFolder = switch ($region) {
                   'EU'  { 'EUGLO_BLOAT' }
                   'GLO' { 'EUGLO_BLOAT' }
@@ -369,7 +369,7 @@ jobs:
               Copy-BloatFiles $bloatBase $region $superDir
             }
 
-            # Special: 13T + Super Flasher + IN → move 3 files to COS_FILES_HERE (not in Super/)
+            # Special: 13T + Super Flasher + IN -> move 3 files to COS_FILES_HERE (not in Super/)
             if ($dev -eq '13T' -and $ftype -eq 'Super Flasher' -and $region -eq 'IN') {
               $cosHere = Join-Path $workDir 'COS_FILES_HERE'
               New-Item -ItemType Directory -Force -Path $cosHere | Out-Null
@@ -384,7 +384,7 @@ jobs:
               }
             }
 
-            # CN Super → stage OOS_FILES_HERE (13R uses A5 debloat; Ace5 uses A5_DEBLOAT pair; others use GLO)
+            # CN Super -> stage OOS_FILES_HERE
             if ($region -eq 'CN') {
               $oosHere = Join-Path $workDir 'OOS_FILES_HERE'
               New-Item -ItemType Directory -Force -Path $oosHere | Out-Null
@@ -396,11 +396,11 @@ jobs:
                   if (Test-Path $src) { Copy-Item $src -Destination $oosHere -Force }
                 }
               }
-              else                    { Copy-BloatFiles $bloatBase 'GLO' $oosHere }
+              else { Copy-BloatFiles $bloatBase 'GLO' $oosHere }
             }
           }
 
-          # Ace 5 • Regional Flasher • CN → CN_BLOAT → COS_FILES_HERE (my_preload/my_company)
+          # Ace 5 • Regional Flasher • CN -> CN_BLOAT -> COS_FILES_HERE (my_preload/my_company)
           if ($ftype -eq 'Regional Flasher' -and $dev -eq 'Ace5' -and $region -eq 'CN') {
             $cosHere = Join-Path $workDir 'COS_FILES_HERE'
             New-Item -ItemType Directory -Force -Path $cosHere | Out-Null
@@ -420,7 +420,7 @@ jobs:
             }
           }
 
-          # Ace 5 Pro • Regional Flasher • CN → A5P_BLOAT → COS_FILES_HERE (my_preload/my_company)
+          # Ace 5 Pro • Regional Flasher • CN -> A5P_BLOAT -> COS_FILES_HERE (my_preload/my_company)
           if ($ftype -eq 'Regional Flasher' -and $dev -eq 'Ace5Pro' -and $region -eq 'CN') {
             $cosHere = Join-Path $workDir 'COS_FILES_HERE'
             New-Item -ItemType Directory -Force -Path $cosHere | Out-Null
@@ -440,22 +440,29 @@ jobs:
             }
           }
 
-          # Oneplus 13 + SuperHybrid extras (16DTBO in MAIN, COS_FILES_HERE injection)
-          if ($dev -eq '13' -and $ftype -eq 'SuperHybrid Flasher') {
+          # Oneplus 13 + Hybrid extras: ensure 16DTBO in MAIN (for SuperHybrid & RegionalHybrid)
+          if ($dev -eq '13' -and ($ftype -eq 'SuperHybrid Flasher' -or $ftype -eq 'RegionalHybrid Flasher')) {
             $repo16  = Join-Path $root '16DTBO'
             $main16  = Join-Path $env:OUT_DIR '16DTBO'
             if (Test-Path $repo16) {
+              if (Test-Path $main16) { Remove-Item $main16 -Recurse -Force }
               New-Item -ItemType Directory -Force -Path $main16 | Out-Null
               Copy-Item "$repo16\*" -Destination $main16 -Recurse -Force
+              Write-Host "Staged 16DTBO to MAIN: $main16"
             } else {
               Write-Warning "16DTBO folder not found at repo root."
             }
+            # Move stray 16DTBO from working folder if present
             $work16 = Join-Path $workDir '16DTBO'
             if (Test-Path $work16) {
               if (Test-Path $main16) { Remove-Item $main16 -Recurse -Force }
               Move-Item $work16 $main16
               Write-Host "Moved stray 16DTBO from working folder to MAIN."
             }
+          }
+
+          # Additional: for Oneplus 13 + SuperHybrid, inject COS_FILES_HERE bundle if available
+          if ($dev -eq '13' -and $ftype -eq 'SuperHybrid Flasher') {
             $cosBloat = Join-Path $bloatBase 'COS_FILES_HERE'
             if (Test-Path $cosBloat) {
               $cosDest = Join-Path $workDir 'COS_FILES_HERE'
@@ -467,6 +474,7 @@ jobs:
           }
 
           "WORK_DIR=$workDir" | Out-File -FilePath $env:GITHUB_ENV -Append
+
 
       - name: Run builder (Explorer-style drag & drop)
         shell: cmd
