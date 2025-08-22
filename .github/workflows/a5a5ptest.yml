@@ -468,6 +468,14 @@ jobs:
 
           "WORK_DIR=$workDir" | Out-File -FilePath $env:GITHUB_ENV -Append
 
+      - name: Run builder (Explorer-style drag & drop)
+        shell: cmd
+        working-directory: ${{ env.OTA_DIR }}
+        run: |
+          echo CWD is %CD%
+          echo Calling builder: "%GITHUB_WORKSPACE%\%OUT_DIR%\%BUILDER_BAT%" "%OTA_PATH%"
+          (echo.| call "%GITHUB_WORKSPACE%\%OUT_DIR%\%BUILDER_BAT%" "%OTA_PATH%") || exit /b 1
+
             
       - name: "Package final output (tar -a; names: 13T OOS/COS + A5 region OOS+COS ODM)"
         shell: pwsh
