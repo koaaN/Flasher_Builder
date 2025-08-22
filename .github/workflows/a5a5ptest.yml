@@ -229,18 +229,14 @@ jobs:
             foreach ($f in $needed) {
               if ($skip -contains $f) { continue }
               $img = Join-Path $src $f
-              if (Test-Path $img) {
-                Copy-Item $img -Destination $dest -Force
-                continue
-              }
+              if (Test-Path $img) { Copy-Item $img -Destination $dest -Force; continue }
+      
               # Try stub without extension (e.g. 'my_preload', 'odm')
               $stub = Join-Path $src ([System.IO.Path]::GetFileNameWithoutExtension($f))
               if (Test-Path $stub) {
                 try {
                   $url = (Get-Content $stub -Raw).Trim()
-                  if ($url) {
-                    Invoke-WebRequest -Uri $url -OutFile (Join-Path $dest $f)
-                  }
+                  if ($url) { Invoke-WebRequest -Uri $url -OutFile (Join-Path $dest $f) }
                 } catch {
                   Write-Warning ("Failed to download {0} from {1}: {2}" -f $f, $stub, $_.Exception.Message)
                 }
@@ -293,7 +289,7 @@ jobs:
           #-----------------------------
           # Inputs / paths
           #-----------------------------
-          $dev    = $env:DEV        # 13,13R,13S,13T,Ace5,Ace5Pro  (Ace5/Ace5Pro needs to be set in your mapper)
+          $dev    = $env:DEV        # 13,13R,13S,13T,Ace5,Ace5Pro
           $ftype  = $env:FTYPE
           $region = $env:REGION
           $root   = $env:GITHUB_WORKSPACE
@@ -432,7 +428,7 @@ jobs:
               Copy-BloatFromFolder -base $bloatBase -folder $bloatFolder -dest $superDir
             }
       
-            # CN Super extra OOS staging (EUGLO or A5) for 13-series
+            # CN Super extra OOS staging (EUGLO or A5) for 13-series (not Ace5/Ace5Pro)
             if ($region -eq 'CN' -and $dev -notin @('Ace5','Ace5Pro')) {
               $oosHere = Join-Path $workDir 'OOS_FILES_HERE'
               New-Item -ItemType Directory -Force -Path $oosHere | Out-Null
@@ -485,26 +481,36 @@ jobs:
           }
       
           #-----------------------------
-          # Oneplus 13 + SuperHybrid extras
+          # Oneplus 13 + Hybrid extras (SuperHybrid + RegionalHybrid)
+          # Stage 16DTBO from flasher_scripts\13\oos\super\16DTBO
           #-----------------------------
-          if ($dev -eq '13' -and $ftype -eq 'SuperHybrid Flasher') {
-            # 16DTBO in MAIN folder
-            $repo16 = Join-Path $root '16DTBO'
+          if ($dev -eq '13' -and $ftype -in @('SuperHybrid Flasher','RegionalHybrid Flasher')) {
+            $src16  = Join-Path $root 'flasher_scripts\13\oos\super\16DTBO'
             $main16 = Join-Path $env:OUT_DIR '16DTBO'
-            if (Test-Path $repo16) {
+      
+            if (Test-Path $src16) {
               New-Item -ItemType Directory -Force -Path $main16 | Out-Null
-              Copy-Item "$repo16\*" -Destination $main16 -Recurse -Force
+              Copy-Item "$src16\*" -Destination $main16 -Recurse -Force
+      
+              # If builder expects "16.0.0.1_dtbo.img", ensure it exists even if source is just "dtbo.img"
+              $dtboPlain = Join-Path $main16 'dtbo.img'
+              $dtboNamed = Join-Path $main16 '16.0.0.1_dtbo.img'
+              if ((Test-Path $dtboPlain) -and -not (Test-Path $dtboNamed)) {
+                Copy-Item $dtboPlain $dtboNamed -Force
+              }
             } else {
-              Write-Warning "16DTBO folder not found at repo root."
+              Write-Warning ("16DTBO source not found: {0}" -f $src16)
             }
-            # Move stray 16DTBO from working folder if present
+      
+            # If the template dropped a 16DTBO folder inside the working dir by mistake, move it up to MAIN
             $work16 = Join-Path $workDir '16DTBO'
             if (Test-Path $work16) {
               if (Test-Path $main16) { Remove-Item $main16 -Recurse -Force }
               Move-Item $work16 $main16
               Write-Host "Moved stray 16DTBO from working folder to MAIN."
             }
-            # Inject COS_FILES_HERE from bloat\13\COS_FILES_HERE
+      
+            # Inject COS_FILES_HERE from bloat\13\COS_FILES_HERE (if present)
             $cosBloat = Join-Path $bloatBase 'COS_FILES_HERE'
             if (Test-Path $cosBloat) {
               $cosDest = Join-Path $workDir 'COS_FILES_HERE'
@@ -515,7 +521,6 @@ jobs:
       
           # Expose for next steps
           "WORK_DIR=$workDir" | Out-File -FilePath $env:GITHUB_ENV -Append
-
 
       - name: Run builder (Explorer-style drag & drop)
         shell: cmd
