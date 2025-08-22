@@ -54,6 +54,4 @@ if defined new_folder (
 )
 
 echo Done moving files into Regional Flasher.
-echo Copying 16.0.0.1_dtbo.img into Regional Flasher...
-copy /Y "%~dp016DTBO\16.0.0.1_dtbo.img" "%regional_flasher_dest%"
 pause
