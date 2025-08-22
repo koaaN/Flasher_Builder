@@ -539,22 +539,24 @@ jobs:
               else
                 by_ftype=("Super Flasher")
               fi
-            ;;
+              ;;
             "Regional Flasher")
               if [[ "$REGION" == "CN" && ( "$DEV" == "Ace5" || "$DEV" == "Ace5Pro" ) ]]; then
                 by_ftype=("Regional Flasher CN")
               else
                 by_ftype=("Regional Flasher")
               fi
-            ;;
+              ;;
           esac
-          # >>> Fix: mit mapfile zeilenweise lesen (Leerzeichen bleiben erhalten)
+
+          # Kandidaten-Liste korrekt (Leerzeichen bleiben erhalten)
           mapfile -t candidates < <(
-            printf "%s\n" "${by_ftype[@]}" "SuperHybrid Flasher" "RegionalHybrid Flasher" "SuperHybrid SunOS Flasher" "Super Flasher CN" "Super Flasher" "Regional Flasher CN" "Regional Flasher" \
+            printf "%s\n" "${by_ftype[@]}" \
+              "SuperHybrid Flasher" "RegionalHybrid Flasher" "SuperHybrid SunOS Flasher" \
+              "Super Flasher CN" "Super Flasher" "Regional Flasher CN" "Regional Flasher" \
             | awk '!seen[$0]++'
           )
 
-          # (Optional) Debug: zeige vorhandene Verzeichnisse
           echo "Folders in OTA_DIR:"
           ls -la "$ota_dir" || true
 
@@ -563,7 +565,10 @@ jobs:
             p="$ota_dir/$name"
             if [ -d "$p" ]; then result_dir="$p"; break; fi
           done
-          [ -n "$result_dir" ] || { echo "Could not find builder output folder next to OTA in '$ota_dir'."; echo "Looked for:"; printf ' - %s\n' "${candidates[@]}"; exit 1; }
+          [ -n "$result_dir" ] || {
+            echo "Could not find builder output folder next to OTA in '$ota_dir'."
+            echo "Looked for:"; printf ' - %s\n' "${candidates[@]}"; exit 1;
+          }
 
           zip_root="$GITHUB_WORKSPACE/$OUT_DIR"
           mkdir -p "$zip_root"
@@ -585,32 +590,32 @@ jobs:
             "13T")
               if [[ "$REGION" == "CN" ]]; then os_tag="COS"; else os_tag="OOS"; fi
               artifact_base="${ftype_name} 13T ${os_tag} ${ver}"
-            ;;
+              ;;
             "13S")
               artifact_base="${ftype_name} 13S ${ver}"
-            ;;
+              ;;
             "13R")
               artifact_base="${ftype_name} 13R ${region_disp} ${ver}"
-            ;;
+              ;;
             "Ace5")
               region_tag="$region_code"
               if [[ "$region_code" == "CN" ]]; then os_tag="COS"; else os_tag="OOS+COS"; fi
               artifact_base="${ftype_name} A5 ${region_tag} ${os_tag} ODM ${ver}"
-            ;;
+              ;;
             "Ace5Pro")
               artifact_base="${ftype_name} A5P ${region_disp} ${ver}"
-            ;;
+              ;;
             *)
               artifact_base="${ftype_name} ${region_disp} ${ver}"
-            ;;
+              ;;
           esac
 
           zip_path="$zip_root/${artifact_base}.zip"
           rm -f "$zip_path"
 
-          # --- High-speed ZIP (multicore) ---
           cd "$result_dir"
 
+          # 7-Zip (multicore) bevorzugen
           if command -v 7zz >/dev/null 2>&1; then
             seven=7zz
           elif command -v 7z >/dev/null 2>&1; then
@@ -620,14 +625,11 @@ jobs:
           fi
 
           if [ -n "$seven" ]; then
-            # 1) Wenig komprimierbares "store"
-            $seven a -tzip -mmt=on -mx=0 "$zip_path" \
-              *.img *.bin *.apk *.jar *.zip *.7z *.rar *.iso *.xz *.zst 2>/dev/null || true
-            # 2) Rest moderat komprimieren
-            $seven a -tzip -mmt=on -mx=5 "$zip_path" \
-              . -x!*.img -x!*.bin -x!*.apk -x!*.jar -x!*.zip -x!*.7z -x!*.rar -x!*.iso -x!*.xz -x!*.zst
+            # Standard-ZIP: Deflate, Level 5, mfb=32, Multithread
+            "$seven" a -tzip -mm=Deflate -mx=5 -mfb=32 -mmt=on "$zip_path" .
           else
-            zip -qr -1 -n ".img:.bin:.apk:.jar:.zip:.7z:.rar:.iso:.xz:.zst" "$zip_path" .
+            # Fallback: Info-ZIP (single-thread) – Level 5
+            zip -qr -5 "$zip_path" .
           fi
 
           [ -f "$zip_path" ] || { echo "Packaging failed: ZIP not created at $zip_path"; exit 1; }
@@ -636,6 +638,7 @@ jobs:
             echo "ARTIFACT_NAME=$artifact_base"
             echo "ZIP_FILE=$zip_path"
           } >> "$GITHUB_ENV"
+
 
       - name: Upload artifact (single zip only)
         if: ${{ inputs.upload_to == 'Artifact Only' }}
