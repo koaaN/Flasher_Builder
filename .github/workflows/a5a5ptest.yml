@@ -305,8 +305,16 @@ jobs:
                 work_name="SuperHybrid Flasher"
               fi
             ;;
-            "RegionalHybrid Flasher")     work_name="Regional Hybrid Flasher" ;;
-            "SuperHybrid SunOS Flasher")  work_name="SuperHybrid SunOS Flasher" ;;
+            "RegionalHybrid Flasher")
+              if [[ "$REGION" == "CN" ]]; then
+                work_name="RegionalHybrid Flasher CN"   # <- exakt so, ohne Leerzeichen zw. Regional/Hybrid + CN
+              else
+                work_name="Regional Hybrid Flasher"      # <- non-CN behält das Leerzeichen
+              fi
+            ;;
+            "SuperHybrid SunOS Flasher")
+              work_name="SuperHybrid SunOS Flasher"
+            ;;
             "Super Flasher")
               if [[ "$REGION" == "CN" && ( "$DEV" == "13R" || "$DEV" == "13T" || "$DEV" == "Ace5" ) ]]; then
                 work_name="Super Flasher CN"
@@ -322,6 +330,7 @@ jobs:
               fi
             ;;
           esac
+
           work_dir="$OUT_DIR/$work_name"
           mkdir -p "$work_dir"
 
