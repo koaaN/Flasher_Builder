@@ -8,73 +8,84 @@ if [[ $# -lt 1 ]]; then
   exit 64
 fi
 
-# Pfade
+# Entspricht: set "input_file=%~1" / set "input_dir=%~dp1"
 input_file="$(realpath "$1")"
 input_dir="$(dirname "$input_file")"
+
+# Entspricht: set "tool=%~dp0otaripper.exe" / set "tool_name=otaripper.exe"
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+tool="$script_dir/otaripper"   # Linux-Binary (im selben Ordner wie dieses Skript)
 
-otaripper_bin="$script_dir/otaripper"                       # Linux-Binary im OUT_DIR
-template_src="$script_dir/Regional Hybrid Flasher"          # Template-Quelle (immer von hier!)
-flasher_dest="$input_dir/Regional Hybrid Flasher"           # Ziel neben der ZIP
-oos_here="$flasher_dest/OOS_FILES_HERE"
+# Entspricht:
+# set "regional_flasher_src=%~dp0Regional Hybrid Flasher"
+# set "regional_flasher_dest=%input_dir%Regional Hybrid Flasher"
+regional_flasher_src="$script_dir/Regional Hybrid Flasher"
+regional_flasher_dest="$input_dir/Regional Hybrid Flasher"
 
-# Checks
-[[ -x "$otaripper_bin" ]] || { echo "ERROR: otaripper nicht gefunden/ausführbar: $otaripper_bin"; exit 1; }
-[[ -d "$template_src" ]] || { echo "ERROR: Template-Ordner fehlt: $template_src"; exit 1; }
+# --- Copy Regional Hybrid Flasher folder to zip location (xcopy-Äquivalent, ohne Löschen) ---
+if [[ ! -d "$regional_flasher_src" ]]; then
+  echo "ERROR: Template-Ordner fehlt: $regional_flasher_src"
+  exit 1
+fi
+mkdir -p "$regional_flasher_dest"
+# xcopy /E /I /Y  ⇒ rekursiv, anlegen, überschreiben (aber NICHT löschen)
+rsync -a "$regional_flasher_src/" "$regional_flasher_dest/"
 
-# 1) Zielordner NEU anlegen (immer frisch)
-echo "Refreshing template at: $flasher_dest"
-rm -rf "$flasher_dest"
-mkdir -p "$flasher_dest"
-rsync -a "$template_src/" "$flasher_dest/"
-
-# 2) otaripper neben der ZIP ablegen
-cp -f "$otaripper_bin" "$input_dir/otaripper"
+# --- Copy otaripper to the zip's folder ---
+if [[ ! -x "$tool" ]]; then
+  echo "ERROR: otaripper nicht gefunden/ausführbar: $tool"
+  exit 1
+fi
+cp -f "$tool" "$input_dir/otaripper"
 chmod +x "$input_dir/otaripper"
 
-# 3) Ordnerliste vor der Extraktion merken
-declare -A before
+# --- Save list of folders before extraction ---
+declare -A before_folders=()
 while IFS= read -r -d '' d; do
-  before["$(basename "$d")"]=1
+  before_folders["$(basename "$d")"]=1
 done < <(find "$input_dir" -mindepth 1 -maxdepth 1 -type d -print0)
 
-# 4) OTA extrahieren (ohne --partitions)
+# --- Run otaripper (no --partitions) ---
 pushd "$input_dir" >/dev/null
 "./otaripper" "$input_file"
 popd >/dev/null
 
-# 5) otaripper wieder weg
+# --- Delete temporary otaripper ---
 rm -f "$input_dir/otaripper"
 
-# 6) Neu entstandenen Ordner ermitteln
+# --- Detect the new folder created by extraction (wie im .bat: letzter unbekannter Ordner gewinnt) ---
 new_folder=""
 while IFS= read -r -d '' d; do
   base="$(basename "$d")"
-  if [[ -z "${before[$base]+x}" ]]; then
-    new_folder="$d"
-    break
+  if [[ -z "${before_folders[$base]+x}" ]]; then
+    new_folder="$d"   # wie im .bat wird hier nicht gebrochen -> letztes Match
   fi
 done < <(find "$input_dir" -mindepth 1 -maxdepth 1 -type d -print0)
 
-[[ -n "$new_folder" ]] || { echo "ERROR: kein neuer Ordner nach Extraktion gefunden."; exit 1; }
+if [[ -z "$new_folder" ]]; then
+  echo "ERROR: kein neuer Ordner nach Extraktion gefunden."
+  exit 1
+fi
 
-# 7) Alles nach OOS_FILES_HERE verschieben
+# --- Move all extracted files into OOS_FILES_HERE ---
 echo "Moving all extracted files into OOS_FILES_HERE..."
-mkdir -p "$oos_here"
+mkdir -p "$regional_flasher_dest/OOS_FILES_HERE"
 shopt -s dotglob
 if compgen -G "$new_folder/*" >/dev/null; then
-  mv -f "$new_folder"/* "$oos_here/" || true
+  mv -f "$new_folder"/* "$regional_flasher_dest/OOS_FILES_HERE/" || true
 fi
 shopt -u dotglob
+
+# --- rd /s /q "!new_folder!" ---
 rm -rf "$new_folder"
 
-# 8) Optional: 16DTBO ins Flasher-Root kopieren (falls vorhanden)
+echo "Done moving files into Regional Hybrid Flasher."
+echo "Copying 16.0.0.1_dtbo.img into Regional Hybrid Flasher..."
+
+# Entspricht: copy /Y "%~dp016DTBO\16.0.0.1_dtbo.img" "%Regional Hybrid Flasher_dest%"
 dtbo_src="$script_dir/16DTBO/16.0.0.1_dtbo.img"
 if [[ -f "$dtbo_src" ]]; then
-  echo "Copying 16.0.0.1_dtbo.img into Regional Hybrid Flasher..."
-  cp -f "$dtbo_src" "$flasher_dest/"
+  cp -f "$dtbo_src" "$regional_flasher_dest/"
 else
-  echo "NOTE: dtbo nicht gefunden (übersprungen): $dtbo_src"
+  echo "WARN: dtbo nicht gefunden: $dtbo_src"
 fi
-
-echo "Done moving files into Regional Hybrid Flasher."
