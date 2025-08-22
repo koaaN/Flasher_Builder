@@ -522,24 +522,22 @@ jobs:
           # Expose for next steps
           "WORK_DIR=$workDir" | Out-File -FilePath $env:GITHUB_ENV -Append
 
-      - name: Run builder (Explorer-style drag & drop)
+      - name: Run builder (call from OUT_DIR)
         shell: cmd
-        working-directory: ${{ env.OTA_DIR }}
+        working-directory: ${{ env.OUT_DIR }}
         run: |
           echo CWD is %CD%
-          echo Calling builder: "%GITHUB_WORKSPACE%\%OUT_DIR%\%BUILDER_BAT%" "%OTA_PATH%"
-          (echo.| call "%GITHUB_WORKSPACE%\%OUT_DIR%\%BUILDER_BAT%" "%OTA_PATH%") || exit /b 1
-
+          echo Calling builder: "%BUILDER_BAT%" "%OTA_PATH%"
+          (echo.| call "%BUILDER_BAT%" "%OTA_PATH%") || exit /b 1
             
-      - name: "Package final output (tar -a; names: 13T OOS/COS + A5/A5P; no COS ODM for CN)"
+      - name: "Package final output (tar -a; search OTA_DIR + OUT_DIR; names: 13T OOS/COS + A5/A5P; no COS ODM for CN)"
         shell: pwsh
         run: |
-          $otaDir  = $env:OTA_DIR
-          $dev     = $env:DEV
-          $ftype   = $env:FTYPE
-          $region  = $env:REGION
+          $dev    = $env:DEV
+          $ftype  = $env:FTYPE
+          $region = $env:REGION
       
-          # --- Find builder output next to the OTA ---
+          # --- Find builder output (try next to OTA, then OUT_DIR) ---
           $byFtype = switch ($ftype) {
             'SuperHybrid Flasher'       { @('SuperHybrid Flasher') }
             'RegionalHybrid Flasher'    { @('RegionalHybrid Flasher') }
@@ -553,38 +551,37 @@ jobs:
             default { @() }
           }
           $fallback = @(
-            'Regional Flasher CN',
-            'Regional Flasher',
-            'Super Flasher CN',
-            'Super Flasher',
-            'SuperHybrid Flasher',
-            'RegionalHybrid Flasher',
-            'SuperHybrid SunOS Flasher'
+            'Regional Flasher CN','Regional Flasher',
+            'Super Flasher CN','Super Flasher',
+            'SuperHybrid Flasher','RegionalHybrid Flasher','SuperHybrid SunOS Flasher'
           )
-          $candidates = @() + $byFtype + $fallback | Select-Object -Unique
+          $candidates  = @() + $byFtype + $fallback | Select-Object -Unique
+          $otaRoot     = $env:OTA_DIR
+          $outRoot     = Join-Path $env:GITHUB_WORKSPACE $env:OUT_DIR
+          $searchRoots = @($otaRoot, $outRoot) | Where-Object { $_ -and (Test-Path $_) } | Select-Object -Unique
       
           $resultDir = $null
-          foreach ($name in $candidates) {
-            $p = Join-Path $otaDir $name
-            if (Test-Path $p) { $resultDir = $p; break }
+          foreach ($root in $searchRoots) {
+            foreach ($name in $candidates) {
+              $p = Join-Path $root $name
+              if (Test-Path $p) { $resultDir = $p; break }
+            }
+            if ($resultDir) { break }
           }
           if (-not $resultDir) {
-            throw ("Could not find builder output folder next to OTA in '{0}'. Looked for: {1}" -f $otaDir, ($candidates -join ', '))
+            throw ("Could not find builder output in {0}. Looked for: {1}" -f ($searchRoots -join ', '), ($candidates -join ', '))
           }
       
-          # --- Output root ---
+          # --- Prepare output root ---
           $zipRoot = Join-Path $env:GITHUB_WORKSPACE $env:OUT_DIR
           New-Item -ItemType Directory -Force -Path $zipRoot | Out-Null
       
           # ---------- Naming ----------
-          $ver     = if ([string]::IsNullOrWhiteSpace($env:OTA_VERSION)) { 'UNKNOWN' } else { $env:OTA_VERSION }
-          $devCode = $dev
-          # Accept both Ace5Pro and Ace5P
-          if ($devCode -eq 'Ace5Pro') { $devCode = 'Ace5P' }
+          $ver = if ([string]::IsNullOrWhiteSpace($env:OTA_VERSION)) { 'UNKNOWN' } else { $env:OTA_VERSION }
       
           function RegionDisp([string]$r) {
             switch ($r) {
-              'CN'  { 'COS' }    # show COS instead of CN
+              'CN'  { 'COS' }   # show COS instead of CN
               'GLO' { 'Global' }
               'EU'  { 'EU' }
               'IN'  { 'IN' }
@@ -592,6 +589,9 @@ jobs:
               default { $r }
             }
           }
+      
+          $devCode = $dev
+          if ($devCode -eq 'Ace5Pro') { $devCode = 'Ace5P' }  # normalize
       
           switch ($devCode) {
             '13T' {
@@ -607,16 +607,15 @@ jobs:
             '13' {
               $artifactBase = "{0} {1} {2}" -f $ftype, (RegionDisp $region), $ver
             }
-            'Ace5' {  # A5
+            'Ace5' {
               if ($region -eq 'CN') {
                 # CN: COS only (no 'OOS+COS ODM')
                 $artifactBase = "{0} A5 COS {1}" -f $ftype, $ver
               } else {
-                # non-CN: include region + OOS+COS ODM
                 $artifactBase = "{0} A5 {1} OOS+COS ODM {2}" -f $ftype, (RegionDisp $region), $ver
               }
             }
-            'Ace5P' { # A5P (Ace 5 Pro)
+            'Ace5P' {
               if ($region -eq 'CN') {
                 $artifactBase = "{0} A5P COS {1}" -f $ftype, $ver
               } else {
@@ -637,7 +636,6 @@ jobs:
           if ($items.Count -eq 0) { throw ("Nothing to archive in {0}" -f $resultDir) }
       
           & $tar.Path -a -c -f "$zipPath" -C "$resultDir" @items
-      
           if (-not (Test-Path $zipPath)) { throw ("Packaging failed: ZIP not created at {0}" -f $zipPath) }
       
           "ARTIFACT_NAME=$artifactBase" | Out-File -FilePath $env:GITHUB_ENV -Append
