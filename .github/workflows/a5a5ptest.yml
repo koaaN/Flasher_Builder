@@ -638,6 +638,82 @@ jobs:
           "ARTIFACT_NAME=$artifactBase" | Out-File -FilePath $env:GITHUB_ENV -Append
           "ZIP_FILE=$zipPath"           | Out-File -FilePath $env:GITHUB_ENV -Append
 
+      - name: Compute upload paths
+        shell: pwsh
+        run: |
+          $device = "${{ inputs.device }}"
+          $ftype  = "${{ inputs.flasher_type }}"
+          $region = "${{ inputs.region }}"
+
+          # Does this device normally have region subfolders?
+          $needsRegion = $true
+          if ($device -in @('Oneplus 13S','Oneplus 13T','Oneplus Ace 5','Oneplus Ace 5 Pro')) { $needsRegion = $false }
+
+          function RegionFolder([string]$r){
+            switch ($r) {
+              'CN'  { 'COS' }
+              'GLO' { 'Global' }
+              'EU'  { 'EU' }
+              'IN'  { 'IN' }
+              'NA'  { 'NA' }
+              default { $r }
+            }
+          }
+
+          # Default category
+          $category = if ($ftype -match '^(SuperHybrid Flasher|SuperHybrid SunOS Flasher|Super Flasher)$') {
+            'Super Flashers'
+          } else {
+            'Regional Flashers'
+          }
+
+          # Special categories
+          if ($device -eq 'Oneplus 13T' -and $ftype -eq 'Super Flasher' -and $region -eq 'IN') {
+            $category = 'OxygenOS Flashers'
+          }
+
+          # Build relative path ($rel)
+          $rel = $null
+
+          if ($device -eq 'Oneplus Ace 5 Pro') {
+            # Always Regional Flashers, no region folder
+            $rel = Join-Path $device 'Regional Flashers'
+          }
+          elseif ($device -eq 'Oneplus Ace 5') {
+            if ($ftype -eq 'Super Flasher' -and $region -ne 'CN') {
+              # Non-CN Super goes under OxygenOS/Super Flashers
+              $rel = Join-Path (Join-Path $device 'OxygenOS') 'Super Flashers'
+            } else {
+              # CN (or Regional) just under device/<category>, no region folder
+              $rel = Join-Path $device $category
+            }
+          }
+          else {
+            if ($needsRegion -and $category -ne 'OxygenOS Flashers') {
+              $rel = Join-Path (Join-Path $device $category) (RegionFolder $region)
+            } else {
+              $rel = Join-Path $device $category
+            }
+          }
+
+          # Normalize to forward slashes + trailing slash
+          $rel = ($rel -replace '\\','/')
+          if (-not $rel.EndsWith('/')) { $rel += '/' }
+          "REL_UPLOAD_DIR=$rel" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+          # DS FTP absolute target (prefix is optional)
+          $ftpBase = "${{ secrets.DS_FTP_PATH }}".Trim('/')
+          $ftpAbs  = ($ftpBase.Length -gt 0) ? "$ftpBase/$rel" : $rel
+          "FTP_UPLOAD_DIR=$ftpAbs" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+          # SourceForge absolute base (required to be absolute)
+          $sfBaseAbs = "${{ secrets.SF_PROJECT_PATH }}".Trim()
+          if ([string]::IsNullOrWhiteSpace($sfBaseAbs) -or -not $sfBaseAbs.StartsWith('/')) {
+            throw "SF_PROJECT_PATH must be an absolute path like /home/frs/project/oneplus13flashers"
+          }
+          $sfBaseAbs = ($sfBaseAbs -replace '\\','/').TrimEnd('/')
+          "SF_UPLOAD_DIR=$sfBaseAbs/$rel" | Out-File -FilePath $env:GITHUB_ENV -Append
+
 
       - name: Upload to DS_FTP (streamed, large-file safe)
         if: ${{ inputs.upload_to == 'DS_FTP' || inputs.upload_to == 'Both DS_FTP & Sourceforge' }}
