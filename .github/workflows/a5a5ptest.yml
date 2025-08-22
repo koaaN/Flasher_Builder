@@ -475,7 +475,7 @@ jobs:
           (echo.| call "%GITHUB_WORKSPACE%\%OUT_DIR%\%BUILDER_BAT%" "%OTA_PATH%") || exit /b 1
 
             
-      - name: Package final output (tar -a; names: 13T OOS/COS + A5/A5P; no COS ODM for CN)
+      - name: "Package final output (tar -a; names: 13T OOS/COS + A5/A5P; no COS ODM for CN)"
         shell: pwsh
         run: |
           $otaDir = $env:OTA_DIR
@@ -515,7 +515,7 @@ jobs:
           $devCode    = $env:DEV
       
           $regionDisp = switch ($regionCode) {
-            'CN'  { 'CN' }     # used only where we explicitly keep CN in the name
+            'CN'  { 'CN' }
             'GLO' { 'Global' }
             'EU'  { 'EU' }
             'IN'  { 'IN' }
@@ -540,20 +540,16 @@ jobs:
             'Ace5' {  # A5
               $model = 'A5'
               if ($regionCode -eq 'CN') {
-                # CN → COS only, NO “+COS ODM”
                 $artifactBase = "{0} {1} CN COS {2}" -f $ftypeName, $model, $ver
               } else {
-                # non-CN → OOS + COS ODM
                 $artifactBase = "{0} {1} {2} OOS+COS ODM {3}" -f $ftypeName, $model, $regionDisp, $ver
               }
             }
             'Ace5P' { # A5P
               $model = 'A5P'
               if ($regionCode -eq 'CN') {
-                # CN → COS only, NO “+COS ODM”
                 $artifactBase = "{0} {1} CN COS {2}" -f $ftypeName, $model, $ver
               } else {
-                # non-CN → OOS + COS ODM
                 $artifactBase = "{0} {1} {2} OOS+COS ODM {3}" -f $ftypeName, $model, $regionDisp, $ver
               }
             }
@@ -578,62 +574,6 @@ jobs:
           "ARTIFACT_NAME=$artifactBase" | Out-File -FilePath $env:GITHUB_ENV -Append
           "ZIP_FILE=$zipPath"           | Out-File -FilePath $env:GITHUB_ENV -Append
 
-
-      - name: Compute upload paths
-        shell: pwsh
-        run: |
-          $device = "${{ inputs.device }}"
-          $ftype  = "${{ inputs.flasher_type }}"
-          $region = "${{ inputs.region }}"
-
-          # Category baseline (some overrides below)
-          if ($device -eq 'Oneplus 13T' -and $ftype -eq 'Super Flasher' -and $region -eq 'IN') {
-            $category = 'OxygenOS Flashers'
-          } elseif ($device -eq 'Oneplus Ace 5 Pro') {
-            $category = 'Regional Flashers'
-          } else {
-            $category = switch -Regex ($ftype) {
-              '^(SuperHybrid Flasher|SuperHybrid SunOS Flasher|Super Flasher)$' { 'Super Flashers'; break }
-              default { 'Regional Flashers' }
-            }
-          }
-
-          # Devices without region folder by default
-          $noRegionDevices = @('Oneplus 13S','Oneplus 13T','Oneplus Ace 5','Oneplus Ace 5 Pro')
-          $needsRegion = -not ($noRegionDevices -contains $device)
-
-          # Build base path (Ace 5 non-CN → inject "OxygenOS" segment)
-          if ($device -eq 'Oneplus Ace 5' -and $region -ne 'CN') {
-            $base = Join-Path (Join-Path $device 'OxygenOS') $category
-            $rel  = $base
-          } elseif ($needsRegion) {
-            $regionFolder = switch ($region) {
-              'CN'  { 'COS' }
-              'GLO' { 'Global' }
-              'EU'  { 'EU' }
-              'IN'  { 'IN' }
-              'NA'  { 'NA' }
-              default { $region }
-            }
-            $rel = Join-Path (Join-Path $device $category) $regionFolder
-          } else {
-            $rel = Join-Path $device $category
-          }
-
-          $rel = ($rel -replace '\\','/')
-          if (-not $rel.EndsWith('/')) { $rel += '/' }
-          "REL_UPLOAD_DIR=$rel" | Out-File -FilePath $env:GITHUB_ENV -Append
-
-          $ftpBase = "${{ secrets.DS_FTP_PATH }}".Trim('/')
-          $ftpAbs  = ($ftpBase.Length -gt 0) ? "$ftpBase/$rel" : $rel
-          "FTP_UPLOAD_DIR=$ftpAbs" | Out-File -FilePath $env:GITHUB_ENV -Append
-
-          $sfBaseAbs = "${{ secrets.SF_PROJECT_PATH }}".Trim()
-          if ([string]::IsNullOrWhiteSpace($sfBaseAbs) -or -not $sfBaseAbs.StartsWith('/')) {
-            throw "SF_PROJECT_PATH must be an absolute path like /home/frs/project/oneplus13flashers"
-          }
-          $sfBaseAbs = ($sfBaseAbs -replace '\\','/').TrimEnd('/')
-          "SF_UPLOAD_DIR=$sfBaseAbs/$rel" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Upload to DS_FTP (streamed, large-file safe)
         if: ${{ inputs.upload_to == 'DS_FTP' || inputs.upload_to == 'Both DS_FTP & Sourceforge' }}
