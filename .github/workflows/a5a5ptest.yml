@@ -68,20 +68,19 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-- name: Make scripts executable
-  shell: bash
-  run: |
-    set -euo pipefail
-    # Builder
-    find build_scripts -type f -name "*.sh" -exec chmod +x {} +
-    # Super packer
-    find super_packers -type f -name "*.sh" -exec chmod +x {} +
-    # **Flasher-Templates (hier liegt dtbo_patcher.sh)**
-    find flasher_scripts -type f -name "*.sh" -exec chmod +x {} +
-    # Binaries
-    [ -f lpmake/lpmake ] && chmod +x lpmake/lpmake || true
-    [ -f otaripper/otaripper ] && chmod +x otaripper/otaripper || true
-
+      - name: Make scripts executable
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Alle Builder
+          find build_scripts -type f -name "*.sh" -exec chmod +x {} +
+          # Super packer scripts
+          find super_packers -type f -name "*.sh" -exec chmod +x {} +
+          # **Flasher-Templates (hier liegt dtbo_patcher.sh)**
+          find flasher_scripts -type f -name "*.sh" -exec chmod +x {} +
+          # Binaries (falls vorhanden)
+          [ -f lpmake/lpmake ] && chmod +x lpmake/lpmake || true
+          [ -f otaripper/otaripper ] && chmod +x otaripper/otaripper || true
 
       - name: Ensure deps (nur wenn root oder sudo ohne Passwort)
         if: ${{ runner.os == 'Linux' }}
