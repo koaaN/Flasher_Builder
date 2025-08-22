@@ -475,6 +475,25 @@ jobs:
 
           "WORK_DIR=$workDir" | Out-File -FilePath $env:GITHUB_ENV -Append
 
+      - name: Pre-stage flasher into OTA folder (bypass flaky XCOPY)
+        if: ${{ inputs.flasher_type == 'RegionalHybrid Flasher' || inputs.flasher_type == 'SuperHybrid Flasher' }}
+        shell: pwsh
+        run: |
+          $src = $env:WORK_DIR
+          if (-not (Test-Path $src)) { throw "WORK_DIR not found: $src" }
+      
+          $dst = Join-Path $env:OTA_DIR (Split-Path $src -Leaf)  # e.g. download\RegionalHybrid Flasher
+          New-Item -ItemType Directory -Force -Path $dst | Out-Null
+      
+          & robocopy "$src" "$dst" * /E /NFL /NDL /NJH /NJS /NC /NS | Out-Null
+          $rc = $LASTEXITCODE
+          if ($rc -gt 7) { throw "robocopy failed with code $rc" } else { $global:LASTEXITCODE = 0 }
+      
+          # put otaripper next to the ZIP so the BAT can find it
+          $ripper = Join-Path $env:OUT_DIR 'otaripper.exe'
+          if (Test-Path $ripper) { Copy-Item $ripper -Destination $env:OTA_DIR -Force }
+
+
       - name: Run builder (Explorer-style drag & drop)
         shell: cmd
         working-directory: ${{ env.OTA_DIR }}
