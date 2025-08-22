@@ -214,7 +214,7 @@ jobs:
               if (Test-Path $stubPath) {
                 try {
                   $url = (Get-Content $stubPath -Raw).Trim()
-                  if ($url) { Invoke-WebRequest -Uri $url -OutFile (Join-Path $dest $f) }
+                  if ($url) { Invoke-WebRequest -Uri $url -OutFile (Join-Path $dest $f) -UseBasicParsing }
                 } catch {
                   Write-Warning ("Failed to download {0} from {1}: {2}" -f $f, $stubPath, $_.Exception.Message)
                 }
@@ -313,7 +313,6 @@ jobs:
       
             # Standard bloat into Super/
             if ($dev -eq 'Ace5P' -and $region -eq 'CN') {
-              # Ace5 Pro CN uses A5P_BLOAT
               Copy-BloatFiles $bloatBase 'A5P' $superDir
             } else {
               Copy-BloatFiles $bloatBase $region $superDir
@@ -329,6 +328,29 @@ jobs:
                 if (Test-Path $srcInSuper) { Move-Item $srcInSuper $dstInCos -Force }
                 $left = Join-Path $superDir $f
                 if (Test-Path $left) { Remove-Item $left -Force }
+              }
+            }
+      
+            # >>> NEW: Ace 5 • Super Flasher • CN → copy debloat pair into OOS_FILES_HERE <<<
+            if ($dev -eq 'Ace5' -and $ftype -eq 'Super Flasher' -and $region -eq 'CN') {
+              $oosHere = Join-Path $workDir 'OOS_FILES_HERE'
+              New-Item -ItemType Directory -Force -Path $oosHere | Out-Null
+              $debloat = Join-Path $bloatBase 'A5_DEBLOAT'
+              foreach ($f in 'my_preload.img','my_company.img') {
+                $src = Join-Path $debloat $f
+                if (Test-Path $src) {
+                  Copy-Item $src -Destination $oosHere -Force
+                } else {
+                  $stub = Join-Path $debloat ([System.IO.Path]::GetFileNameWithoutExtension($f))
+                  if (Test-Path $stub) {
+                    try {
+                      $url = (Get-Content $stub -Raw).Trim()
+                      if ($url) { Invoke-WebRequest -Uri $url -OutFile (Join-Path $oosHere $f) -UseBasicParsing }
+                    } catch {
+                      Write-Warning ("Ace5 CN OOS debloat fetch failed for {0}: {1}" -f $f, $_.Exception.Message)
+                    }
+                  }
+                }
               }
             }
       
@@ -377,7 +399,7 @@ jobs:
                 if (Test-Path $stub) {
                   try {
                     $url = (Get-Content $stub -Raw).Trim()
-                    if ($url) { Invoke-WebRequest -Uri $url -OutFile (Join-Path $cosHere $f) }
+                    if ($url) { Invoke-WebRequest -Uri $url -OutFile (Join-Path $cosHere $f) -UseBasicParsing }
                   } catch {}
                 }
               }
@@ -398,7 +420,7 @@ jobs:
                 if (Test-Path $stub) {
                   try {
                     $url = (Get-Content $stub -Raw).Trim()
-                    if ($url) { Invoke-WebRequest -Uri $url -OutFile (Join-Path $oosHere $f) }
+                    if ($url) { Invoke-WebRequest -Uri $url -OutFile (Join-Path $oosHere $f) -UseBasicParsing }
                   } catch {
                     Write-Warning ("Failed to fetch {0} from stub {1}: {2}" -f $f, $stub, $_.Exception.Message)
                   }
@@ -421,7 +443,6 @@ jobs:
           }
       
           "WORK_DIR=$workDir" | Out-File -FilePath $env:GITHUB_ENV -Append
-
 
       - name: Run builder (Explorer-style drag & drop)
         shell: cmd
