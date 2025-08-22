@@ -142,8 +142,7 @@ jobs:
             'Oneplus 13S'        { '13S' }
             'Oneplus 13T'        { '13T' }
             'Oneplus Ace 5'      { 'Ace5' }
-            'Oneplus Ace 5 Pro'  { 'Ace5Pro' }   # <— accepts "Pro"
-            'Oneplus Ace 5 PRO'  { 'Ace5Pro' }   # <— and "PRO"
+            'Oneplus Ace 5 Pro'  { 'Ace5Pro' }
             default { throw "Unknown device: $devDisp" }
           }
       
@@ -169,30 +168,29 @@ jobs:
       
             'Super Flasher' {
               if ($dev -in @('13R','13T')) {
-                if ($region -eq 'CN') { 'SUPER_CN_FULL_SUPERBUILD.bat' }
-                elseif ($dev -eq '13R') { 'SUPER_EUGLO_FULL_SUPERBUILD.bat' }
-                elseif ($dev -eq '13T') { 'SUPER_IN_FULL_SUPERBUILD.bat' }
-                else { 'SUPER_EUGLO_FULL_SUPERBUILD.bat' }
+                if ($region -eq 'CN')      { 'SUPER_CN_FULL_SUPERBUILD.bat' }
+                elseif ($dev -eq '13R')    { 'SUPER_EUGLO_FULL_SUPERBUILD.bat' }
+                elseif ($dev -eq '13T')    { 'SUPER_IN_FULL_SUPERBUILD.bat' }
+                else                        { 'SUPER_EUGLO_FULL_SUPERBUILD.bat' }
               }
               elseif ($dev -eq 'Ace5') {
-                if ($region -eq 'CN') { 'SUPER_CN_FULL_SUPERBUILD.bat' }
-                else                  { 'SUPER_OOS_FULL_SUPERBUILD.bat' }   # Ace5 non-CN super
+                if ($region -eq 'CN')      { 'SUPER_CN_FULL_SUPERBUILD.bat' }
+                else                        { 'SUPER_OOS_FULL_SUPERBUILD.bat' }   # Ace5 non-CN super
               }
               else {
-                # 13 (fallback)
                 'SUPERHYBRID_FULL_SUPERBUILD.bat'
               }
             }
       
             'Regional Flasher' {
               if ($dev -eq '13R') {
-                if ($region -eq 'CN') { 'REGIONAL_CN_FULL_BUILD.bat' }
-                else                  { 'REGIONAL_EUGLO_FULL_BUILD.bat' }
+                if     ($region -eq 'CN') { 'REGIONAL_CN_FULL_BUILD.bat' }
+                else                      { 'REGIONAL_EUGLO_FULL_BUILD.bat' }
               }
               elseif ($dev -eq '13S') { 'REGIONAL_IN_FULL_BUILD.bat' }
               elseif ($dev -in @('Ace5','Ace5Pro')) {
-                if ($region -eq 'CN') { 'REGIONAL_CN_FULL_BUILD.bat' }
-                else                  { 'REGIONAL_EUGLO_FULL_BUILD.bat' }
+                if     ($region -eq 'CN') { 'REGIONAL_CN_FULL_BUILD.bat' }
+                else                      { 'REGIONAL_EUGLO_FULL_BUILD.bat' }
               }
               else {
                 'REGIONALHYBRID_FULL_BUILD.bat'
@@ -206,7 +204,6 @@ jobs:
           "FTYPE=$ftype"         | Out-File -FilePath $env:GITHUB_ENV -Append
           "REGION=$region"       | Out-File -FilePath $env:GITHUB_ENV -Append
           "BUILDER_BAT=$batName" | Out-File -FilePath $env:GITHUB_ENV -Append
-
 
       - name: Stage files (13-series + Ace 5 / Ace 5 Pro; hybrid LF fix)
         shell: pwsh
@@ -493,6 +490,7 @@ jobs:
               New-Item -ItemType Directory -Force -Path $main16 | Out-Null
               Copy-Item "$src16\*" -Destination $main16 -Recurse -Force
       
+              # If builder expects "16.0.0.1_dtbo.img", ensure it exists even if source is just "dtbo.img"
               $dtboPlain = Join-Path $main16 'dtbo.img'
               $dtboNamed = Join-Path $main16 '16.0.0.1_dtbo.img'
               if ((Test-Path $dtboPlain) -and -not (Test-Path $dtboNamed)) {
@@ -502,7 +500,7 @@ jobs:
               Write-Warning ("16DTBO source not found: {0}" -f $src16)
             }
       
-            # Move stray 16DTBO from working folder (if accidentally templated there)
+            # If the template dropped a 16DTBO folder inside the working dir by mistake, move it up to MAIN
             $work16 = Join-Path $workDir '16DTBO'
             if (Test-Path $work16) {
               if (Test-Path $main16) { Remove-Item $main16 -Recurse -Force }
@@ -522,24 +520,44 @@ jobs:
           # Expose for next steps
           "WORK_DIR=$workDir" | Out-File -FilePath $env:GITHUB_ENV -Append
 
-      # --- NEW: patch the copied REGIONALHYBRID builder to avoid "Invalid drive specification"
-      - name: Patch RegionalHybrid builder (%~d1 → %~d1\)
+      # --- Patch RegionalHybrid builder to avoid "Invalid drive specification"
+      - name: Patch RegionalHybrid builder (force pushd, fix %~dN/%~pN)
         if: contains(env.BUILDER_BAT, 'REGIONALHYBRID')
         shell: pwsh
         working-directory: ${{ env.OUT_DIR }}
         run: |
           $bat = Join-Path $PWD $env:BUILDER_BAT
           if (-not (Test-Path $bat)) { throw "Builder not found: $bat" }
-          $txt  = Get-Content -LiteralPath $bat -Raw
-          $orig = $txt
-          $txt = $txt -replace '%~d1(?!\\)', '%~d1\\'
-          $txt = $txt -replace '%~d2(?!\\)', '%~d2\\'
-          if ($txt -ne $orig) {
-            Set-Content -LiteralPath $bat -Value $txt -Encoding ASCII -NoNewline
-            Write-Host "Patched drive concatenations in $($env:BUILDER_BAT)."
-          } else {
-            Write-Host "No %~dN patterns needed patching in $($env:BUILDER_BAT)."
+
+          Copy-Item $bat ($bat + '.orig') -Force
+          $txt = Get-Content -LiteralPath $bat -Raw
+
+          $prelude = @"
+@echo off
+setlocal enableextensions
+set "_ARG1=%~f1"
+set "_ARGDIR=%~dp1"
+set "_ARGDRIVE=%~d1"
+if not defined _ARG1 (
+  echo ERROR: No OTA argument passed.& exit /b 2
+)
+rem Force drive+folder to the OTA’s directory (cross-drive safe)
+pushd "%_ARGDIR%" || (echo ERROR: pushd "%_ARGDIR%" failed.& exit /b 3)
+"@
+          if ($txt -notmatch '(?im)^\s*set\s+"?_ARG1=') {
+            $txt = $prelude + "`r`n" + $txt
           }
+
+          # Fix common drag&drop patterns
+          $txt = [regex]::Replace($txt, '(?im)^\s*cd\s+%~d([0-9])\b', 'cd /d %~d$1\')
+          $txt = [regex]::Replace($txt, '(?im)^\s*cd\s+%~dp([0-9])\b', 'cd /d "%~dp$1"')
+          $txt = [regex]::Replace($txt, '(?im)%~d([0-9])\s*&&\s*cd\s+%~p\1', 'pushd "%~dp$1"')
+          $txt = $txt -replace '%~d([0-9])%~p\1','%~dp$1'
+          $txt = $txt -replace '%~d([0-9])\\%~p\1','%~dp$1'
+
+          Set-Content -LiteralPath $bat -Value $txt -Encoding ascii
+          Write-Host "Patched $($env:BUILDER_BAT). Preview of drive/dir lines:"
+          (Select-String -Path $bat -Pattern '%~d','%~dp','pushd','cd /d' -SimpleMatch) | ForEach-Object { $_.ToString() }
 
       - name: Run builder (Explorer-style drag & drop)
         shell: cmd
@@ -601,7 +619,7 @@ jobs:
       
           function RegionDisp([string]$r) {
             switch ($r) {
-              'CN'  { 'COS' }    # show COS instead of CN
+              'CN'  { 'COS' }
               'GLO' { 'Global' }
               'EU'  { 'EU' }
               'IN'  { 'IN' }
@@ -624,14 +642,14 @@ jobs:
             '13' {
               $artifactBase = "{0} {1} {2}" -f $ftype, (RegionDisp $region), $ver
             }
-            'Ace5' {  # A5
+            'Ace5' {
               if ($region -eq 'CN') {
                 $artifactBase = "{0} A5 COS {1}" -f $ftype, $ver
               } else {
                 $artifactBase = "{0} A5 {1} OOS+COS ODM {2}" -f $ftype, (RegionDisp $region), $ver
               }
             }
-            'Ace5P' { # A5P (Ace 5 Pro)
+            'Ace5P' {
               if ($region -eq 'CN') {
                 $artifactBase = "{0} A5P COS {1}" -f $ftype, $ver
               } else {
@@ -642,7 +660,6 @@ jobs:
               $artifactBase = "{0} {1} {2}" -f $ftype, (RegionDisp $region), $ver
             }
           }
-          # ----------------------------
       
           $zipPath = Join-Path $zipRoot ($artifactBase + '.zip')
           if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
@@ -657,15 +674,6 @@ jobs:
       
           "ARTIFACT_NAME=$artifactBase" | Out-File -FilePath $env:GITHUB_ENV -Append
           "ZIP_FILE=$zipPath"           | Out-File -FilePath $env:GITHUB_ENV -Append
-
-      # --- NEW: upload artifact when 'Artifact Only' ---
-      - name: Upload artifact (single zip only)
-        if: ${{ inputs.upload_to == 'Artifact Only' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ env.ARTIFACT_NAME }}
-          path: ${{ env.ZIP_FILE }}
-          retention-days: ${{ env.ARTIFACT_RETENTION_DAYS }}
 
       - name: Compute upload paths
         shell: pwsh
@@ -742,7 +750,6 @@ jobs:
           }
           $sfBaseAbs = ($sfBaseAbs -replace '\\','/').TrimEnd('/')
           "SF_UPLOAD_DIR=$sfBaseAbs/$rel" | Out-File -FilePath $env:GITHUB_ENV -Append
-
 
       - name: Upload to DS_FTP (streamed, large-file safe)
         if: ${{ inputs.upload_to == 'DS_FTP' || inputs.upload_to == 'Both DS_FTP & Sourceforge' }}
