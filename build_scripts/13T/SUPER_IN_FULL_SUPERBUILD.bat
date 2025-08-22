@@ -69,8 +69,6 @@ copy /Y "%~dp0IN_BLOAT\my_company.img" "%super_flasher_dest%\super\"
 )
 
 echo Done moving files into Super Flasher.
-echo Copying 16.0.0.1 dtbo.img into OOS_FILES_HERE...
-copy /Y "%~dp016DTBO\dtbo.img" "%super_flasher_dest%\OOS_FILES_HERE\"
 
 echo Packing super.img
 call "Super Flasher\Super\super_oos.bat"
