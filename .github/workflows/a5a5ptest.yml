@@ -72,6 +72,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # CRLF -> LF für alle Shell-Skripte im Repo
+          git ls-files '*.sh' | while read -r f; do sed -i 's/\r$//' "$f"; done
           # Alle Builder
           find build_scripts -type f -name "*.sh" -exec chmod +x {} +
           # Super packer scripts
