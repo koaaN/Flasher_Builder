@@ -139,7 +139,7 @@ jobs:
             echo "OTA_DIR=$ota_dir"
           } >> "$GITHUB_ENV"
 
-      # --- OTA version extraction: für SunOS überspringen ---
+      # ---- OTA-Version NUR auslesen, wenn NICHT SunOS ----
       - name: Extract OTA version (from META-INF/com/android/metadata)
         if: ${{ inputs.flasher_type != 'SuperHybrid SunOS Flasher' }}
         shell: bash
@@ -149,7 +149,7 @@ jobs:
           [ -n "$content" ] || { echo "metadata not found in OTA.zip"; exit 1; }
           version_line="$(printf "%s" "$content" | grep -E '^version_name=')" || { echo "version_name not found in metadata"; exit 1; }
           val="${version_line#version_name=}"
-          numeric="$(printf "%s" "$val" | grep -oE '[0-9]+(\.[0-9]+){1,4}' | awk '{ print length, $0 }' | sort -nr | head -n1 | cut -d' ' -f2-)"
+          numeric="$(printf "%s" "$val" | grep -oE '[0-9]+(\.[0-9]+){1,4}' | awk '{ print length, $0 }' | sort -nr | head -n1 | cut -d" " -f2-)"
           [ -n "$numeric" ] || { echo "Could not parse numeric version from '$val'"; exit 1; }
           echo "Parsed OTA version: $numeric"
           echo "OTA_VERSION=$numeric" >> "$GITHUB_ENV"
@@ -205,8 +205,7 @@ jobs:
                 elif [[ "$dev" == "Ace5" ]]; then echo "REGIONAL_CN_FULL_BUILD"
                 else echo "REGIONALHYBRID_FULL_BUILD"; fi
               ;;
-              *)
-                echo "Unknown flasher type: $ftype" >&2; exit 1 ;;
+              *) echo "Unknown flasher type: $ftype" >&2; exit 1 ;;
             esac
           }
 
@@ -225,7 +224,7 @@ jobs:
             echo "BUILDER_SH=$builder_sh"
           } >> "$GITHUB_ENV"
 
-      - name: Stage files (13-series + Ace 5 / Ace 5 Pro; fix updater-script LF; SunOS handling)
+      - name: Stage files (incl. SunOS 23 imgs + super_sunos.sh; fix updater-script LF)
         shell: bash
         run: |
           set -euo pipefail
@@ -299,7 +298,7 @@ jobs:
             chmod +x "$OUT_DIR/$BUILDER_SH"
           fi
 
-          # Arbeitsordnername
+          # Workdir-Name
           case "$FTYPE" in
             "SuperHybrid Flasher")
               if [[ "$REGION" == "CN" ]]; then
@@ -337,7 +336,7 @@ jobs:
           work_dir="$OUT_DIR/$work_name"
           mkdir -p "$work_dir"
 
-          # Template-Pfad
+          # Template-Auswahl
           if [[ "$DEV" == "Ace5" || "$DEV" == "Ace5Pro" ]]; then
             tpl_dev="Ace5"
           else
@@ -346,8 +345,7 @@ jobs:
           tpl_base="$root/flasher_scripts/$tpl_dev"
 
           if [[ "$FTYPE" == "SuperHybrid SunOS Flasher" ]]; then
-            # SunOS Templates: /flasher_scripts/13/sunos/super
-            tpl_base="$root/flasher_scripts/13/sunos/super"
+            tpl_base="$root/flasher_scripts/13/sunos"
           elif [[ "$FTYPE" == *Hybrid* ]]; then
             if [[ "$REGION" == "CN" ]]; then os_root="cos"; else os_root="oos"; fi
             if [[ "$FTYPE" == *Super* ]]; then kind="super"; else kind="regional"; fi
@@ -355,20 +353,56 @@ jobs:
           elif [[ "$FTYPE" == "Super Flasher" ]]; then
             if [[ "$DEV" == "13T" && "$REGION" == "CN" ]]; then tpl_base="$tpl_base/cos/super"
             elif [[ "$DEV" == "Ace5" && "$REGION" == "CN" ]]; then tpl_base="$tpl_base/cos/super"
-            else tpl_base="$tpl_base/oos/super"
-            fi
+            else tpl_base="$tpl_base/oos/super"; fi
           elif [[ "$FTYPE" == "Regional Flasher" ]]; then
             if [[ "$REGION" == "CN" && ( "$DEV" == "13R" || "$DEV" == "Ace5" || "$DEV" == "Ace5Pro" ) ]]; then
               tpl_base="$tpl_base/cos/regional"
             else
-              tpl_base="$tpl_base/oos/regional"
-            fi
+              tpl_base="$tpl_base/oos/regional"; fi
           fi
 
           rsync -a "$tpl_base/" "$work_dir/"
 
-          # Hybrid: META-INF normalisieren
-          if [[ "$FTYPE" == *Hybrid* || "$FTYPE" == "SuperHybrid SunOS Flasher" ]]; then
+          # --- Speziell: SunOS (23 feste Images in FASTBOOTD_FILES_HERE) + super_sunos.sh ---
+          if [[ "$FTYPE" == "SuperHybrid SunOS Flasher" ]]; then
+            fastbootd_dir="$work_dir/FASTBOOTD_FILES_HERE"
+            mkdir -p "$fastbootd_dir"
+
+            # 23 feste Namen
+            parts=(abl aop aop_config bluetooth cpucp cpucp_dtb devcfg dsp engineering_cdt featenabler hyp imagefv keymaster oplus_sec qupfw shrm splash tz uefi uefisecapp xbl xbl_config xbl_ramdump)
+
+            base_enc="Files%2FBloat%2F13%2FSunOS"
+            for p in "${parts[@]}"; do
+              url="https://roms.danielspringer.at/download.php?file=${base_enc}%2F${p}.img&download=true"
+              echo "→ SunOS fetch: ${p}.img"
+              if command -v aria2c >/dev/null 2>&1; then
+                aria2c -x 8 -s 8 -c --file-allocation=none --retry-wait=5 --max-tries=10 --timeout=30 \
+                       -o "${fastbootd_dir}/${p}.img" "$url" \
+                  || { echo "ERROR: failed to download ${p}.img"; exit 1; }
+              else
+                curl -L --fail --retry 5 --retry-delay 5 -o "${fastbootd_dir}/${p}.img" "$url" \
+                  || { echo "ERROR: failed to download ${p}.img"; exit 1; }
+              fi
+            done
+
+            # super_sunos.sh + lpmake in Super/
+            super_dir="$work_dir/Super"
+            mkdir -p "$super_dir"
+            if [ -f "$root/lpmake/lpmake" ]; then
+              cp -f "$root/lpmake/lpmake" "$super_dir/"
+              chmod +x "$super_dir/lpmake"
+            fi
+            if [ -f "$root/super_packers/13/super_sunos.sh" ]; then
+              cp -f "$root/super_packers/13/super_sunos.sh" "$super_dir/super_sunos.sh"
+              chmod +x "$super_dir/super_sunos.sh"
+            else
+              echo "ERROR: super_sunos.sh nicht gefunden: $root/super_packers/13/super_sunos.sh" >&2
+              exit 1
+            fi
+          fi
+
+          # --- META-INF LF fix für Hybrid (nicht SunOS-spezifisch) ---
+          if [[ "$FTYPE" == *Hybrid* && "$FTYPE" != "SuperHybrid SunOS Flasher" ]]; then
             mi="$tpl_base/META-INF"
             if [ -d "$mi" ]; then
               if [ ! -d "$work_dir/META-INF" ]; then
@@ -377,7 +411,9 @@ jobs:
               fi
             fi
             upd="$work_dir/META-INF/com/google/android/updater-script"
-            if [ -f "$upd" ]; then awk '{ sub(/\r$/,""); print }' "$upd" > "$upd.tmp" && mv "$upd.tmp" "$upd"; fi
+            if [ -f "$upd" ]; then
+              awk '{ sub(/\r$/,""); print }' "$upd" > "$upd.tmp" && mv "$upd.tmp" "$upd"
+            fi
           fi
 
           # Platform-Tools
@@ -389,7 +425,7 @@ jobs:
             echo "WARN: Platform-Tools not found at repo root: $pt_src"
           fi
 
-          # Super packer + Bloat für Nicht-SunOS wie gehabt
+          # === Restliche bisherige Logik für Nicht-SunOS ===
           if [[ "$FTYPE" =~ Super && "$FTYPE" != "SuperHybrid SunOS Flasher" ]]; then
             super_dir="$work_dir/Super"
             mkdir -p "$super_dir"
@@ -398,6 +434,7 @@ jobs:
               chmod +x "$super_dir/lpmake"
             fi
 
+            # Select & copy correct super packer (CN => super_cos.sh, else super_oos.sh)
             if [[ "$DEV" == "13T" ]]; then
               pdir="$root/super_packers/13T"
               if [[ "$REGION" == "CN" && -f "$pdir/super_cos.sh" ]]; then
@@ -428,7 +465,7 @@ jobs:
               fi
             fi
 
-            # Bloat → Super (by region) + special cases
+            # Bloat → Super etc. (bestehende Regeln)
             if [[ "$DEV" == "Ace5" ]]; then
               if [[ "$REGION" == "CN" ]]; then
                 copy_bloat_files "$bloat_base" "CN" "$super_dir"
@@ -450,7 +487,7 @@ jobs:
               copy_bloat_files "$bloat_base" "$REGION" "$super_dir"
             fi
 
-            # 13T Super IN: move 3 files to COS_FILES_HERE
+            # 13T Super IN → 3 Files nach COS_FILES_HERE
             if [[ "$DEV" == "13T" && "$FTYPE" == "Super Flasher" && "$REGION" == "IN" ]]; then
               cos_here="$work_dir/COS_FILES_HERE"
               mkdir -p "$cos_here"
@@ -461,7 +498,6 @@ jobs:
               done
             fi
 
-            # CN extra OOS staging (for non-Ace5/Pro)
             if [[ "$REGION" == "CN" ]]; then
               oos_here="$work_dir/OOS_FILES_HERE"
               mkdir -p "$oos_here"
@@ -478,7 +514,7 @@ jobs:
             fi
           fi
 
-          # Extra Regional cases (unverändert)
+          # weitere Spezialfälle (Regional Ace5 CN/Ace5Pro CN, 16DTBO, etc.) bleiben wie gehabt …
           if [[ "$FTYPE" == "Regional Flasher" && "$DEV" == "Ace5" && "$REGION" == "CN" ]]; then
             cos_here="$work_dir/COS_FILES_HERE"
             mkdir -p "$cos_here"
@@ -507,7 +543,6 @@ jobs:
             done
           fi
 
-          # 16DTBO handling (unverändert)
           if [[ "$DEV" == "13" && ( "$FTYPE" == "SuperHybrid Flasher" || "$FTYPE" == "RegionalHybrid Flasher" ) ]]; then
             repo16="$root/16DTBO"
             main16="$OUT_DIR/16DTBO"
@@ -533,41 +568,7 @@ jobs:
               cos_dest="$work_dir/COS_FILES_HERE"
               mkdir -p "$cos_dest"
               rsync -a "$cos_bloat/" "$cos_dest/"
-            else
-              echo "WARN: COS_FILES_HERE not found under $bloat_base"
             fi
-          fi
-
-          # --- SunOS: 23 IMG-Dateien in FASTBOOTD_FILES_HERE downloaden ---
-          if [[ "$FTYPE" == "SuperHybrid SunOS Flasher" ]]; then
-            fb_dir="$work_dir/FASTBOOT_FILES_HERE"
-            fbd_dir="$work_dir/FASTBOOTD_FILES_HERE"
-            mkdir -p "$fb_dir" "$fbd_dir"
-
-            # Liste der 23 festen Partitionen (ohne .img)
-            parts=(abl aop aop_config bluetooth cpucp cpucp_dtb devcfg dsp engineering_cdt featenabler hyp imagefv keymaster oplus_sec qupfw shrm splash tz uefi uefisecapp xbl xbl_config xbl_ramdump)
-
-
-            base_url="https://roms.danielspringer.at/download.php?file=Files%2FBloat%2F13%2FSunOS%2F"
-
-            dl() {
-              local name="$1"
-              local url="${base_url}${name}.img&download=true"
-              local out="$fbd_dir/${name}.img"
-              echo "→ SunOS fetch: ${name}.img"
-              if command -v aria2c >/dev/null 2>&1; then
-                aria2c -x 8 -s 8 -c --file-allocation=none --retry-wait=5 --max-tries=10 --timeout=30 \
-                  -o "$out" "$url" || { echo "ERROR: failed to download $name.img"; exit 1; }
-              else
-                curl -L --fail --retry 5 --retry-delay 5 -o "$out" "$url" || { echo "ERROR: failed to download $name.img"; exit 1; }
-              fi
-            }
-
-            for p in "${parts[@]}"; do dl "$p"; done
-
-            echo "SunOS bloat placed into FASTBOOTD_FILES_HERE."
-            # HINWEIS: boot.img & init_boot.img für SunOS liegen in FASTBOOT_FILES_HERE
-            # (kommen i.d.R. aus dem Template/Builder oder separaten Steps – hier keine separaten Downloads nötig)
           fi
 
           echo "WORK_DIR=$work_dir" >> "$GITHUB_ENV"
@@ -594,7 +595,7 @@ jobs:
           echo "Calling builder: \"$GITHUB_WORKSPACE/$OUT_DIR/$BUILDER_SH\" \"$OTA_PATH\""
           bash "$GITHUB_WORKSPACE/$OUT_DIR/$BUILDER_SH" "$OTA_PATH"
 
-      - name: "Package final output (zip; SunOS name override; others by version)"
+      - name: "Package final output (zip; names incl. SunOS custom name)"
         shell: bash
         run: |
           set -euo pipefail
@@ -612,30 +613,32 @@ jobs:
               by_ftype=("SuperHybrid SunOS Flasher")
             ;;
             "Super Flasher")
-              if [[ "$REGION" == "CN" && ( "$DEV" == "13R" || "$DEV" == "13T" || "$DEV" == "Ace5" ) ]]; then by_ftype=("Super Flasher CN"); else by_ftype=("Super Flasher"); fi
+              if [[ "$REGION" == "CN" && ( "$DEV" == "13R" || "$DEV" == "13T" || "$DEV" == "Ace5" ) ]]; then
+                by_ftype=("Super Flasher CN")
+              else
+                by_ftype=("Super Flasher")
+              fi
             ;;
             "Regional Flasher")
-              if [[ "$REGION" == "CN" && ( "$DEV" == "Ace5" || "$DEV" == "Ace5Pro" ) ]]; then by_ftype=("Regional Flasher CN"); else by_ftype=("Regional Flasher"); fi
+              if [[ "$REGION" == "CN" && ( "$DEV" == "Ace5" || "$DEV" == "Ace5Pro" ) ]]; then
+                by_ftype=("Regional Flasher CN")
+              else
+                by_ftype=("Regional Flasher")
+              fi
             ;;
           esac
 
-          fallback=(
-            "RegionalHybrid Flasher CN"
-            "Regional Hybrid Flasher"
-            "RegionalHybrid Flasher"
-            "SuperHybrid Flasher CN"
-            "SuperHybrid Flasher"
-            "SuperHybrid SunOS Flasher"
-            "Super Flasher CN"
-            "Super Flasher"
-            "Regional Flasher CN"
-            "Regional Flasher"
+          # Fallbacks
+          mapfile -t candidates < <(
+            printf "%s\n" "${by_ftype[@]}" \
+              "SuperHybrid Flasher CN" \
+              "Regional Hybrid Flasher" "RegionalHybrid Flasher" \
+              "SuperHybrid Flasher" "SuperHybrid SunOS Flasher" \
+              "Super Flasher CN" "Super Flasher" "Regional Flasher CN" "Regional Flasher" \
+            | awk '!seen[$0]++'
           )
-          mapfile -t candidates < <(printf "%s\n" "${by_ftype[@]}" "${fallback[@]}" | awk '!seen[$0]++')
 
-          echo "Folders in OTA_DIR:"
-          ls -la "$ota_dir" || true
-
+          echo "Folders in OTA_DIR:"; ls -la "$ota_dir" || true
           result_dir=""
           for name in "${candidates[@]}"; do
             p="$ota_dir/$name"
@@ -643,7 +646,7 @@ jobs:
           done
           [ -n "$result_dir" ] || {
             echo "Could not find builder output folder next to OTA in '$ota_dir'."
-            echo "Looked for:"; printf ' - %s\n' "${candidates[@]}"; exit 1;
+            printf 'Looked for:\n'; printf ' - %s\n' "${candidates[@]}"; exit 1;
           }
 
           zip_root="$GITHUB_WORKSPACE/$OUT_DIR"
@@ -662,10 +665,10 @@ jobs:
             *)   region_disp="$region_code" ;;
           esac
 
-          # Artefaktname
+          # Artefaktname bestimmen (SunOS → Spezialformat)
           if [[ "$FTYPE" == "SuperHybrid SunOS Flasher" ]]; then
-            date_tag="$(date -u +%Y%m%d)"
-            artifact_base="SuperHybrid Sun-varuna-${date_tag}-dodge-Official"
+            today="$(date -u +%Y%m%d)"
+            artifact_base="SuperHybrid Sun-varuna-${today}-dodge-Official"
           else
             case "$DEV" in
               "13T")
@@ -694,15 +697,12 @@ jobs:
 
           zip_path="$zip_root/${artifact_base}.zip"
           rm -f "$zip_path"
+
           cd "$result_dir"
 
-          if command -v 7zz >/dev/null 2>&1; then
-            seven=7zz
-          elif command -v 7z >/dev/null 2>&1; then
-            seven=7z
-          else
-            seven=""
-          fi
+          if command -v 7zz >/dev/null 2>&1; then seven=7zz
+          elif command -v 7z >/dev/null 2>&1; then seven=7z
+          else seven=""; fi
 
           if [ -n "$seven" ]; then
             "$seven" a -tzip -mm=Deflate -mx=5 -mfb=32 -mmt=on "$zip_path" .
@@ -734,9 +734,10 @@ jobs:
           region="${{ inputs.region }}"
           upload_to="${{ inputs.upload_to }}"
 
+          # Kategorie + Pfad
           if [[ "$ftype" == "SuperHybrid SunOS Flasher" ]]; then
-            # SunOS hat eigene Kategorie (ohne Regions-Unterordner)
-            rel="${device}/SunOS Super Flashers/"
+            # Fix: immer Oneplus 13 / SunOS Super Flashers
+            rel="Oneplus 13/SunOS Super Flashers/"
           else
             if [[ "$device" == "Oneplus 13T" && "$ftype" == "Super Flasher" && "$region" == "IN" ]]; then
               category="OxygenOS Flashers"
@@ -807,7 +808,7 @@ jobs:
           : "${DS_FTP_USER:?Missing DS_FTP_USER}"
           : "${DS_FTP_PASS:?Missing DS_FTP_PASS}"
 
-          remote_dir="$(printf "%s" "$FTP_UPLOAD_DIR" | sed 's#^/*##')"  # e.g. "Oneplus 13/Super Flashers/Global/"
+          remote_dir="$(printf "%s" "$FTP_UPLOAD_DIR" | sed 's#^/*##')"  # e.g. "Oneplus 13/SunOS Super Flashers/"
           file_name="${ARTIFACT_NAME}.zip"
           zip_path="$ZIP_FILE"
           [ -f "$zip_path" ] || { echo "ZIP not found: $zip_path"; exit 1; }
@@ -843,24 +844,25 @@ jobs:
           artifact="$ARTIFACT_NAME"
           ftp_rel_dir="$FTP_UPLOAD_DIR"
 
-          # Type-Ordner
-          if [[ "$ftype" == "RegionalHybrid Flasher" ]]; then
-            type_dir="Regional Flashers"
-          elif [[ "$ftype" == "SuperHybrid SunOS Flasher" ]]; then
-            type_dir="SunOS Super Flashers"
-          else
-            type_dir="Super Flashers"
-          fi
-
-          # Region-Anzeige (SunOS hat keinen Regionsordner)
+          # Type/Region-Anzeige für Pfad in Windows-Repo-Struktur oder SunOS-Fix
           if [[ "$ftype" == "SuperHybrid SunOS Flasher" ]]; then
+            zip_plain="Oneplus 13/SunOS Super Flashers/${artifact}.zip"
+            img_folder="FASTBOOT_FILES_HERE"
+            type_dir="SunOS Super Flashers"
             region_dir=""
           else
+            if [[ "$ftype" == "RegionalHybrid Flasher" ]]; then
+              type_dir="Regional Flashers"
+            else
+              type_dir="Super Flashers"
+            fi
             case "$region" in
               GLO) region_dir="Global" ;;
               CN)  region_dir="COS" ;;
               *)   region_dir="$region" ;;
             esac
+            zip_plain="${device_disp}/${type_dir}/${region_dir}/${artifact}.zip"
+            if [[ "$region" == "CN" ]]; then img_folder="COS_FILES_HERE"; else img_folder="OOS_FILES_HERE"; fi
           fi
 
           # Hauptdownload-Link
@@ -869,22 +871,9 @@ jobs:
           enc_raw="${enc_raw//%20/+}"
           zip_link="https://roms.danielspringer.at/download.php?file=${enc_raw}&download=true"
 
-          # Pfad für download_from_zip.php (ohne "Files/")
-          if [[ -n "$region_dir" ]]; then
-            zip_plain="${device_disp}/${type_dir}/${region_dir}/${artifact}.zip"
-          else
-            zip_plain="${device_disp}/${type_dir}/${artifact}.zip"
-          fi
+          # Direktdateien (boot/init_boot) – nur Pfadzweig anpassen; das Flasher-Skript lädt sie selbst, hier sind es reine ZIP-Links
           zip_param="$(python3 -c 'import sys,urllib.parse;print(urllib.parse.quote(sys.argv[1],safe=""))' "$zip_plain")"
           zip_param="${zip_param//%20/+}"
-
-          # Ordner für boot/init_boot im ZIP
-          if [[ "$ftype" == "SuperHybrid SunOS Flasher" ]]; then
-            img_folder="FASTBOOT_FILES_HERE"
-          else
-            if [[ "$region" == "CN" ]]; then img_folder="COS_FILES_HERE"; else img_folder="OOS_FILES_HERE"; fi
-          fi
-
           boot_param="$(python3 -c 'import sys,urllib.parse;print(urllib.parse.quote(sys.argv[1],safe=""))' "${img_folder}/boot.img")"
           boot_param="${boot_param//%20/+}"
           init_boot_param="$(python3 -c 'import sys,urllib.parse;print(urllib.parse.quote(sys.argv[1],safe=""))' "${img_folder}/init_boot.img")"
@@ -893,7 +882,7 @@ jobs:
           boot_link="https://roms.danielspringer.at/download_from_zip.php?zip=${zip_param}&file=${boot_param}"
           init_boot_link="https://roms.danielspringer.at/download_from_zip.php?zip=${zip_param}&file=${init_boot_param}"
 
-          # JSON Payload
+          # Payload bauen
           export TG_DEVICE="$device_disp"
           export TG_ARTIFACT="$artifact"
           export TG_ZIP_LINK="$zip_link"
@@ -904,7 +893,6 @@ jobs:
 
           python3 -c 'import os,json; dev=os.environ["TG_DEVICE"]; art=os.environ["TG_ARTIFACT"]; p={"chat_id":193732076,"text":f"✨ <b>New Build released</b> ✨\n{dev} <b>{art}</b>","parse_mode":"HTML","disable_web_page_preview":True,"reply_markup":{"inline_keyboard":[[{"text":"⬇️ Download ZIP","url":os.environ["TG_ZIP_LINK"]}],[{"text":"📦 boot.img","url":os.environ["TG_BOOT_LINK"]},{"text":"📦 init_boot.img","url":os.environ["TG_INIT_BOOT_LINK"]}]]}}; open(os.environ["TG_PAYLOAD_PATH"],"w",encoding="utf-8").write(json.dumps(p, ensure_ascii=False, separators=(",",":")))'
 
-          # Senden
           curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
                -H "Content-Type: application/json; charset=utf-8" \
                --data-binary "@${payload_path}"
