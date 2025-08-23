@@ -262,7 +262,6 @@ jobs:
               if (Test-Path $src) {
                 Copy-Item $src -Destination $dest -Force
               } else {
-                # allow stub for my_preload
                 $stub = Join-Path $debloatDir ([System.IO.Path]::GetFileNameWithoutExtension($f))
                 if (Test-Path $stub) {
                   try {
@@ -319,7 +318,7 @@ jobs:
           $builderSrc = Join-Path $builderDir $env:BUILDER_BAT
           if (Test-Path $builderSrc) { Copy-Item $builderSrc -Destination $env:OUT_DIR -Force }
       
-          # Working folder name (CN suffix where required)
+          # Working folder name (CN suffix for 13 SuperHybrid CN)
           $workName = switch ($ftype) {
             'SuperHybrid Flasher'       { if ($dev -eq '13' -and $region -eq 'CN') { 'SuperHybrid Flasher CN' } else { 'SuperHybrid Flasher' } }
             'RegionalHybrid Flasher'    { 'RegionalHybrid Flasher' }
@@ -386,7 +385,7 @@ jobs:
       
           # ALWAYS copy Platform-Tools into flasher dir
           $ptSrc = Join-Path $root 'Platform-Tools'
-          if (Test-Path $ptSrc) {
+          if (Test-Path $ptSrc)) {
             $ptDst = Join-Path $workDir 'Platform-Tools'
             New-Item -ItemType Directory -Force -Path $ptDst | Out-Null
             Copy-Item "$ptSrc\*" -Destination $ptDst -Recurse -Force
@@ -413,13 +412,22 @@ jobs:
             Copy-Item (Join-Path $root 'lpmake\cygwin1.dll') -Destination $superDir -Force
       
             # Packer scripts
-            if ($dev -eq '13T') {
+            if ($dev -eq '13') {
+              # >>> FIX: OnePlus 13 • SuperHybrid • CN must use super_cos.bat
+              $pdir   = Join-Path $root 'super_packers\13'
+              $packer = if ($region -eq 'CN' -and $ftype -eq 'SuperHybrid Flasher') { 'super_cos.bat' } else { 'super_oos.bat' }
+              $ppath  = Join-Path $pdir $packer
+              if (Test-Path $ppath) { Copy-Item $ppath -Destination $superDir -Force }
+            }
+            elseif ($dev -eq '13T') {
               $pdir = Join-Path $root 'super_packers\13T'
               Copy-Item (Join-Path $pdir ($(if ($region -eq 'CN') { 'super_cos.bat' } else { 'super_oos.bat' }))) -Destination $superDir -Force
-            } elseif ($dev -eq 'Ace5') {
+            }
+            elseif ($dev -eq 'Ace5') {
               $pdir = Join-Path $root 'super_packers\Ace5'
               Copy-Item (Join-Path $pdir ($(if ($region -eq 'CN') { 'super_cos.bat' } else { 'super_oos.bat' }))) -Destination $superDir -Force
-            } else {
+            }
+            else {
               $p = Join-Path $root ("super_packers\" + $dev + "\super_oos.bat")
               if (Test-Path $p) { Copy-Item $p -Destination $superDir -Force }
             }
@@ -427,7 +435,6 @@ jobs:
             # Standard bloat into Super\
             $bloatFolder = Get-BloatFolder -dev $dev -region $region
             if ($dev -eq '13T' -and $ftype -eq 'Super Flasher' -and $region -eq 'IN') {
-              # Skip 3 files; they go to COS_FILES_HERE
               Copy-BloatFromFolder -base $bloatBase -folder $bloatFolder -dest $superDir -skip @('my_region.img','oplusstanvbk.img','odm.img')
               $cosHere = Join-Path $workDir 'COS_FILES_HERE'
               New-Item -ItemType Directory -Force -Path $cosHere | Out-Null
@@ -443,13 +450,13 @@ jobs:
             # CN extra OOS staging
             if ($region -eq 'CN') {
               if ($dev -eq '13' -and $ftype -eq 'SuperHybrid Flasher') {
-                # OnePlus 13 SuperHybrid CN: put EUGLO_BLOAT into OOS_FILES_HERE (no COS_FILES_HERE here)
+                # OnePlus 13 SuperHybrid CN: EUGLO_BLOAT → OOS_FILES_HERE; NO COS_FILES_HERE
                 $oosHere = Join-Path $workDir 'OOS_FILES_HERE'
                 New-Item -ItemType Directory -Force -Path $oosHere | Out-Null
                 Copy-BloatFromFolder -base $bloatBase -folder 'EUGLO_BLOAT' -dest $oosHere
               }
               elseif ($dev -notin @('Ace5','Ace5Pro')) {
-                # Other CN 13-series: previous behavior
+                # Other CN 13-series behavior
                 $oosHere = Join-Path $workDir 'OOS_FILES_HERE'
                 New-Item -ItemType Directory -Force -Path $oosHere | Out-Null
                 if ($dev -eq '13R') { Copy-BloatFromFolder -base $bloatBase -folder 'A5_DEBLOAT'   -dest $oosHere }
@@ -474,7 +481,6 @@ jobs:
             $bloatFolder = Get-BloatFolder -dev $dev -region $region
             Copy-BloatFromFolder -base $bloatBase -folder $bloatFolder -dest $oosHere
       
-            # CN: also prepare COS_FILES_HERE
             if ($region -eq 'CN') {
               $cosHere = Join-Path $workDir 'COS_FILES_HERE'
               New-Item -ItemType Directory -Force -Path $cosHere | Out-Null
@@ -482,7 +488,6 @@ jobs:
               Copy-BloatFromFolder -base $bloatBase -folder $cnFolder -dest $cosHere
             }
       
-            # 13S + Regional IN: ensure the two files in OOS_FILES_HERE
             if ($dev -eq '13S' -and $region -eq 'IN') {
               foreach ($f in 'my_preload.img','my_company.img') {
                 $src = Join-Path (Join-Path $bloatBase 'IN_BLOAT') $f
@@ -490,11 +495,9 @@ jobs:
               }
             }
       
-            # Ace 5 CN: A5_DEBLOAT pair into OOS_FILES_HERE
             if ($dev -eq 'Ace5' -and $region -eq 'CN') {
               Copy-DebloatPair -debloatDir (Join-Path $bloatBase 'A5_DEBLOAT') -dest $oosHere
             }
-            # Ace 5 Pro CN: A5P_DEBLOAT pair into OOS_FILES_HERE
             if ($dev -eq 'Ace5Pro' -and $region -eq 'CN') {
               Copy-DebloatPair -debloatDir (Join-Path $bloatBase 'A5P_DEBLOAT') -dest $oosHere
             }
@@ -511,7 +514,6 @@ jobs:
             if (Test-Path $src16) {
               New-Item -ItemType Directory -Force -Path $main16 | Out-Null
               Copy-Item "$src16\*" -Destination $main16 -Recurse -Force
-              # Ensure optional name
               $dtboPlain = Join-Path $main16 'dtbo.img'
               $dtboNamed = Join-Path $main16 '16.0.0.1_dtbo.img'
               if ((Test-Path $dtboPlain) -and -not (Test-Path $dtboNamed)) {
@@ -521,7 +523,6 @@ jobs:
               Write-Warning ("16DTBO source not found: {0}" -f $src16)
             }
       
-            # Move stray 16DTBO created inside working dir up to MAIN
             $work16 = Join-Path $workDir '16DTBO'
             if (Test-Path $work16) {
               if (Test-Path $main16) { Remove-Item $main16 -Recurse -Force }
@@ -542,6 +543,7 @@ jobs:
       
           # Expose for next steps
           "WORK_DIR=$workDir" | Out-File -FilePath $env:GITHUB_ENV -Append
+
 
 
 
