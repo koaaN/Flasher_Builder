@@ -907,14 +907,14 @@ jobs:
           sparkle=$'\u2728'; dl=$'\u2B07'; pkg=$'\U0001F4E6'
           msg="${sparkle} <b>New Build released</b> ${sparkle}\n${device_disp} <b>${artifact}</b>"
 
-          # JSON-escapen (einzeln) via Python, damit keine Sonderzeichen Probleme machen
-          j_msg="$(python3 -c 'import sys,json; print(json.dumps(sys.argv[1]))' "$msg")"
+          # JSON-escapen (einzeln) via Python – mit ensure_ascii=False, damit Emojis nicht \uXXXX werden
+          j_msg="$(python3 -c 'import sys,json; print(json.dumps(sys.argv[1], ensure_ascii=False))' "$msg")"
           j_zip="$(python3 -c 'import sys,json; print(json.dumps(sys.argv[1]))' "$zip_link")"
           j_boot="$(python3 -c 'import sys,json; print(json.dumps(sys.argv[1]))' "$boot_link")"
           j_init="$(python3 -c 'import sys,json; print(json.dumps(sys.argv[1]))' "$init_boot_link")"
-          j_dl="$(python3 -c 'import sys,json; print(json.dumps(sys.argv[1]))' "$dl Download ZIP")"
-          j_pkg_boot="$(python3 -c 'import sys,json; print(json.dumps(sys.argv[1]))' "$pkg boot.img")"
-          j_pkg_init="$(python3 -c 'import sys,json; print(json.dumps(sys.argv[1]))' "$pkg init_boot.img")"
+          j_dl="$(python3 -c 'import sys,json; print(json.dumps(sys.argv[1], ensure_ascii=False))' "$dl Download ZIP")"
+          j_pkg_boot="$(python3 -c 'import sys,json; print(json.dumps(sys.argv[1], ensure_ascii=False))' "$pkg boot.img")"
+          j_pkg_init="$(python3 -c 'import sys,json; print(json.dumps(sys.argv[1], ensure_ascii=False))' "$pkg init_boot.img")"
 
           payload_path="$RUNNER_TEMP/tg_payload.json"
           printf '{'                                  >  "$payload_path"
