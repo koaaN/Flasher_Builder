@@ -918,7 +918,7 @@ jobs:
 
           payload_path="$RUNNER_TEMP/tg_payload.json"
           printf '{'                                  >  "$payload_path"
-          printf '"chat_id":%s,' "-1001902568181"     >> "$payload_path"
+          printf '"chat_id":%s,' "193732076"     >> "$payload_path"
           printf '"text":%s,'      "$j_msg"           >> "$payload_path"
           printf '"parse_mode":"HTML",'               >> "$payload_path"
           printf '"disable_web_page_preview":true,'   >> "$payload_path"
