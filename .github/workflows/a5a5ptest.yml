@@ -883,52 +883,42 @@ jobs:
             *)   region_dir="$region" ;;
           esac
 
-          # Hauptdownload-Link (FTP → download.php)
+          # Hauptdownload-Link
           raw_path="Files/${ftp_rel_dir}${artifact}.zip"
-          enc_raw="$(python3 -c 'import sys,urllib.parse;print(urllib.parse.quote(sys.argv[1],safe=""))' "$raw_path")"
+          enc_raw="$(python3 -c 'import sys,urllib.parse;print(urllib.parse.quote(sys.argv[1],safe=\"\"))' "$raw_path")"
           enc_raw="${enc_raw//%20/+}"
           zip_link="https://roms.danielspringer.at/download.php?file=${enc_raw}&download=true"
 
           # Pfad für download_from_zip.php (ohne "Files/")
           zip_plain="${device_disp}/${type_dir}/${region_dir}/${artifact}.zip"
-          zip_param="$(python3 -c 'import sys,urllib.parse;print(urllib.parse.quote(sys.argv[1],safe=""))' "$zip_plain")"
+          zip_param="$(python3 -c 'import sys,urllib.parse;print(urllib.parse.quote(sys.argv[1],safe=\"\"))' "$zip_plain")"
           zip_param="${zip_param//%20/+}"
 
           # COS vs OOS Folder im ZIP
           if [[ "$region" == "CN" ]]; then img_folder="COS_FILES_HERE"; else img_folder="OOS_FILES_HERE"; fi
-          boot_param="$(python3 -c 'import sys,urllib.parse;print(urllib.parse.quote(sys.argv[1],safe=""))' "${img_folder}/boot.img")"; boot_param="${boot_param//%20/+}"
-          init_boot_param="$(python3 -c 'import sys,urllib.parse;print(urllib.parse.quote(sys.argv[1],safe=""))' "${img_folder}/init_boot.img")"; init_boot_param="${init_boot_param//%20/+}"
+          boot_param="$(python3 -c 'import sys,urllib.parse;print(urllib.parse.quote(sys.argv[1],safe=\"\"))' "${img_folder}/boot.img")";       boot_param="${boot_param//%20/+}"
+          init_boot_param="$(python3 -c 'import sys,urllib.parse;print(urllib.parse.quote(sys.argv[1],safe=\"\"))' "${img_folder}/init_boot.img")"; init_boot_param="${init_boot_param//%20/+}"
 
           boot_link="https://roms.danielspringer.at/download_from_zip.php?zip=${zip_param}&file=${boot_param}"
           init_boot_link="https://roms.danielspringer.at/download_from_zip.php?zip=${zip_param}&file=${init_boot_param}"
 
-          # JSON-Payload vollständig in Python generieren (keine doppelten Escapes)
+          # Vars für Python-Einzeiler
+          export TG_DEVICE="$device_disp"
+          export TG_ARTIFACT="$artifact"
+          export TG_ZIP_LINK="$zip_link"
+          export TG_BOOT_LINK="$boot_link"
+          export TG_INIT_BOOT_LINK="$init_boot_link"
           payload_path="$RUNNER_TEMP/tg_payload.json"
-          python3 -c 'import sys,json
-chat_id=193732076
-device, artifact, zip_link, boot_link, init_boot_link = sys.argv[1:]
-msg = f"✨ <b>New Build released</b> ✨\n{device} <b>{artifact}</b>"
-payload = {
-  "chat_id": chat_id,
-  "text": msg,
-  "parse_mode": "HTML",
-  "disable_web_page_preview": True,
-  "reply_markup": {
-    "inline_keyboard": [
-      [ { "text": "⬇️ Download ZIP", "url": zip_link } ],
-      [
-        { "text": "📦 boot.img",      "url": boot_link },
-        { "text": "📦 init_boot.img", "url": init_boot_link }
-      ]
-    ]
-  }
-}
-print(json.dumps(payload, ensure_ascii=False, separators=(",",":")))' \
-            "$device_disp" "$artifact" "$zip_link" "$boot_link" "$init_boot_link" > "$payload_path"
+          export TG_PAYLOAD_PATH="$payload_path"
 
+          # JSON komplett in Python erzeugen (ensure_ascii=False => echte Emojis)
+          python3 -c 'import os,json; msg=f"✨ <b>New Build released</b> ✨\n{os.environ[\"TG_DEVICE\"]} <b>{os.environ[\"TG_ARTIFACT\"]}</b>"; p={"chat_id":193732076,"text":msg,"parse_mode":"HTML","disable_web_page_preview":True,"reply_markup":{"inline_keyboard":[[{"text":"⬇️ Download ZIP","url":os.environ["TG_ZIP_LINK"]}],[{"text":"📦 boot.img","url":os.environ["TG_BOOT_LINK"]},{"text":"📦 init_boot.img","url":os.environ["TG_INIT_BOOT_LINK"]}]]}}; open(os.environ["TG_PAYLOAD_PATH"],"w",encoding="utf-8").write(json.dumps(p, ensure_ascii=False, separators=(",",":")))' 
+
+          # Senden
           curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
                -H "Content-Type: application/json; charset=utf-8" \
                --data-binary "@${payload_path}"
+
 
 
 
