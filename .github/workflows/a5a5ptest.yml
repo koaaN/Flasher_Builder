@@ -135,26 +135,28 @@ jobs:
       - name: Map device → pick builder
         shell: pwsh
         run: |
+          # Map UI device name → short code
           $devDisp = "${{ inputs.device }}"
           $dev = switch ($devDisp) {
-            'Oneplus 13'         { '13' }
-            'Oneplus 13R'        { '13R' }
-            'Oneplus 13S'        { '13S' }
-            'Oneplus 13T'        { '13T' }
-            'Oneplus Ace 5'      { 'Ace5' }
-            'Oneplus Ace 5 Pro'  { 'Ace5Pro' }
+            'Oneplus 13'          { '13' }
+            'Oneplus 13R'         { '13R' }
+            'Oneplus 13S'         { '13S' }
+            'Oneplus 13T'         { '13T' }
+            'Oneplus Ace 5'       { 'Ace5' }
+            'Oneplus Ace 5 Pro'   { 'Ace5Pro' }  # accept both Pro/PRO spellings
+            'Oneplus Ace 5 PRO'   { 'Ace5Pro' }
             default { throw "Unknown device: $devDisp" }
           }
       
           $ftype  = "${{ inputs.flasher_type }}"
           $region = "${{ inputs.region }}"
       
-          # Ace 5 PRO is regional-only
+          # Ace 5 Pro does not support Super Flasher
           if ($dev -eq 'Ace5Pro' -and $ftype -eq 'Super Flasher') {
-            throw "Oneplus Ace 5 PRO does not support 'Super Flasher'. Please choose 'Regional Flasher'."
+            throw "Oneplus Ace 5 Pro does not support 'Super Flasher'. Please choose 'Regional Flasher'."
           }
       
-          # ---- Builder BAT selection ----
+          # ---- Pick the builder BAT ----
           $batName = switch ($ftype) {
             'SuperHybrid Flasher' {
               if ($region -eq 'CN') { 'SUPERHYBRID_CN_FULL_SUPERBUILD.bat' }
@@ -167,30 +169,36 @@ jobs:
             'SuperHybrid SunOS Flasher' { 'SUPERHYBRID_SUNOS_FULL_SUPERBUILD.bat' }
       
             'Super Flasher' {
-              if ($dev -in @('13R','13T')) {
-                if ($region -eq 'CN')      { 'SUPER_CN_FULL_SUPERBUILD.bat' }
-                elseif ($dev -eq '13R')    { 'SUPER_EUGLO_FULL_SUPERBUILD.bat' }
-                elseif ($dev -eq '13T')    { 'SUPER_IN_FULL_SUPERBUILD.bat' }
-                else                        { 'SUPER_EUGLO_FULL_SUPERBUILD.bat' }
-              }
-              elseif ($dev -eq 'Ace5') {
-                if ($region -eq 'CN')      { 'SUPER_CN_FULL_SUPERBUILD.bat' }
-                else                        { 'SUPER_OOS_FULL_SUPERBUILD.bat' }   # Ace5 non-CN super
-              }
-              else {
-                'SUPERHYBRID_FULL_SUPERBUILD.bat'
+              switch ($dev) {
+                '13S' { 'SUPER_IN_FULL_SUPERBUILD.bat' }  # <- required for 13S
+                '13R' {
+                  if ($region -eq 'CN') { 'SUPER_CN_FULL_SUPERBUILD.bat' }
+                  else                  { 'SUPER_EUGLO_FULL_SUPERBUILD.bat' }
+                }
+                '13T' {
+                  if     ($region -eq 'CN') { 'SUPER_CN_FULL_SUPERBUILD.bat' }
+                  elseif ($region -eq 'IN') { 'SUPER_IN_FULL_SUPERBUILD.bat' }
+                  else                      { 'SUPER_EUGLO_FULL_SUPERBUILD.bat' }
+                }
+                'Ace5' {
+                  if ($region -eq 'CN') { 'SUPER_CN_FULL_SUPERBUILD.bat' }
+                  else                  { 'SUPER_OOS_FULL_SUPERBUILD.bat' }
+                }
+                default { 'SUPERHYBRID_FULL_SUPERBUILD.bat' } # conservative fallback
               }
             }
       
             'Regional Flasher' {
               if ($dev -eq '13R') {
-                if     ($region -eq 'CN') { 'REGIONAL_CN_FULL_BUILD.bat' }
-                else                      { 'REGIONAL_EUGLO_FULL_BUILD.bat' }
+                if ($region -eq 'CN') { 'REGIONAL_CN_FULL_BUILD.bat' }
+                else                  { 'REGIONAL_EUGLO_FULL_BUILD.bat' }
               }
-              elseif ($dev -eq '13S') { 'REGIONAL_IN_FULL_BUILD.bat' }
+              elseif ($dev -eq '13S') {
+                'REGIONAL_IN_FULL_BUILD.bat'
+              }
               elseif ($dev -in @('Ace5','Ace5Pro')) {
-                if     ($region -eq 'CN') { 'REGIONAL_CN_FULL_BUILD.bat' }
-                else                      { 'REGIONAL_EUGLO_FULL_BUILD.bat' }
+                if ($region -eq 'CN') { 'REGIONAL_CN_FULL_BUILD.bat' }
+                else                  { 'REGIONAL_EUGLO_FULL_BUILD.bat' }
               }
               else {
                 'REGIONALHYBRID_FULL_BUILD.bat'
@@ -200,10 +208,12 @@ jobs:
             default { throw "Unknown flasher type: $ftype" }
           }
       
+          # Export for later steps
           "DEV=$dev"             | Out-File -FilePath $env:GITHUB_ENV -Append
           "FTYPE=$ftype"         | Out-File -FilePath $env:GITHUB_ENV -Append
           "REGION=$region"       | Out-File -FilePath $env:GITHUB_ENV -Append
           "BUILDER_BAT=$batName" | Out-File -FilePath $env:GITHUB_ENV -Append
+
 
       - name: Stage files (13-series + Ace 5 / Ace 5 Pro; hybrid LF fix)
         shell: pwsh
