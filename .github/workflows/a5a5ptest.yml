@@ -861,34 +861,19 @@ jobs:
         run: |
           set -euo pipefail
 
-          device_disp="${{ inputs.device }}"
-          region="$REGION"                   # CN/EU/GLO/IN/NA
-          ftype="$FTYPE"                     # "Super Flasher", "RegionalHybrid Flasher", ...
           artifact="$ARTIFACT_NAME"          # Dateiname ohne .zip
           ftp_rel_dir="$FTP_UPLOAD_DIR"      # z.B. "Oneplus 13/Super Flashers/Global/"
+          rel_dir="$REL_UPLOAD_DIR"          # z.B. "Oneplus 13/Super Flashers/Global/"
+          region="$REGION"                   # CN/EU/GLO/IN/NA
 
-          # Type-Ordner wie in Windows:
-          if [[ "$ftype" == "RegionalHybrid Flasher" ]]; then
-            type_dir="Regional Flashers"
-          else
-            type_dir="Super Flashers"
-          fi
-
-          # Region-Anzeige wie in Windows:
-          case "$region" in
-            GLO) region_dir="Global" ;;
-            CN)  region_dir="COS" ;;
-            *)   region_dir="$region" ;;
-          esac
-
-          # Hauptdownload-Link (FTP → download.php)
+          # Hauptdownload-Link (FTP → download.php) mit "Files/" Präfix
           raw_path="Files/${ftp_rel_dir}${artifact}.zip"
           enc_raw="$(python3 -c 'import sys,urllib.parse;print(urllib.parse.quote(sys.argv[1],safe=""))' "$raw_path")"
           enc_raw="${enc_raw//%20/+}"
           zip_link="https://roms.danielspringer.at/download.php?file=${enc_raw}&download=true"
 
-          # Pfad für download_from_zip.php (ohne "Files/")
-          zip_plain="${device_disp}/${type_dir}/${region_dir}/${artifact}.zip"
+          # Pfad für download_from_zip.php (ohne "Files/") — exakt REL_UPLOAD_DIR + Artifact
+          zip_plain="${rel_dir}${artifact}.zip"
           zip_param="$(python3 -c 'import sys,urllib.parse;print(urllib.parse.quote(sys.argv[1],safe=""))' "$zip_plain")"
           zip_param="${zip_param//%20/+}"
 
@@ -902,15 +887,15 @@ jobs:
           boot_link="https://roms.danielspringer.at/download_from_zip.php?zip=${zip_param}&file=${boot_param}"
           init_boot_link="https://roms.danielspringer.at/download_from_zip.php?zip=${zip_param}&file=${init_boot_param}"
 
-          # Payload via Python bauen (saubere JSON-Escapes, Emojis etc.)
+          # Message-Payload via Python (saubere JSON/UTF-8)
           payload_path="$RUNNER_TEMP/tg_payload.json"
-          python3 - "$device_disp" "$artifact" "$zip_link" "$boot_link" "$init_boot_link" "$payload_path" << 'PY'
+          python3 - "$artifact" "$zip_link" "$boot_link" "$init_boot_link" "$payload_path" << 'PY'
 import sys, json
-device, artifact, zip_link, boot_link, init_boot_link, out = sys.argv[1:]
+artifact, zip_link, boot_link, init_boot_link, out = sys.argv[1:]
 sparkle = "\u2728"
 dl = "\u2B07"
 pkg = "\U0001F4E6"  # 📦
-msg = f"{sparkle} <b>New Build released</b> {sparkle}\n{device} <b>{artifact}</b>"
+msg = f"{sparkle} <b>New Build released</b> {sparkle}\n<b>{artifact}</b>"
 payload = {
   "chat_id": -1001902568181,
   "text": msg,
@@ -930,7 +915,6 @@ PY
           curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
                -H "Content-Type: application/json; charset=utf-8" \
                --data-binary "@${payload_path}"
-
 
 
 
