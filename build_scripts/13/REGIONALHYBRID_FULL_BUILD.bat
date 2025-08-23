@@ -1,55 +1,79 @@
 @echo off
-setlocal enabledelayedexpansion
+setlocal EnableExtensions EnableDelayedExpansion
 
-:: Path to dropped ZIP
-set "input_file=%~1"
-set "input_dir=%~dp1"
-
-:: Paths to tools and folders
-set "tool=%~dp0otaripper.exe"
-set "tool_name=otaripper.exe"
-set "regional_flasher_src=%~dp0Regional Hybrid Flasher"
-set "regional_flasher_dest=%input_dir%Regional Hybrid Flasher"
-
-:: Copy Regional Hybrid Flasher folder to zip location
-xcopy /E /I /Y "%Regional_Hybrid_Flasher_src%" "%Regional_Hybrid_Flasher_src%"
-
-:: Copy otaripper.exe to the zip's folder
-copy "%tool%" "%input_dir%" >nul
-
-:: Save list of folders before extraction
-set "before_folders="
-for /d %%D in ("%input_dir%*") do (
-    set "before_folders=!before_folders! %%~nxD"
+rem ===== Inputs and locations =====
+set "INPUT_FILE=%~1"
+if not exist "%INPUT_FILE%" (
+  echo ERROR: OTA zip not found: %INPUT_FILE%
+  exit /b 2
 )
 
-:: Run otaripper.exe (no --partitions)
-pushd "%input_dir%"
-"%tool_name%" "%input_file%"
+set "INPUT_DIR=%~dp1"
+set "SCRIPT_DIR=%~dp0"
+
+set "TOOL=%SCRIPT_DIR%otaripper.exe"
+set "TOOL_NAME=otaripper.exe"
+
+rem Template flasher lives next to this .bat
+set "FLASHER_SRC=%SCRIPT_DIR%Regional Hybrid Flasher"
+rem We stage the flasher into the same folder as the OTA.zip
+set "FLASHER_DEST=%INPUT_DIR%Regional Hybrid Flasher"
+
+rem ===== Copy flasher template into the OTA folder =====
+if not exist "%FLASHER_SRC%" (
+  echo ERROR: Flasher template not found: %FLASHER_SRC%
+  exit /b 3
+)
+
+if not exist "%FLASHER_DEST%" mkdir "%FLASHER_DEST%"
+rem Copy the whole template (not src->src)
+xcopy "%FLASHER_SRC%\*" "%FLASHER_DEST%\" /E /I /Y >nul
+
+rem ===== Put otaripper next to the zip (some tools expect that) =====
+if exist "%TOOL%" (
+  copy /Y "%TOOL%" "%INPUT_DIR%" >nul
+) else (
+  echo ERROR: Missing otaripper.exe at %TOOL%
+  exit /b 4
+)
+
+rem ===== Snapshot existing folders before extraction =====
+set "BEFORE="
+for /d %%D in ("%INPUT_DIR%*") do set "BEFORE=!BEFORE!;%%~nxD"
+
+rem ===== Extract (no --partitions) =====
+pushd "%INPUT_DIR%" || (echo ERROR: pushd "%INPUT_DIR%" failed & exit /b 5)
+"%TOOL_NAME%" "%INPUT_FILE%"
+set "RC=%ERRORLEVEL%"
 popd
 
-:: Delete temporary otaripper.exe
-del "%input_dir%%tool_name%" >nul
+del "%INPUT_DIR%%TOOL_NAME%" >nul 2>nul
 
-:: Detect the new folder created by extraction
-set "new_folder="
-for /d %%D in ("%input_dir%*") do (
-    echo !before_folders! | find " %%~nxD" >nul
-    if errorlevel 1 (
-        set "new_folder=%%~fD"
-    )
+if not "%RC%"=="0" (
+  echo ERROR: otaripper failed with code %RC%
+  exit /b %RC%
 )
 
-:: Move all extracted files and handle bloat
-if defined new_folder (
-    echo Moving all extracted files into OOS_FILES_HERE...
-    if not exist "%Regional_Hybrid_Flasher_src%\OOS_FILES_HERE" mkdir "%Regional_Hybrid_Flasher_src%\OOS_FILES_HERE"
-    move /Y "!new_folder!\*" "%Regional_Hybrid_Flasher_src%\OOS_FILES_HERE\" >nul
+rem ===== Detect the newly created folder =====
+set "NEW_FOLDER="
+for /d %%D in ("%INPUT_DIR%*") do (
+  echo !BEFORE! | findstr /i /c:";%%~nxD" >nul || set "NEW_FOLDER=%%~fD"
+)
 
-    rd /s /q "!new_folder!"
+rem ===== Move extracted files into OOS_FILES_HERE inside the staged flasher =====
+if defined NEW_FOLDER (
+  echo Moving all extracted files into OOS_FILES_HERE...
+  if not exist "%FLASHER_DEST%\OOS_FILES_HERE" mkdir "%FLASHER_DEST%\OOS_FILES_HERE"
+  move /Y "!NEW_FOLDER!\*" "%FLASHER_DEST%\OOS_FILES_HERE\" >nul
+  rd /s /q "!NEW_FOLDER!" 2>nul
+) else (
+  echo WARNING: No new folder detected after extraction. Nothing moved.
+)
+
+rem ===== Optional: copy 16DTBO if present next to this script =====
+if exist "%SCRIPT_DIR%16DTBO\16.0.0.1_dtbo.img" (
+  copy /Y "%SCRIPT_DIR%16DTBO\16.0.0.1_dtbo.img" "%FLASHER_DEST%\" >nul
 )
 
 echo Done moving files into Regional Hybrid Flasher.
-echo Copying 16.0.0.1_dtbo.img into Regional Hybrid Flasher...
-copy /Y "%~dp016DTBO\16.0.0.1_dtbo.img" "%Regional Hybrid Flasher_dest%"
-pause
+exit /b 0
