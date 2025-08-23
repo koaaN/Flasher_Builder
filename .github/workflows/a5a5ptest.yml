@@ -526,45 +526,44 @@ jobs:
           "WORK_DIR=$workDir" | Out-File -FilePath $env:GITHUB_ENV -Append
       
       
-            # --- Patch REGIONALHYBRID builder to be cross-drive safe
-            - name: Patch RegionalHybrid builder (force pushd, strip %~d1/%~p1)
-              if: contains(env.BUILDER_BAT, 'REGIONALHYBRID')
-              shell: pwsh
-              working-directory: ${{ env.OUT_DIR }}
-              run: |
-                $bat = Join-Path $PWD $env:BUILDER_BAT
-                if (!(Test-Path $bat)) { throw "Builder not found: $bat" }
+      - name: Patch RegionalHybrid builder (force pushd, strip %~d1/%~p1)
+        if: contains(env.BUILDER_BAT, 'REGIONALHYBRID')
+        shell: pwsh
+        working-directory: ${{ env.OUT_DIR }}
+        run: |
+          $bat = Join-Path $PWD $env:BUILDER_BAT
+          if (!(Test-Path $bat)) { throw "Builder not found: $bat" }
             
-                # keep a backup
-                Copy-Item $bat ($bat + '.orig') -Force
+          # keep a backup
+          Copy-Item $bat ($bat + '.orig') -Force
             
-                $txt = Get-Content -LiteralPath $bat -Raw
+          $txt = Get-Content -LiteralPath $bat -Raw
             
-                # Prepend a robust prelude that always runs from the OTA directory
-                $pre = @(
-                  '@echo off'
-                  'setlocal enableextensions'
-                  'set "_ARG1=%~f1"'
-                  'set "_ARGDIR=%~dp1"'
-                  'if not defined _ARG1 (echo ERROR: No OTA argument passed.& exit /b 2)'
-                  'rem Force current dir to the OTA location (cross-drive safe)'
-                  'pushd "%_ARGDIR%" || (echo ERROR: pushd "%_ARGDIR%" failed.& exit /b 3)'
-                ) -join "`r`n"
+          # Prepend a robust prelude that always runs from the OTA directory
+          $pre = @(
+            '@echo off'
+            'setlocal enableextensions'
+            'set "_ARG1=%~f1"'
+            'set "_ARGDIR=%~dp1"'
+            'if not defined _ARG1 (echo ERROR: No OTA argument passed.& exit /b 2)'
+            'rem Force current dir to the OTA location (cross-drive safe)'
+            'pushd "%_ARGDIR%" || (echo ERROR: pushd "%_ARGDIR%" failed.& exit /b 3)'
+           ) -join "`r`n"
             
-                if ($txt -notmatch '(?im)^\s*pushd\s+"%_ARGDIR%"') {
+          if ($txt -notmatch '(?im)^\s*pushd\s+"%_ARGDIR%"') {
                   $txt = $pre + "`r`n" + $txt
-                }
+           }
             
-                # Normalize classic drag&drop patterns to a single pushd "%~dp1"
-                $txt = [regex]::Replace($txt,'(?im)^\s*cd\s+/d?\s*"?%~dp?1"?\s*$', 'pushd "%~dp1"')
-                $txt = [regex]::Replace($txt,'(?im)%~d1\s*&&\s*cd\s+%~p1',         'pushd "%~dp1"')
-                $txt = [regex]::Replace($txt,'(?im)^\s*cd\s+%~p1\s*$',             'pushd "%~dp1"')
-                $txt = $txt -replace '%~d1%~p1','%~dp1'
-                $txt = $txt -replace '%~d1\\%~p1','%~dp1'
-                $txt = [regex]::Replace($txt,'(?im)^\s*%~d1\s*$', 'rem (stripped bare %~d1)')
+          # Normalize classic drag&drop patterns to a single pushd "%~dp1"
+          $txt = [regex]::Replace($txt,'(?im)^\s*cd\s+/d?\s*"?%~dp?1"?\s*$', 'pushd "%~dp1"')
+          $txt = [regex]::Replace($txt,'(?im)%~d1\s*&&\s*cd\s+%~p1',         'pushd "%~dp1"')
+          $txt = [regex]::Replace($txt,'(?im)^\s*cd\s+%~p1\s*$',             'pushd "%~dp1"')
+          $txt = $txt -replace '%~d1%~p1','%~dp1'
+          $txt = $txt -replace '%~d1\\%~p1','%~dp1'
+          $txt = [regex]::Replace($txt,'(?im)^\s*%~d1\s*$', 'rem (stripped bare %~d1)')
             
-                Set-Content -LiteralPath $bat -Value $txt -Encoding ascii
-                Write-Host "Patched $($env:BUILDER_BAT)."
+          Set-Content -LiteralPath $bat -Value $txt -Encoding ascii
+          Write-Host "Patched $($env:BUILDER_BAT)."
 
       # --- Run the (now patched) builder from the OTA folder with full OTA path
       - name: Run builder (Explorer-style drag & drop)
