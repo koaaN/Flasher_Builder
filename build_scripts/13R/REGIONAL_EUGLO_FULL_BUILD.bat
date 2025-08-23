@@ -50,4 +50,3 @@ if defined new_folder (
 )
 
 echo Done moving files into Regional Flasher.
-pause
