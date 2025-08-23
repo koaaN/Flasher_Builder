@@ -68,26 +68,26 @@ for f in "${part_list[@]}"; do
   [[ -f "$new_folder/$f" ]] && mv -f "$new_folder/$f" "$super_work/"
 done
 
-# 6) CN_BLOAT → Super/
-cn_bloat="$script_dir/CN_BLOAT"
-for f in my_preload.img my_company.img; do
-  if [[ -f "$cn_bloat/$f" ]]; then
-    cp -f "$cn_bloat/$f" "$super_work/"
-  else
-    echo "WARN: $f nicht gefunden in $cn_bloat"
-  fi
-done
+# 6) (entfällt) CN_BLOAT -> Super/
+# cn_bloat="$script_dir/CN_BLOAT"
+# for f in my_preload.img my_company.img; do
+#   if [[ -f "$cn_bloat/$f" ]]; then
+#     cp -f "$cn_bloat/$f" "$super_work/"
+#   else
+#     echo "WARN: $f nicht gefunden in $cn_bloat"
+#   fi
+# done
 
-# 7) EUGLO_BLOAT → OOS_FILES_HERE/
-mkdir -p "$oos_here"
-euglo_bloat="$script_dir/EUGLO_BLOAT"
-for f in my_preload.img my_company.img; do
-  if [[ -f "$euglo_bloat/$f" ]]; then
-    cp -f "$euglo_bloat/$f" "$oos_here/"
-  else
-    echo "WARN: $f nicht gefunden in $euglo_bloat"
-  fi
-done
+# 7) (entfällt) EUGLO_BLOAT -> OOS_FILES_HERE/
+# mkdir -p "$oos_here"
+# euglo_bloat="$script_dir/EUGLO_BLOAT"
+# for f in my_preload.img my_company.img; do
+#   if [[ -f "$euglo_bloat/$f" ]]; then
+#     cp -f "$euglo_bloat/$f" "$oos_here/"
+#   else
+#     echo "WARN: $f nicht gefunden in $euglo_bloat"
+#   fi
+# done
 
 # 8) Restliche Dateien nach COS_FILES_HERE/
 mkdir -p "$cos_here"
