@@ -212,7 +212,7 @@ jobs:
           Write-Host "Selected builder: $batName (dev=$dev, region=$region, type=$ftype)"
 
 
-      - name: Stage files (13-series + Ace 5 *** Ace 5 Pro; hybrid LF fix)
+      - name: Stage files (13-series + Ace 5 / Ace 5 Pro; hybrid LF fix)
         shell: pwsh
         run: |
           #-----------------------------
@@ -319,9 +319,12 @@ jobs:
           $builderSrc = Join-Path $builderDir $env:BUILDER_BAT
           if (Test-Path $builderSrc) { Copy-Item $builderSrc -Destination $env:OUT_DIR -Force }
       
-          # Working folder name (CN suffix where required)
+          # Working folder name (add CN variant for 13 SuperHybrid)
           $workName = switch ($ftype) {
-            'SuperHybrid Flasher'       { 'SuperHybrid Flasher' }
+            'SuperHybrid Flasher' {
+              if ($dev -eq '13' -and $region -eq 'CN') { 'SuperHybrid Flasher CN' }
+              else                                     { 'SuperHybrid Flasher' }
+            }
             'RegionalHybrid Flasher'    { 'RegionalHybrid Flasher' }
             'SuperHybrid SunOS Flasher' { 'SuperHybrid SunOS Flasher' }
             'Super Flasher' {
@@ -356,7 +359,7 @@ jobs:
           $tplBase = Join-Path $tplBase $osSub
           $tplBase = Join-Path $tplBase $kind
       
-          # Hard rule: Ace 5 Pro • Regional Flasher • CN → Ace5\cos\regional
+          # Hard rule: Ace 5 Pro • Regional Flasher • CN → Ace5\cos\regional (Regional_Flasher_COS.bat)
           if ($dev -eq 'Ace5Pro' -and $ftype -eq 'Regional Flasher' -and $region -eq 'CN') {
             $tplBase = Join-Path $root 'flasher_scripts\Ace5\cos\regional'
           }
@@ -402,7 +405,7 @@ jobs:
           }
       
           #-----------------------------
-          # Super builds (packer + bloat)
+          # Super builds (matches Super & SuperHybrid)
           #-----------------------------
           if ($ftype -match 'Super') {
             $superDir = Join-Path $workDir 'Super'
@@ -410,38 +413,36 @@ jobs:
             Copy-Item (Join-Path $root 'lpmake\lpmake.exe')  -Destination $superDir -Force
             Copy-Item (Join-Path $root 'lpmake\cygwin1.dll') -Destination $superDir -Force
       
-            # --- pick COS packer for CN, OOS for others (FIX 1) ---
-            $scriptName = if ($region -eq 'CN') { 'super_cos.bat' } else { 'super_oos.bat' }
-            if     ($dev -eq '13T') { $pdir = Join-Path $root 'super_packers\13T' }
-            elseif ($dev -eq 'Ace5') { $pdir = Join-Path $root 'super_packers\Ace5' }
-            else { $pdir = Join-Path $root ("super_packers\" + $dev) } # e.g. 13
-      
-            $cand = Join-Path $pdir $scriptName
-            if (Test-Path $cand) {
-              Copy-Item $cand -Destination $superDir -Force
+            # packer scripts
+            if ($dev -eq '13') {
+              $pdir = Join-Path $root 'super_packers\13'
+              $packer = if ($region -eq 'CN') { 'super_cos.bat' } else { 'super_oos.bat' }
+              if (Test-Path (Join-Path $pdir $packer)) { Copy-Item (Join-Path $pdir $packer) -Destination $superDir -Force }
+            } elseif ($dev -eq '13T') {
+              $pdir = Join-Path $root 'super_packers\13T'
+              Copy-Item (Join-Path $pdir ($(if ($region -eq 'CN') { 'super_cos.bat' } else { 'super_oos.bat' }))) -Destination $superDir -Force
+            } elseif ($dev -eq 'Ace5') {
+              $pdir = Join-Path $root 'super_packers\Ace5'
+              Copy-Item (Join-Path $pdir ($(if ($region -eq 'CN') { 'super_cos.bat' } else { 'super_oos.bat' }))) -Destination $superDir -Force
             } else {
-              $fallback = Join-Path $pdir 'super_oos.bat'
-              if (Test-Path $fallback) { Copy-Item $fallback -Destination $superDir -Force }
+              $p = Join-Path $root ("super_packers\" + $dev + "\super_oos.bat")
+              if (Test-Path $p) { Copy-Item $p -Destination $superDir -Force }
             }
       
-            # Bloat into Super\
             $bloatFolder = Get-BloatFolder -dev $dev -region $region
       
-            if ($dev -eq '13T' -and $ftype -eq 'Super Flasher' -and $region -eq 'IN') {
-              # Skip 3 files, they go to COS_FILES_HERE
-              Copy-BloatFromFolder -base $bloatBase -folder $bloatFolder -dest $superDir -skip @('my_region.img','oplusstanvbk.img','odm.img')
+            # Default: drop region bloat directly into Super\
+            Copy-BloatFromFolder -base $bloatBase -folder $bloatFolder -dest $superDir
+      
+            # Special rule: OnePlus 13 • SuperHybrid • CN
+            if ($dev -eq '13' -and $ftype -eq 'SuperHybrid Flasher' -and $region -eq 'CN') {
               $cosHere = Join-Path $workDir 'COS_FILES_HERE'
               New-Item -ItemType Directory -Force -Path $cosHere | Out-Null
-              foreach ($f in 'my_region.img','oplusstanvbk.img','odm.img') {
-                $srcInSuper = Join-Path $superDir $f
-                $dstInCos   = Join-Path $cosHere $f
-                if (Test-Path $srcInSuper) { Move-Item $srcInSuper $dstInCos -Force }
-              }
-            } else {
-              Copy-BloatFromFolder -base $bloatBase -folder $bloatFolder -dest $superDir
+              # Copy CN bloat into COS_FILES_HERE, but EXCLUDE oplusstanvbk.img and my_region.img
+              Copy-BloatFromFolder -base $bloatBase -folder 'CN_BLOAT' -dest $cosHere -skip @('oplusstanvbk.img','my_region.img')
             }
       
-            # CN Super extra OOS staging for 13-series (not Ace5/Ace5Pro)
+            # CN extra OOS staging for other 13-series (kept as-is; not for Ace5/Ace5Pro)
             if ($region -eq 'CN' -and $dev -notin @('Ace5','Ace5Pro')) {
               $oosHere = Join-Path $workDir 'OOS_FILES_HERE'
               New-Item -ItemType Directory -Force -Path $oosHere | Out-Null
@@ -489,7 +490,7 @@ jobs:
           }
       
           #-----------------------------
-          # Oneplus 13 + Hybrid extras (SuperHybrid + RegionalHybrid)
+          # OnePlus 13 + Hybrid extras (SuperHybrid + RegionalHybrid)
           #-----------------------------
           if ($dev -eq '13' -and $ftype -in @('SuperHybrid Flasher','RegionalHybrid Flasher')) {
             $src16  = Join-Path $root 'flasher_scripts\13\oos\super\16DTBO'
@@ -514,28 +515,16 @@ jobs:
               Write-Host "Moved stray 16DTBO from working folder to MAIN."
             }
       
-            # Inject COS_FILES_HERE; for 13 SuperHybrid CN exclude vbk & region (FIX 2)
             $cosBloat = Join-Path $bloatBase 'COS_FILES_HERE'
             if (Test-Path $cosBloat) {
               $cosDest = Join-Path $workDir 'COS_FILES_HERE'
               New-Item -ItemType Directory -Force -Path $cosDest | Out-Null
-      
-              if ($dev -eq '13' -and $ftype -eq 'SuperHybrid Flasher' -and $region -eq 'CN') {
-                $exclude = @('oplusstanvbk.img','my_region.img')
-                # Copy directories as-is
-                Get-ChildItem -LiteralPath $cosBloat -Directory |
-                  ForEach-Object { Copy-Item $_.FullName -Destination $cosDest -Recurse -Force }
-                # Copy files except the excluded ones
-                Get-ChildItem -LiteralPath $cosBloat -File |
-                  Where-Object { $exclude -notcontains $_.Name } |
-                  ForEach-Object { Copy-Item $_.FullName -Destination $cosDest -Force }
-              } else {
-                Copy-Item "$cosBloat\*" -Destination $cosDest -Recurse -Force
-              }
+              Copy-Item "$cosBloat\*" -Destination $cosDest -Recurse -Force
             }
           }
       
           "WORK_DIR=$workDir" | Out-File -FilePath $env:GITHUB_ENV -Append
+
 
 
       - name: Patch RegionalHybrid builder (force pushd, strip %~d1/%~p1)
