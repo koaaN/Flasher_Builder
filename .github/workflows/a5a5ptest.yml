@@ -212,7 +212,7 @@ jobs:
           Write-Host "Selected builder: $batName (dev=$dev, region=$region, type=$ftype)"
 
 
-      - name: Stage files (13-series + Ace 5 / Ace 5 Pro; hybrid LF fix)
+      - name: Stage files (13-series + Ace 5 *** Ace 5 Pro; hybrid LF fix)
         shell: pwsh
         run: |
           #-----------------------------
@@ -291,13 +291,11 @@ jobs:
           }
       
           #-----------------------------
-          # Inputs / paths
+          # Inputs / paths  (robust DEV parsing)
           #-----------------------------
-          $devRaw = "$($env:DEV)".Trim()
-          # Fix accidental duplication like "Ace5Pro Ace5Pro"
-          $devTok = ($devRaw -split '\s+') | Where-Object { $_ -ne '' }
-          if ($devTok.Count -ge 2 -and ($devTok[0] -eq $devTok[1])) { $devTok = @($devTok[0]) }
-          $dev    = $devTok[0]
+          $devRaw = "$env:DEV"
+          $m = [regex]::Match($devRaw, '(Ace5Pro|Ace5|13T|13S|13R|13)')
+          $dev = if ($m.Success) { $m.Groups[1].Value } else { ($devRaw -split '\s+')[0] }
       
           $ftype  = $env:FTYPE
           $region = $env:REGION
@@ -305,12 +303,11 @@ jobs:
       
           Write-Host "DEV(raw)='$devRaw'  →  DEV(norm)='$dev' • FTYPE='$ftype' • REGION='$region'"
       
-          # Ace 5 Pro shares the 'Ace5' trees for build scripts & bloat
-          $scriptDev = ($dev -in @('Ace5','Ace5Pro')) ? 'Ace5' : $dev
+          # Ace 5 Pro uses the Ace5 trees for scripts & bloat
+          $scriptDev = if ($dev -in @('Ace5','Ace5Pro')) { 'Ace5' } else { $dev }
       
           $builderDir = Join-Path $root ("build_scripts\" + $scriptDev)
-          $bloatDev   = $scriptDev
-          $bloatBase  = Join-Path $root ("bloat\" + $bloatDev)
+          $bloatBase  = Join-Path $root ("bloat\" + $scriptDev)
       
           # Fresh OUT_DIR
           if (Test-Path $env:OUT_DIR) { Remove-Item $env:OUT_DIR -Recurse -Force }
@@ -340,7 +337,7 @@ jobs:
           # -----------------------------
           # Template root selection (+ copy)
           # -----------------------------
-          $tplDev = ($dev -in @('Ace5','Ace5Pro')) ? 'Ace5' : $dev
+          $tplDev = if ($dev -in @('Ace5','Ace5Pro')) { 'Ace5' } else { $dev }
       
           function Get-OsSubtree([string]$dev,[string]$ftype,[string]$region) {
             if ($ftype -like '*Hybrid*') { return (($region -eq 'CN') ? 'cos' : 'oos') }
@@ -359,12 +356,12 @@ jobs:
           $tplBase = Join-Path $tplBase $osSub
           $tplBase = Join-Path $tplBase $kind
       
-          # Hard rule: Ace5 Pro CN + Regional Flasher must come from Ace5\cos\regional
+          # Hard rule: Ace 5 Pro • Regional Flasher • CN → Ace5\cos\regional (Regional_Flasher_COS.bat)
           if ($dev -eq 'Ace5Pro' -and $ftype -eq 'Regional Flasher' -and $region -eq 'CN') {
             $tplBase = Join-Path $root 'flasher_scripts\Ace5\cos\regional'
           }
       
-          Write-Host ("Using flasher template: {0}" -f $tplBase)
+          Write-Host "Using flasher template: $tplBase"
           if (-not (Test-Path $tplBase)) {
             throw "Flasher template not found: $tplBase (dev=$dev, ftype=$ftype, region=$region)"
           }
@@ -372,7 +369,7 @@ jobs:
           # Copy template
           Copy-Item "$tplBase\*" -Destination $workDir -Recurse -Force
       
-          # HYBRID ONLY: if META-INF exists in template, prevent double nesting and LF normalize updater-script
+          # HYBRID ONLY: prevent double META-INF & LF-normalize updater-script
           if ($ftype -like '*Hybrid*') {
             $miSrc  = Join-Path $tplBase 'META-INF'
             $miDest = Join-Path $workDir 'META-INF'
@@ -380,8 +377,6 @@ jobs:
               if (-not (Test-Path $miDest)) {
                 New-Item -ItemType Directory -Force -Path $miDest | Out-Null
                 Copy-Item "$miSrc\*" -Destination $miDest -Recurse -Force
-              } else {
-                Write-Host ("META-INF already present in {0} - skipping duplicate copy." -f $miDest)
               }
               Normalize-UpdaterScriptLF -metaRoot $miDest
             }
@@ -521,7 +516,7 @@ jobs:
           }
       
           "WORK_DIR=$workDir" | Out-File -FilePath $env:GITHUB_ENV -Append
-      
+
       
       - name: Patch RegionalHybrid builder (force pushd, strip %~d1/%~p1)
         if: contains(env.BUILDER_BAT, 'REGIONALHYBRID')
