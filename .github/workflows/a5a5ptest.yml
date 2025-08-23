@@ -262,6 +262,7 @@ jobs:
               if (Test-Path $src) {
                 Copy-Item $src -Destination $dest -Force
               } else {
+                # allow stub for my_preload
                 $stub = Join-Path $debloatDir ([System.IO.Path]::GetFileNameWithoutExtension($f))
                 if (Test-Path $stub) {
                   try {
@@ -413,7 +414,7 @@ jobs:
       
             # Packer scripts
             if ($dev -eq '13') {
-              # >>> FIX: OnePlus 13 • SuperHybrid • CN must use super_cos.bat
+              # OnePlus 13 • SuperHybrid • CN must use super_cos.bat
               $pdir   = Join-Path $root 'super_packers\13'
               $packer = if ($region -eq 'CN' -and $ftype -eq 'SuperHybrid Flasher') { 'super_cos.bat' } else { 'super_oos.bat' }
               $ppath  = Join-Path $pdir $packer
@@ -435,6 +436,7 @@ jobs:
             # Standard bloat into Super\
             $bloatFolder = Get-BloatFolder -dev $dev -region $region
             if ($dev -eq '13T' -and $ftype -eq 'Super Flasher' -and $region -eq 'IN') {
+              # Skip three files -> move to COS_FILES_HERE
               Copy-BloatFromFolder -base $bloatBase -folder $bloatFolder -dest $superDir -skip @('my_region.img','oplusstanvbk.img','odm.img')
               $cosHere = Join-Path $workDir 'COS_FILES_HERE'
               New-Item -ItemType Directory -Force -Path $cosHere | Out-Null
@@ -488,6 +490,7 @@ jobs:
               Copy-BloatFromFolder -base $bloatBase -folder $cnFolder -dest $cosHere
             }
       
+            # 13S + Regional IN: ensure two files in OOS_FILES_HERE
             if ($dev -eq '13S' -and $region -eq 'IN') {
               foreach ($f in 'my_preload.img','my_company.img') {
                 $src = Join-Path (Join-Path $bloatBase 'IN_BLOAT') $f
@@ -495,9 +498,11 @@ jobs:
               }
             }
       
+            # Ace 5 CN: A5_DEBLOAT pair into OOS_FILES_HERE
             if ($dev -eq 'Ace5' -and $region -eq 'CN') {
               Copy-DebloatPair -debloatDir (Join-Path $bloatBase 'A5_DEBLOAT') -dest $oosHere
             }
+            # Ace 5 Pro CN: A5P_DEBLOAT pair into OOS_FILES_HERE
             if ($dev -eq 'Ace5Pro' -and $region -eq 'CN') {
               Copy-DebloatPair -debloatDir (Join-Path $bloatBase 'A5P_DEBLOAT') -dest $oosHere
             }
@@ -523,6 +528,7 @@ jobs:
               Write-Warning ("16DTBO source not found: {0}" -f $src16)
             }
       
+            # If the template dropped a 16DTBO folder inside the working dir by mistake, move it up to MAIN
             $work16 = Join-Path $workDir '16DTBO'
             if (Test-Path $work16) {
               if (Test-Path $main16) { Remove-Item $main16 -Recurse -Force }
@@ -530,22 +536,16 @@ jobs:
               Write-Host "Moved stray 16DTBO from working folder to MAIN."
             }
       
-            # DO NOT inject COS_FILES_HERE for CN (avoid COS files for 13 SuperHybrid CN).
-            if ($region -ne 'CN') {
-              $cosBloat = Join-Path $bloatBase 'COS_FILES_HERE'
-              if (Test-Path $cosBloat) {
-                $cosDest = Join-Path $workDir 'COS_FILES_HERE'
-                New-Item -ItemType Directory -Force -Path $cosDest | Out-Null
-                Copy-Item "$cosBloat\*" -Destination $cosDest -Recurse -Force
-              }
+            # IMPORTANT: For 13 hybrids (all regions), DO NOT stage COS files.
+            $cosFolder = Join-Path $workDir 'COS_FILES_HERE'
+            if (Test-Path $cosFolder) {
+              Write-Host "Removing stray COS_FILES_HERE for 13 hybrids..."
+              Remove-Item $cosFolder -Recurse -Force -ErrorAction SilentlyContinue
             }
           }
       
           # Expose for next steps
           "WORK_DIR=$workDir" | Out-File -FilePath $env:GITHUB_ENV -Append
-
-
-
 
       - name: Patch RegionalHybrid builder (force pushd, strip %~d1/%~p1)
         if: contains(env.BUILDER_BAT, 'REGIONALHYBRID')
