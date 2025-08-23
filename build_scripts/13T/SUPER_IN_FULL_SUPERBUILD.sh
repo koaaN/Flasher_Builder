@@ -11,7 +11,7 @@ fi
 input_file="$(realpath "$1")"
 input_dir="$(dirname "$input_file")"
 
-# Skriptverzeichnis (enthält Template/BLOAT/16DTBO)
+# Skriptverzeichnis (enthält Template)
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
 # otaripper (Linux)
@@ -66,15 +66,7 @@ for f in "${part_list[@]}"; do
   [[ -f "$new_folder/$f" ]] && mv -f "$new_folder/$f" "$super_work/"
 done
 
-# 6) IN_BLOAT → Super/
-in_bloat="$script_dir/IN_BLOAT"
-for f in my_preload.img my_company.img; do
-  if [[ -f "$in_bloat/$f" ]]; then
-    cp -f "$in_bloat/$f" "$super_work/"
-  else
-    echo "WARN: $f fehlt in $in_bloat"
-  fi
-done
+# 6) (entfällt) IN_BLOAT -> Super/  (wie in der .bat: keine zusätzlichen Bloat-Images)
 
 # 7) Rest nach OOS_FILES_HERE/
 mkdir -p "$oos_here"
@@ -83,18 +75,10 @@ if compgen -G "$new_folder/*" >/dev/null; then
   mv -f "$new_folder"/* "$oos_here/" || true
 fi
 shopt -u dotglob
-
 rm -rf "$new_folder"
 echo "Done moving files into Super Flasher."
 
-# 8) 16DTBO/dtbo.img → OOS_FILES_HERE
-dtbo_src="$script_dir/16DTBO/dtbo.img"
-if [[ -f "$dtbo_src" ]]; then
-  cp -f "$dtbo_src" "$oos_here/"
-  echo "16.0.0.1 dtbo.img copied into OOS_FILES_HERE."
-else
-  echo "WARN: dtbo.img nicht gefunden in $dtbo_src"
-fi
+# 8) (entfällt) 16DTBO/dtbo.img -> OOS_FILES_HERE  (wie in der .bat: kein zusätzliches dtbo.img)
 
 # 9) super.img packen
 packer="$super_work/super_oos.sh"
