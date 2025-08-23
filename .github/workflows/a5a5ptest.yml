@@ -520,47 +520,47 @@ jobs:
           # Expose for next steps
           "WORK_DIR=$workDir" | Out-File -FilePath $env:GITHUB_ENV -Append
 
-      # --- Patch RegionalHybrid builder to avoid "Invalid drive specification"
-      - name: Patch RegionalHybrid builder (force pushd, fix %~d1/%~p1)
+      # --- Patch REGIONALHYBRID builder to be cross-drive safe
+      - name: Patch RegionalHybrid builder (force pushd, strip %~d1/%~p1)
         if: contains(env.BUILDER_BAT, 'REGIONALHYBRID')
         shell: pwsh
         working-directory: ${{ env.OUT_DIR }}
         run: |
           $bat = Join-Path $PWD $env:BUILDER_BAT
-          if (-not (Test-Path $bat)) { throw "Builder not found: $bat" }
+          if (!(Test-Path $bat)) { throw "Builder not found: $bat" }
       
+          # keep a backup
           Copy-Item $bat ($bat + '.orig') -Force
+      
           $txt = Get-Content -LiteralPath $bat -Raw
       
-          # Prelude (no here-strings)
-          $preludeLines = @(
+          # Prepend a robust prelude that always runs from the OTA directory
+          $pre = @(
             '@echo off'
             'setlocal enableextensions'
             'set "_ARG1=%~f1"'
             'set "_ARGDIR=%~dp1"'
-            'set "_ARGDRIVE=%~d1"'
-            'if not defined _ARG1 ('
-            '  echo ERROR: No OTA argument passed.& exit /b 2'
-            ')'
-            'rem Force drive+folder to the OTA''s directory (cross-drive safe)'
+            'if not defined _ARG1 (echo ERROR: No OTA argument passed.& exit /b 2)'
+            'rem Force current dir to the OTA location (cross-drive safe)'
             'pushd "%_ARGDIR%" || (echo ERROR: pushd "%_ARGDIR%" failed.& exit /b 3)'
           ) -join "`r`n"
       
-          if ($txt -notmatch '(?im)^\s*set\s+"?_ARG1=') {
-            $txt = $preludeLines + "`r`n" + $txt
+          if ($txt -notmatch '(?im)^\s*pushd\s+"%_ARGDIR%"') {
+            $txt = $pre + "`r`n" + $txt
           }
       
-          # Fix common drag & drop patterns that break on cross-drive calls
-          $txt = [regex]::Replace($txt, '(?im)^\s*cd\s+%~d([0-9])\b', 'cd /d %~d$1\')
-          $txt = [regex]::Replace($txt, '(?im)^\s*cd\s+%~dp([0-9])\b', 'cd /d "%~dp$1"')
-          $txt = [regex]::Replace($txt, '(?im)%~d([0-9])\s*&&\s*cd\s+%~p\1', 'pushd "%~dp$1"')
-          $txt = $txt -replace '%~d([0-9])%~p\1','%~dp$1'
-          $txt = $txt -replace '%~d([0-9])\\%~p\1','%~dp$1'
+          # Normalize classic drag&drop patterns to a single pushd "%~dp1"
+          $txt = [regex]::Replace($txt,'(?im)^\s*cd\s+/d?\s*"?%~dp?1"?\s*$', 'pushd "%~dp1"')
+          $txt = [regex]::Replace($txt,'(?im)%~d1\s*&&\s*cd\s+%~p1',         'pushd "%~dp1"')
+          $txt = [regex]::Replace($txt,'(?im)^\s*cd\s+%~p1\s*$',             'pushd "%~dp1"')
+          $txt = $txt -replace '%~d1%~p1','%~dp1'
+          $txt = $txt -replace '%~d1\\%~p1','%~dp1'
+          $txt = [regex]::Replace($txt,'(?im)^\s*%~d1\s*$', 'rem (stripped bare %~d1)')
       
           Set-Content -LiteralPath $bat -Value $txt -Encoding ascii
           Write-Host "Patched $($env:BUILDER_BAT)."
 
-
+      # --- Run the (now patched) builder from the OTA folder with full OTA path
       - name: Run builder (Explorer-style drag & drop)
         shell: cmd
         working-directory: ${{ env.OTA_DIR }}
