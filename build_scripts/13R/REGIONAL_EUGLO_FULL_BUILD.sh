@@ -61,15 +61,7 @@ if compgen -G "$new_folder/*" >/dev/null; then
 fi
 shopt -u dotglob
 
-# 6) EUGLO_BLOAT -> OOS_FILES_HERE: my_preload.img & my_company.img
-euglo_bloat="$script_dir/EUGLO_BLOAT"
-for f in my_preload.img my_company.img; do
-  if [[ -f "$euglo_bloat/$f" ]]; then
-    cp -f "$euglo_bloat/$f" "$oos_here/"
-  else
-    echo "WARN: $f nicht gefunden in $euglo_bloat"
-  fi
-done
+# 6) (entfällt) EUGLO_BLOAT -> OOS_FILES_HERE  # wie in der .bat KEINE Bloat-Kopien
 
 # 7) temporären Extraktordner löschen
 rm -rf "$new_folder"
