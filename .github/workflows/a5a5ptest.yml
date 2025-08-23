@@ -385,7 +385,7 @@ jobs:
       
           # ALWAYS copy Platform-Tools into flasher dir
           $ptSrc = Join-Path $root 'Platform-Tools'
-          if (Test-Path $ptSrc)) {
+          if (Test-Path $ptSrc) {
             $ptDst = Join-Path $workDir 'Platform-Tools'
             New-Item -ItemType Directory -Force -Path $ptDst | Out-Null
             Copy-Item "$ptSrc\*" -Destination $ptDst -Recurse -Force
