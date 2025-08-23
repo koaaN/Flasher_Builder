@@ -605,9 +605,18 @@ jobs:
       
           # --- Find builder output next to the OTA ---
           $byFtype = switch ($ftype) {
-            'SuperHybrid Flasher'       { @('SuperHybrid Flasher') }
-            'RegionalHybrid Flasher'    { @('RegionalHybrid Flasher') }
-            'SuperHybrid SunOS Flasher' { @('SuperHybrid SunOS Flasher') }
+            'SuperHybrid Flasher' {
+              if ($region -eq 'CN') { @('SuperHybrid Flasher CN','SuperHybrid Flasher') }
+              else                  { @('SuperHybrid Flasher') }
+            }
+            'RegionalHybrid Flasher' {
+              if ($region -eq 'CN') { @('RegionalHybrid Flasher CN','RegionalHybrid Flasher') }
+              else                  { @('RegionalHybrid Flasher') }
+            }
+            'SuperHybrid SunOS Flasher' {
+              if ($region -eq 'CN') { @('SuperHybrid SunOS Flasher CN','SuperHybrid SunOS Flasher') }
+              else                  { @('SuperHybrid SunOS Flasher') }
+            }
             'Super Flasher' {
               if ( ($dev -in @('13R','13T','Ace5','Ace5P','Ace5Pro')) -and ($region -eq 'CN') ) { @('Super Flasher CN') } else { @('Super Flasher') }
             }
@@ -616,7 +625,10 @@ jobs:
             }
             default { @() }
           }
+      
           $fallback = @(
+            'SuperHybrid Flasher CN',
+            'RegionalHybrid Flasher CN',
             'Regional Flasher CN',
             'Regional Flasher',
             'Super Flasher CN',
@@ -625,7 +637,11 @@ jobs:
             'RegionalHybrid Flasher',
             'SuperHybrid SunOS Flasher'
           )
+      
           $candidates = @() + $byFtype + $fallback | Select-Object -Unique
+      
+          Write-Host "Looking for builder output in: $otaDir"
+          Get-ChildItem -LiteralPath $otaDir -Directory | ForEach-Object { Write-Host " - found dir: $($_.Name)" }
       
           $resultDir = $null
           foreach ($name in $candidates) {
@@ -661,32 +677,18 @@ jobs:
               $osTag = if ($region -eq 'CN') { 'COS' } else { 'OOS' }
               $artifactBase = "{0} 13T {1} {2}" -f $ftype, $osTag, $ver
             }
-            '13S' {
-              $artifactBase = "{0} 13S {1}" -f $ftype, $ver
-            }
-            '13R' {
-              $artifactBase = "{0} 13R {1} {2}" -f $ftype, (RegionDisp $region), $ver
-            }
-            '13' {
-              $artifactBase = "{0} {1} {2}" -f $ftype, (RegionDisp $region), $ver
-            }
+            '13S' { $artifactBase = "{0} 13S {1}" -f $ftype, $ver }
+            '13R' { $artifactBase = "{0} 13R {1} {2}" -f $ftype, (RegionDisp $region), $ver }
+            '13'  { $artifactBase = "{0} {1} {2}" -f $ftype, (RegionDisp $region), $ver }
             'Ace5' {
-              if ($region -eq 'CN') {
-                $artifactBase = "{0} A5 COS {1}" -f $ftype, $ver
-              } else {
-                $artifactBase = "{0} A5 {1} OOS+COS ODM {2}" -f $ftype, (RegionDisp $region), $ver
-              }
+              if ($region -eq 'CN') { $artifactBase = "{0} A5 COS {1}" -f $ftype, $ver }
+              else                  { $artifactBase = "{0} A5 {1} OOS+COS ODM {2}" -f $ftype, (RegionDisp $region), $ver }
             }
             'Ace5P' {
-              if ($region -eq 'CN') {
-                $artifactBase = "{0} A5P COS {1}" -f $ftype, $ver
-              } else {
-                $artifactBase = "{0} A5P {1} OOS+COS ODM {2}" -f $ftype, (RegionDisp $region), $ver
-              }
+              if ($region -eq 'CN') { $artifactBase = "{0} A5P COS {1}" -f $ftype, $ver }
+              else                  { $artifactBase = "{0} A5P {1} OOS+COS ODM {2}" -f $ftype, (RegionDisp $region), $ver }
             }
-            default {
-              $artifactBase = "{0} {1} {2}" -f $ftype, (RegionDisp $region), $ver
-            }
+            default { $artifactBase = "{0} {1} {2}" -f $ftype, (RegionDisp $region), $ver }
           }
       
           $zipPath = Join-Path $zipRoot ($artifactBase + '.zip')
@@ -702,6 +704,7 @@ jobs:
       
           "ARTIFACT_NAME=$artifactBase" | Out-File -FilePath $env:GITHUB_ENV -Append
           "ZIP_FILE=$zipPath"           | Out-File -FilePath $env:GITHUB_ENV -Append
+
 
       - name: Compute upload paths
         shell: pwsh
