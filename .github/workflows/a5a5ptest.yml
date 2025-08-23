@@ -319,10 +319,10 @@ jobs:
           $builderSrc = Join-Path $builderDir $env:BUILDER_BAT
           if (Test-Path $builderSrc) { Copy-Item $builderSrc -Destination $env:OUT_DIR -Force }
       
-          # Working folder name (CN suffix for 13 SuperHybrid CN)
+          # --- WORK FOLDER NAME (add CN variant for OnePlus 13 RegionalHybrid) ---
           $workName = switch ($ftype) {
             'SuperHybrid Flasher'       { if ($dev -eq '13' -and $region -eq 'CN') { 'SuperHybrid Flasher CN' } else { 'SuperHybrid Flasher' } }
-            'RegionalHybrid Flasher'    { 'RegionalHybrid Flasher' }
+            'RegionalHybrid Flasher'    { if ($dev -eq '13' -and $region -eq 'CN') { 'RegionalHybrid Flasher CN' } else { 'RegionalHybrid Flasher' } }
             'SuperHybrid SunOS Flasher' { 'SuperHybrid SunOS Flasher' }
             'Super Flasher' {
               if ( ($dev -in @('13R','13T','Ace5')) -and ($region -eq 'CN') ) { 'Super Flasher CN' } else { 'Super Flasher' }
@@ -498,11 +498,10 @@ jobs:
               }
             }
       
-            # Ace 5 CN: A5_DEBLOAT pair into OOS_FILES_HERE
+            # Ace 5 CN debloat pairs
             if ($dev -eq 'Ace5' -and $region -eq 'CN') {
               Copy-DebloatPair -debloatDir (Join-Path $bloatBase 'A5_DEBLOAT') -dest $oosHere
             }
-            # Ace 5 Pro CN: A5P_DEBLOAT pair into OOS_FILES_HERE
             if ($dev -eq 'Ace5Pro' -and $region -eq 'CN') {
               Copy-DebloatPair -debloatDir (Join-Path $bloatBase 'A5P_DEBLOAT') -dest $oosHere
             }
@@ -546,6 +545,7 @@ jobs:
       
           # Expose for next steps
           "WORK_DIR=$workDir" | Out-File -FilePath $env:GITHUB_ENV -Append
+
 
       - name: Patch RegionalHybrid builder (force pushd, strip %~d1/%~p1)
         if: contains(env.BUILDER_BAT, 'REGIONALHYBRID')
@@ -704,7 +704,6 @@ jobs:
       
           "ARTIFACT_NAME=$artifactBase" | Out-File -FilePath $env:GITHUB_ENV -Append
           "ZIP_FILE=$zipPath"           | Out-File -FilePath $env:GITHUB_ENV -Append
-
 
       - name: Compute upload paths
         shell: pwsh
