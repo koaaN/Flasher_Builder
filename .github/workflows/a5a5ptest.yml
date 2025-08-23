@@ -894,7 +894,7 @@ jobs:
           zip_dir="${zip_dir#/}"  # evtl. führenden Slash entfernen
           zip_plain="${zip_dir}${artifact}.zip"
 
-          zip_param="$(python3 -c 'import sys,urllib.parse;print(urllib.parse.quote(sys.argv[1], safe=\"\"))' "$zip_plain")"
+          zip_param="$(python3 -c 'import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$zip_plain")"
           zip_param="${zip_param//%20/+}"
 
           # COS vs OOS Folder im ZIP
