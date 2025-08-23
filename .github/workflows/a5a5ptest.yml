@@ -737,7 +737,7 @@ jobs:
           if [ -n "$seven" ]; then
             "$seven" a -tzip -mm=Deflate -mx=5 -mfb=32 -mmt=on "$zip_path" .
           else
-            zip -qr -5 "$zip_path" .
+            zip -qr -1 "$zip_path" .
           fi
 
           [ -f "$zip_path" ] || { echo "Packaging failed: ZIP not created at $zip_path"; exit 1; }
