@@ -302,7 +302,7 @@ jobs:
           $region = $env:REGION
           $root   = $env:GITHUB_WORKSPACE
       
-          # Ace 5 Pro shares the 'Ace5' trees
+          # Ace 5 Pro shares the 'Ace5' trees for build scripts & bloat
           if ($dev -in @('Ace5','Ace5Pro')) { $scriptDev = 'Ace5' } else { $scriptDev = $dev }
       
           $builderDir = Join-Path $root ("build_scripts\" + $scriptDev)
@@ -334,17 +334,39 @@ jobs:
           $workDir = Join-Path $env:OUT_DIR $workName
           New-Item -ItemType Directory -Force -Path $workDir | Out-Null
       
-          # Template root selection
-          $tplBase = Join-Path $root ("flasher_scripts\" + $scriptDev)
-          if ($ftype -like '*Hybrid*') {
-            $tplBase = Join-Path $tplBase ($(if ($region -eq 'CN') { 'cos' } else { 'oos' }))
-            $tplBase = Join-Path $tplBase ($(if ($ftype -like '*Super*') { 'super' } else { 'regional' }))
-          } elseif ($ftype -eq 'Super Flasher') {
-            if ( ($dev -in @('13T','Ace5')) -and ($region -eq 'CN') ) { $tplBase = Join-Path $tplBase 'cos\super' }
-            else { $tplBase = Join-Path $tplBase 'oos\super' }
-          } elseif ($ftype -eq 'Regional Flasher') {
-            if ( ($dev -in @('13R','Ace5','Ace5Pro')) -and ($region -eq 'CN') ) { $tplBase = Join-Path $tplBase 'cos\regional' }
-            else { $tplBase = Join-Path $tplBase 'oos\regional' }
+          # -----------------------------
+          # Template root selection (+ copy)
+          # -----------------------------
+      
+          # For flasher_scripts, Ace5Pro uses Ace5 tree
+          $tplDev = if ($dev -in @('Ace5','Ace5Pro')) { 'Ace5' } else { $dev }
+      
+          function Get-OsSubtree([string]$dev,[string]$ftype,[string]$region) {
+            if ($ftype -like '*Hybrid*') { return (($region -eq 'CN') ? 'cos' : 'oos') }
+            if ($ftype -eq 'Regional Flasher') { return (($region -eq 'CN') ? 'cos' : 'oos') }
+            if ($ftype -eq 'Super Flasher') {
+              # CN super for specific devices -> cos\super, else oos\super
+              if ( ($dev -in @('13T','Ace5')) -and ($region -eq 'CN') ) { return 'cos' }
+              return 'oos'
+            }
+            return 'oos'
+          }
+      
+          $osSub  = Get-OsSubtree -dev $dev -ftype $ftype -region $region
+          $kind   = ($ftype -like '*Super*') ? 'super' : 'regional'
+      
+          $tplBase = Join-Path $root ("flasher_scripts\" + $tplDev)
+          $tplBase = Join-Path $tplBase $osSub
+          $tplBase = Join-Path $tplBase $kind
+      
+          # Hard rule: Ace5 Pro CN + Regional Flasher must come from Ace5\cos\regional
+          if ($dev -eq 'Ace5Pro' -and $ftype -eq 'Regional Flasher' -and $region -eq 'CN') {
+            $tplBase = Join-Path $root 'flasher_scripts\Ace5\cos\regional'
+          }
+      
+          Write-Host ("Using flasher template: {0}" -f $tplBase)
+          if (-not (Test-Path $tplBase)) {
+            throw "Flasher template not found: $tplBase (dev=$dev, ftype=$ftype, region=$region)"
           }
       
           # Copy template
