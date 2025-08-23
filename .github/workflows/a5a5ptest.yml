@@ -212,7 +212,7 @@ jobs:
           Write-Host "Selected builder: $batName (dev=$dev, region=$region, type=$ftype)"
 
 
-      - name: Stage files (13-series + Ace 5 *** Ace 5 Pro; hybrid LF fix)
+      - name: Stage files (13-series + Ace 5 / Ace 5 Pro; hybrid LF fix)
         shell: pwsh
         run: |
           #-----------------------------
@@ -319,11 +319,11 @@ jobs:
           $builderSrc = Join-Path $builderDir $env:BUILDER_BAT
           if (Test-Path $builderSrc) { Copy-Item $builderSrc -Destination $env:OUT_DIR -Force }
       
-          # --- WORK FOLDER NAME (add CN variant for OnePlus 13 RegionalHybrid) ---
+          # Working folder name (add CN variants where needed)
           $workName = switch ($ftype) {
             'SuperHybrid Flasher'       { if ($dev -eq '13' -and $region -eq 'CN') { 'SuperHybrid Flasher CN' } else { 'SuperHybrid Flasher' } }
-            'RegionalHybrid Flasher'    { if ($dev -eq '13' -and $region -eq 'CN') { 'RegionalHybrid Flasher CN' } else { 'RegionalHybrid Flasher' } }
-            'SuperHybrid SunOS Flasher' { 'SuperHybrid SunOS Flasher' }
+            'RegionalHybrid Flasher'    { if ($region -eq 'CN') { 'RegionalHybrid Flasher CN' } else { 'RegionalHybrid Flasher' } }
+            'SuperHybrid SunOS Flasher' { if ($region -eq 'CN') { 'SuperHybrid SunOS Flasher CN' } else { 'SuperHybrid SunOS Flasher' } }
             'Super Flasher' {
               if ( ($dev -in @('13R','13T','Ace5')) -and ($region -eq 'CN') ) { 'Super Flasher CN' } else { 'Super Flasher' }
             }
@@ -340,8 +340,8 @@ jobs:
           $tplDev = if ($dev -in @('Ace5','Ace5Pro')) { 'Ace5' } else { $dev }
       
           function Get-OsSubtree([string]$dev,[string]$ftype,[string]$region) {
-            if ($ftype -like '*Hybrid*') { return (($region -eq 'CN') ? 'cos' : 'oos') }
-            if ($ftype -eq 'Regional Flasher') { return (($region -eq 'CN') ? 'cos' : 'oos') }
+            if ($ftype -like '*Hybrid*')      { return (($region -eq 'CN') ? 'cos' : 'oos') }
+            if ($ftype -eq 'Regional Flasher'){ return (($region -eq 'CN') ? 'cos' : 'oos') }
             if ($ftype -eq 'Super Flasher') {
               if ( ($dev -in @('13T','Ace5')) -and ($region -eq 'CN') ) { return 'cos' }
               return 'oos'
@@ -480,14 +480,44 @@ jobs:
           if ($ftype -in @('Regional Flasher','RegionalHybrid Flasher')) {
             $oosHere = Join-Path $workDir 'OOS_FILES_HERE'
             New-Item -ItemType Directory -Force -Path $oosHere | Out-Null
-            $bloatFolder = Get-BloatFolder -dev $dev -region $region
-            Copy-BloatFromFolder -base $bloatBase -folder $bloatFolder -dest $oosHere
       
+            # Decide OOS bloat source
+            $bloatFolderOOS = $null
+            if ($dev -eq '13' -and $ftype -eq 'RegionalHybrid Flasher' -and $region -eq 'CN') {
+              # SPECIAL: 13 • RegionalHybrid • CN → OOS must use EUGLO_BLOAT
+              $bloatFolderOOS = 'EUGLO_BLOAT'
+            } else {
+              $bloatFolderOOS = Get-BloatFolder -dev $dev -region $region
+            }
+      
+            # For RegionalHybrid (non-CN), skip these files in OOS
+            $skipOOS = @()
+            if ($ftype -eq 'RegionalHybrid Flasher' -and $region -in @('GLO','EU','IN','NA')) {
+              $skipOOS = @('odm.img','oplusstanvbk.img','my_region.img')
+            }
+      
+            if ($bloatFolderOOS) {
+              Copy-BloatFromFolder -base $bloatBase -folder $bloatFolderOOS -dest $oosHere -skip $skipOOS
+            }
+      
+            # COS side (only for CN regions)
             if ($region -eq 'CN') {
               $cosHere = Join-Path $workDir 'COS_FILES_HERE'
               New-Item -ItemType Directory -Force -Path $cosHere | Out-Null
-              $cnFolder = if ($dev -eq 'Ace5Pro') { 'A5P_BLOAT' } else { 'CN_BLOAT' }
-              Copy-BloatFromFolder -base $bloatBase -folder $cnFolder -dest $cosHere
+      
+              if ($dev -eq 'Ace5Pro') {
+                # A5P CN keeps full A5P_BLOAT in COS
+                Copy-BloatFromFolder -base $bloatBase -folder 'A5P_BLOAT' -dest $cosHere
+              }
+              elseif ($dev -eq '13' -and $ftype -eq 'RegionalHybrid Flasher') {
+                # 13 • RegionalHybrid • CN → COS gets ONLY my_preload (stub ok) + my_company.img
+                # (Skip odm.img, oplusstanvbk.img, my_region.img)
+                Copy-BloatFromFolder -base $bloatBase -folder 'CN_BLOAT' -dest $cosHere -skip @('odm.img','oplusstanvbk.img','my_region.img')
+              }
+              else {
+                # Other CN devices keep full CN_BLOAT in COS
+                Copy-BloatFromFolder -base $bloatBase -folder 'CN_BLOAT' -dest $cosHere
+              }
             }
       
             # 13S + Regional IN: ensure two files in OOS_FILES_HERE
@@ -498,10 +528,11 @@ jobs:
               }
             }
       
-            # Ace 5 CN debloat pairs
+            # Ace 5 CN: A5_DEBLOAT pair into OOS_FILES_HERE
             if ($dev -eq 'Ace5' -and $region -eq 'CN') {
               Copy-DebloatPair -debloatDir (Join-Path $bloatBase 'A5_DEBLOAT') -dest $oosHere
             }
+            # Ace 5 Pro CN: A5P_DEBLOAT pair into OOS_FILES_HERE
             if ($dev -eq 'Ace5Pro' -and $region -eq 'CN') {
               Copy-DebloatPair -debloatDir (Join-Path $bloatBase 'A5P_DEBLOAT') -dest $oosHere
             }
@@ -535,17 +566,18 @@ jobs:
               Write-Host "Moved stray 16DTBO from working folder to MAIN."
             }
       
-            # IMPORTANT: For 13 hybrids (all regions), DO NOT stage COS files.
-            $cosFolder = Join-Path $workDir 'COS_FILES_HERE'
-            if (Test-Path $cosFolder) {
-              Write-Host "Removing stray COS_FILES_HERE for 13 hybrids..."
-              Remove-Item $cosFolder -Recurse -Force -ErrorAction SilentlyContinue
+            # IMPORTANT: For 13 hybrids (all regions), DO NOT stage COS files in this block.
+            if ($region -eq 'CN' -and $ftype -eq 'SuperHybrid Flasher') {
+              $cosFolder = Join-Path $workDir 'COS_FILES_HERE'
+              if (Test-Path $cosFolder) {
+                Write-Host "Removing stray COS_FILES_HERE for 13 SuperHybrid CN..."
+                Remove-Item $cosFolder -Recurse -Force -ErrorAction SilentlyContinue
+              }
             }
           }
       
           # Expose for next steps
           "WORK_DIR=$workDir" | Out-File -FilePath $env:GITHUB_ENV -Append
-
 
       - name: Patch RegionalHybrid builder (force pushd, strip %~d1/%~p1)
         if: contains(env.BUILDER_BAT, 'REGIONALHYBRID')
