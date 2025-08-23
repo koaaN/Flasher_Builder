@@ -545,7 +545,8 @@ jobs:
             mkdir -p "$fb_dir" "$fbd_dir"
 
             # Liste der 23 festen Partitionen (ohne .img)
-            parts=(abl aop bluetooth cpucp devcfg dsp engineering_cdt featenabler hyp imagefv keymaster modem multiimgoem my_carrier my_product my_stock odm qupfw shrm tz uefi uefisecapp xbl xbl_config)
+            parts=(abl aop aop_config bluetooth cpucp cpucp_dtb devcfg dsp engineering_cdt featenabler hyp imagefv keymaster oplus_sec qupfw shrm splash tz uefi uefisecapp xbl xbl_config xbl_ramdump)
+
 
             base_url="https://roms.danielspringer.at/download.php?file=Files%2FBloat%2F13%2FSunOS%2F"
 
