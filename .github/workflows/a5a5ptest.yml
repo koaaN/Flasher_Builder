@@ -319,9 +319,13 @@ jobs:
           $builderSrc = Join-Path $builderDir $env:BUILDER_BAT
           if (Test-Path $builderSrc) { Copy-Item $builderSrc -Destination $env:OUT_DIR -Force }
       
+          # -----------------------------
           # Working folder name (CN suffix where required)
+          # -----------------------------
           $workName = switch ($ftype) {
-            'SuperHybrid Flasher'       { 'SuperHybrid Flasher' }
+            'SuperHybrid Flasher' {
+              if ($region -eq 'CN') { 'SuperHybrid Flasher CN' } else { 'SuperHybrid Flasher' }
+            }
             'RegionalHybrid Flasher'    { 'RegionalHybrid Flasher' }
             'SuperHybrid SunOS Flasher' { 'SuperHybrid SunOS Flasher' }
             'Super Flasher' {
@@ -333,6 +337,7 @@ jobs:
           }
           $workDir = Join-Path $env:OUT_DIR $workName
           New-Item -ItemType Directory -Force -Path $workDir | Out-Null
+          Write-Host "WORK DIR set to: $workDir"
       
           # -----------------------------
           # Template root selection (+ copy)
@@ -517,7 +522,6 @@ jobs:
       
           "WORK_DIR=$workDir" | Out-File -FilePath $env:GITHUB_ENV -Append
 
-      
       - name: Patch RegionalHybrid builder (force pushd, strip %~d1/%~p1)
         if: contains(env.BUILDER_BAT, 'REGIONALHYBRID')
         shell: pwsh
