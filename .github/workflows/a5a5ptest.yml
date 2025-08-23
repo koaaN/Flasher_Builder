@@ -892,7 +892,7 @@ jobs:
           zip_param="$(python3 -c 'import sys,urllib.parse;print(urllib.parse.quote(sys.argv[1],safe=""))' "$zip_plain")"
           zip_param="${zip_param//%20/+}"
 
-          # COS vs OOS Folder im ZIP (CN => COS_FILES_HERE, sonst OOS_FILES_HERE)
+          # COS vs OOS Folder im ZIP
           if [[ "$region" == "CN" ]]; then img_folder="COS_FILES_HERE"; else img_folder="OOS_FILES_HERE"; fi
           boot_param="$(python3 -c 'import sys,urllib.parse;print(urllib.parse.quote(sys.argv[1],safe=""))' "${img_folder}/boot.img")"
           boot_param="${boot_param//%20/+}"
@@ -902,50 +902,53 @@ jobs:
           boot_link="https://roms.danielspringer.at/download_from_zip.php?zip=${zip_param}&file=${boot_param}"
           init_boot_link="https://roms.danielspringer.at/download_from_zip.php?zip=${zip_param}&file=${init_boot_param}"
 
-          # Übergabe an Python via ENV (vermeidet Here-Doc-Quote-Probleme)
+          # Pfad für Payload-Datei
+          payload_path="$RUNNER_TEMP/tg_payload.json"
+
+          # Variablen an Python via ENV
           export TG_DEVICE="$device_disp"
           export TG_ARTIFACT="$artifact"
           export TG_ZIP_LINK="$zip_link"
           export TG_BOOT_LINK="$boot_link"
           export TG_INIT_BOOT_LINK="$init_boot_link"
-          payload_path="$RUNNER_TEMP/tg_payload.json"
+          export TG_PAYLOAD_PATH="$payload_path"
 
-          python3 <<PY
-import json, os
-device = os.environ["TG_DEVICE"]
-artifact = os.environ["TG_ARTIFACT"]
-zip_link = os.environ["TG_ZIP_LINK"]
-boot_link = os.environ["TG_BOOT_LINK"]
-init_boot_link = os.environ["TG_INIT_BOOT_LINK"]
+          # JSON in Datei schreiben (ohne Here-Doc)
+          python3 -c "
+import os, json
+device = os.environ['TG_DEVICE']
+artifact = os.environ['TG_ARTIFACT']
+zip_link = os.environ['TG_ZIP_LINK']
+boot_link = os.environ['TG_BOOT_LINK']
+init_boot_link = os.environ['TG_INIT_BOOT_LINK']
+out = os.environ['TG_PAYLOAD_PATH']
 
-sparkle = "\u2728"
-dl = "\u2B07"
-pkg = "\U0001F4E6"  # 📦
+sparkle = '\u2728'
+dl = '\u2B07'
+pkg = '\U0001F4E6'
 
-msg = f"{sparkle} <b>New Build released</b> {sparkle}\n{device} <b>{artifact}</b>"
+msg = f'{sparkle} <b>New Build released</b> {sparkle}\n{device} <b>{artifact}</b>'
 payload = {
-  "chat_id": -1001902568181,
-  "text": msg,
-  "parse_mode": "HTML",
-  "disable_web_page_preview": True,
-  "reply_markup": {
-    "inline_keyboard": [
-      [{ "text": f"{dl} Download ZIP", "url": zip_link }],
-      [
-        { "text": f"{pkg} boot.img", "url": boot_link },
-        { "text": f"{pkg} init_boot.img", "url": init_boot_link }
-      ]
+  'chat_id': -1001902568181,
+  'text': msg,
+  'parse_mode': 'HTML',
+  'disable_web_page_preview': True,
+  'reply_markup': {
+    'inline_keyboard': [
+      [ { 'text': f'{dl} Download ZIP', 'url': zip_link } ],
+      [ { 'text': f'{pkg} boot.img', 'url': boot_link },
+        { 'text': f'{pkg} init_boot.img', 'url': init_boot_link } ]
     ]
   }
 }
-open(os.environ.get("RUNNER_TEMP", "/tmp") + "/tg_payload.json", "w", encoding="utf-8").write(
-  json.dumps(payload, ensure_ascii=False, separators=(",",":"))
-)
-PY
+open(out, 'w', encoding='utf-8').write(json.dumps(payload, ensure_ascii=False, separators=(',',':')))
+"
 
+          # Absenden
           curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
                -H "Content-Type: application/json; charset=utf-8" \
                --data-binary "@${payload_path}"
+
 
 
 
