@@ -889,8 +889,12 @@ jobs:
           zip_link="https://roms.danielspringer.at/download.php?file=${enc_raw}&download=true"
 
           # Pfad für download_from_zip.php (ohne "Files/")
-          zip_plain="${device_disp}/${type_dir}/${region_dir}/${artifact}.zip"
-          zip_param="$(python3 -c 'import sys,urllib.parse;print(urllib.parse.quote(sys.argv[1],safe=""))' "$zip_plain")"
+          zip_dir="$ftp_rel_dir"
+          zip_dir="${zip_dir#Files/}"
+          zip_dir="${zip_dir#/}"  # evtl. führenden Slash entfernen
+          zip_plain="${zip_dir}${artifact}.zip"
+
+          zip_param="$(python3 -c 'import sys,urllib.parse;print(urllib.parse.quote(sys.argv[1], safe=\"\"))' "$zip_plain")"
           zip_param="${zip_param//%20/+}"
 
           # COS vs OOS Folder im ZIP
