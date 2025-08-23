@@ -286,7 +286,6 @@ jobs:
             try {
               $raw = Get-Content -LiteralPath $up -Raw
               $lf  = ($raw -replace "`r`n","`n") -replace "`r","`n"
-              # Write without BOM; LF is preserved in content
               Set-Content -LiteralPath $up -Value $lf -Encoding ascii -NoNewline
               Write-Host ("Normalized line endings to LF for: {0}" -f $up)
             } catch {
@@ -297,16 +296,23 @@ jobs:
           #-----------------------------
           # Inputs / paths
           #-----------------------------
-          $dev    = $env:DEV        # 13,13R,13S,13T,Ace5,Ace5Pro
+          $devRaw = "$($env:DEV)".Trim()
+          # Fix accidental duplication like "Ace5Pro Ace5Pro"
+          $devTok = ($devRaw -split '\s+') | Where-Object { $_ -ne '' }
+          if ($devTok.Count -ge 2 -and ($devTok[0] -eq $devTok[1])) { $devTok = @($devTok[0]) }
+          $dev    = $devTok[0]
+      
           $ftype  = $env:FTYPE
           $region = $env:REGION
           $root   = $env:GITHUB_WORKSPACE
       
+          Write-Host "DEV(raw)='$devRaw'  →  DEV(norm)='$dev' • FTYPE='$ftype' • REGION='$region'"
+      
           # Ace 5 Pro shares the 'Ace5' trees for build scripts & bloat
-          if ($dev -in @('Ace5','Ace5Pro')) { $scriptDev = 'Ace5' } else { $scriptDev = $dev }
+          $scriptDev = ($dev -in @('Ace5','Ace5Pro')) ? 'Ace5' : $dev
       
           $builderDir = Join-Path $root ("build_scripts\" + $scriptDev)
-          if ($dev -in @('Ace5','Ace5Pro')) { $bloatDev = 'Ace5' } else { $bloatDev = $dev }
+          $bloatDev   = $scriptDev
           $bloatBase  = Join-Path $root ("bloat\" + $bloatDev)
       
           # Fresh OUT_DIR
@@ -337,15 +343,12 @@ jobs:
           # -----------------------------
           # Template root selection (+ copy)
           # -----------------------------
-      
-          # For flasher_scripts, Ace5Pro uses Ace5 tree
-          $tplDev = if ($dev -in @('Ace5','Ace5Pro')) { 'Ace5' } else { $dev }
+          $tplDev = ($dev -in @('Ace5','Ace5Pro')) ? 'Ace5' : $dev
       
           function Get-OsSubtree([string]$dev,[string]$ftype,[string]$region) {
             if ($ftype -like '*Hybrid*') { return (($region -eq 'CN') ? 'cos' : 'oos') }
             if ($ftype -eq 'Regional Flasher') { return (($region -eq 'CN') ? 'cos' : 'oos') }
             if ($ftype -eq 'Super Flasher') {
-              # CN super for specific devices -> cos\super, else oos\super
               if ( ($dev -in @('13T','Ace5')) -and ($region -eq 'CN') ) { return 'cos' }
               return 'oos'
             }
@@ -397,7 +400,6 @@ jobs:
             Write-Warning ("Platform-Tools not found at repo root: {0}" -f $ptSrc)
           }
       
-          # Utility: choose bloat folder by device + region
           function Get-BloatFolder {
             param([string]$dev,[string]$region)
             switch ($dev) {
@@ -416,7 +418,8 @@ jobs:
             Copy-Item (Join-Path $root 'lpmake\lpmake.exe')  -Destination $superDir -Force
             Copy-Item (Join-Path $root 'lpmake\cygwin1.dll') -Destination $superDir -Force
       
-            # packer scripts
+            $bloatFolder = Get-BloatFolder -dev $dev -region $region
+      
             if ($dev -eq '13T') {
               $pdir = Join-Path $root 'super_packers\13T'
               Copy-Item (Join-Path $pdir ($(if ($region -eq 'CN') { 'super_cos.bat' } else { 'super_oos.bat' }))) -Destination $superDir -Force
@@ -428,37 +431,19 @@ jobs:
               if (Test-Path $p) { Copy-Item $p -Destination $superDir -Force }
             }
       
-            # Standard bloat into Super\ (with 13T-IN exception)
-            $bloatFolder = Get-BloatFolder -dev $dev -region $region
             if ($dev -eq '13T' -and $ftype -eq 'Super Flasher' -and $region -eq 'IN') {
-              # Skip 3 files, they go to COS_FILES_HERE
               Copy-BloatFromFolder -base $bloatBase -folder $bloatFolder -dest $superDir -skip @('my_region.img','oplusstanvbk.img','odm.img')
               $cosHere = Join-Path $workDir 'COS_FILES_HERE'
               New-Item -ItemType Directory -Force -Path $cosHere | Out-Null
               foreach ($f in 'my_region.img','oplusstanvbk.img','odm.img') {
                 $srcInSuper = Join-Path $superDir $f
                 $dstInCos   = Join-Path $cosHere $f
-                if (Test-Path $srcInSuper) {
-                  Move-Item $srcInSuper $dstInCos -Force
-                } else {
-                  $fallback = Join-Path (Join-Path $bloatBase $bloatFolder) $f
-                  if (Test-Path $fallback) { Copy-Item $fallback -Destination $dstInCos -Force }
-                  else {
-                    $stub = Join-Path (Join-Path $bloatBase $bloatFolder) ([System.IO.Path]::GetFileNameWithoutExtension($f))
-                    if (Test-Path $stub) {
-                      try { $url=(Get-Content $stub -Raw).Trim(); if ($url) { Invoke-WebRequest -Uri $url -OutFile $dstInCos } }
-                      catch { Write-Warning ("Failed to download {0} from {1}: {2}" -f $f,$stub,$_.Exception.Message) }
-                    }
-                  }
-                }
-                $left = Join-Path $superDir $f
-                if (Test-Path $left) { Remove-Item $left -Force }
+                if (Test-Path $srcInSuper) { Move-Item $srcInSuper $dstInCos -Force }
               }
             } else {
               Copy-BloatFromFolder -base $bloatBase -folder $bloatFolder -dest $superDir
             }
       
-            # CN Super extra OOS staging (EUGLO or A5) for 13-series (not Ace5/Ace5Pro)
             if ($region -eq 'CN' -and $dev -notin @('Ace5','Ace5Pro')) {
               $oosHere = Join-Path $workDir 'OOS_FILES_HERE'
               New-Item -ItemType Directory -Force -Path $oosHere | Out-Null
@@ -466,7 +451,6 @@ jobs:
               else                { Copy-BloatFromFolder -base $bloatBase -folder 'EUGLO_BLOAT' -dest $oosHere }
             }
       
-            # Ace 5 CN: put A5_DEBLOAT pair into OOS_FILES_HERE
             if ($dev -eq 'Ace5' -and $region -eq 'CN') {
               $oosHere = Join-Path $workDir 'OOS_FILES_HERE'
               New-Item -ItemType Directory -Force -Path $oosHere | Out-Null
@@ -483,7 +467,6 @@ jobs:
             $bloatFolder = Get-BloatFolder -dev $dev -region $region
             Copy-BloatFromFolder -base $bloatBase -folder $bloatFolder -dest $oosHere
       
-            # CN: prepare COS_FILES_HERE too
             if ($region -eq 'CN') {
               $cosHere = Join-Path $workDir 'COS_FILES_HERE'
               New-Item -ItemType Directory -Force -Path $cosHere | Out-Null
@@ -491,7 +474,6 @@ jobs:
               Copy-BloatFromFolder -base $bloatBase -folder $cnFolder -dest $cosHere
             }
       
-            # 13S + Regional IN: ensure the two files in OOS_FILES_HERE
             if ($dev -eq '13S' -and $region -eq 'IN') {
               foreach ($f in 'my_preload.img','my_company.img') {
                 $src = Join-Path (Join-Path $bloatBase 'IN_BLOAT') $f
@@ -499,12 +481,9 @@ jobs:
               }
             }
       
-            # Ace 5 CN: A5_DEBLOAT pair into OOS_FILES_HERE
             if ($dev -eq 'Ace5' -and $region -eq 'CN') {
               Copy-DebloatPair -debloatDir (Join-Path $bloatBase 'A5_DEBLOAT') -dest $oosHere
             }
-      
-            # Ace 5 Pro CN: A5P_DEBLOAT pair into OOS_FILES_HERE
             if ($dev -eq 'Ace5Pro' -and $region -eq 'CN') {
               Copy-DebloatPair -debloatDir (Join-Path $bloatBase 'A5P_DEBLOAT') -dest $oosHere
             }
@@ -512,7 +491,6 @@ jobs:
       
           #-----------------------------
           # Oneplus 13 + Hybrid extras (SuperHybrid + RegionalHybrid)
-          # Stage 16DTBO from flasher_scripts\13\oos\super\16DTBO
           #-----------------------------
           if ($dev -eq '13' -and $ftype -in @('SuperHybrid Flasher','RegionalHybrid Flasher')) {
             $src16  = Join-Path $root 'flasher_scripts\13\oos\super\16DTBO'
@@ -521,8 +499,6 @@ jobs:
             if (Test-Path $src16) {
               New-Item -ItemType Directory -Force -Path $main16 | Out-Null
               Copy-Item "$src16\*" -Destination $main16 -Recurse -Force
-      
-              # If builder expects "16.0.0.1_dtbo.img", ensure it exists even if source is just "dtbo.img"
               $dtboPlain = Join-Path $main16 'dtbo.img'
               $dtboNamed = Join-Path $main16 '16.0.0.1_dtbo.img'
               if ((Test-Path $dtboPlain) -and -not (Test-Path $dtboNamed)) {
@@ -532,7 +508,6 @@ jobs:
               Write-Warning ("16DTBO source not found: {0}" -f $src16)
             }
       
-            # If the template dropped a 16DTBO folder inside the working dir by mistake, move it up to MAIN
             $work16 = Join-Path $workDir '16DTBO'
             if (Test-Path $work16) {
               if (Test-Path $main16) { Remove-Item $main16 -Recurse -Force }
@@ -540,7 +515,6 @@ jobs:
               Write-Host "Moved stray 16DTBO from working folder to MAIN."
             }
       
-            # Inject COS_FILES_HERE from bloat\13\COS_FILES_HERE (if present)
             $cosBloat = Join-Path $bloatBase 'COS_FILES_HERE'
             if (Test-Path $cosBloat) {
               $cosDest = Join-Path $workDir 'COS_FILES_HERE'
@@ -549,48 +523,48 @@ jobs:
             }
           }
       
-          # Expose for next steps
           "WORK_DIR=$workDir" | Out-File -FilePath $env:GITHUB_ENV -Append
-
-      # --- Patch REGIONALHYBRID builder to be cross-drive safe
-      - name: Patch RegionalHybrid builder (force pushd, strip %~d1/%~p1)
-        if: contains(env.BUILDER_BAT, 'REGIONALHYBRID')
-        shell: pwsh
-        working-directory: ${{ env.OUT_DIR }}
-        run: |
-          $bat = Join-Path $PWD $env:BUILDER_BAT
-          if (!(Test-Path $bat)) { throw "Builder not found: $bat" }
       
-          # keep a backup
-          Copy-Item $bat ($bat + '.orig') -Force
       
-          $txt = Get-Content -LiteralPath $bat -Raw
-      
-          # Prepend a robust prelude that always runs from the OTA directory
-          $pre = @(
-            '@echo off'
-            'setlocal enableextensions'
-            'set "_ARG1=%~f1"'
-            'set "_ARGDIR=%~dp1"'
-            'if not defined _ARG1 (echo ERROR: No OTA argument passed.& exit /b 2)'
-            'rem Force current dir to the OTA location (cross-drive safe)'
-            'pushd "%_ARGDIR%" || (echo ERROR: pushd "%_ARGDIR%" failed.& exit /b 3)'
-          ) -join "`r`n"
-      
-          if ($txt -notmatch '(?im)^\s*pushd\s+"%_ARGDIR%"') {
-            $txt = $pre + "`r`n" + $txt
-          }
-      
-          # Normalize classic drag&drop patterns to a single pushd "%~dp1"
-          $txt = [regex]::Replace($txt,'(?im)^\s*cd\s+/d?\s*"?%~dp?1"?\s*$', 'pushd "%~dp1"')
-          $txt = [regex]::Replace($txt,'(?im)%~d1\s*&&\s*cd\s+%~p1',         'pushd "%~dp1"')
-          $txt = [regex]::Replace($txt,'(?im)^\s*cd\s+%~p1\s*$',             'pushd "%~dp1"')
-          $txt = $txt -replace '%~d1%~p1','%~dp1'
-          $txt = $txt -replace '%~d1\\%~p1','%~dp1'
-          $txt = [regex]::Replace($txt,'(?im)^\s*%~d1\s*$', 'rem (stripped bare %~d1)')
-      
-          Set-Content -LiteralPath $bat -Value $txt -Encoding ascii
-          Write-Host "Patched $($env:BUILDER_BAT)."
+            # --- Patch REGIONALHYBRID builder to be cross-drive safe
+            - name: Patch RegionalHybrid builder (force pushd, strip %~d1/%~p1)
+              if: contains(env.BUILDER_BAT, 'REGIONALHYBRID')
+              shell: pwsh
+              working-directory: ${{ env.OUT_DIR }}
+              run: |
+                $bat = Join-Path $PWD $env:BUILDER_BAT
+                if (!(Test-Path $bat)) { throw "Builder not found: $bat" }
+            
+                # keep a backup
+                Copy-Item $bat ($bat + '.orig') -Force
+            
+                $txt = Get-Content -LiteralPath $bat -Raw
+            
+                # Prepend a robust prelude that always runs from the OTA directory
+                $pre = @(
+                  '@echo off'
+                  'setlocal enableextensions'
+                  'set "_ARG1=%~f1"'
+                  'set "_ARGDIR=%~dp1"'
+                  'if not defined _ARG1 (echo ERROR: No OTA argument passed.& exit /b 2)'
+                  'rem Force current dir to the OTA location (cross-drive safe)'
+                  'pushd "%_ARGDIR%" || (echo ERROR: pushd "%_ARGDIR%" failed.& exit /b 3)'
+                ) -join "`r`n"
+            
+                if ($txt -notmatch '(?im)^\s*pushd\s+"%_ARGDIR%"') {
+                  $txt = $pre + "`r`n" + $txt
+                }
+            
+                # Normalize classic drag&drop patterns to a single pushd "%~dp1"
+                $txt = [regex]::Replace($txt,'(?im)^\s*cd\s+/d?\s*"?%~dp?1"?\s*$', 'pushd "%~dp1"')
+                $txt = [regex]::Replace($txt,'(?im)%~d1\s*&&\s*cd\s+%~p1',         'pushd "%~dp1"')
+                $txt = [regex]::Replace($txt,'(?im)^\s*cd\s+%~p1\s*$',             'pushd "%~dp1"')
+                $txt = $txt -replace '%~d1%~p1','%~dp1'
+                $txt = $txt -replace '%~d1\\%~p1','%~dp1'
+                $txt = [regex]::Replace($txt,'(?im)^\s*%~d1\s*$', 'rem (stripped bare %~d1)')
+            
+                Set-Content -LiteralPath $bat -Value $txt -Encoding ascii
+                Write-Host "Patched $($env:BUILDER_BAT)."
 
       # --- Run the (now patched) builder from the OTA folder with full OTA path
       - name: Run builder (Explorer-style drag & drop)
