@@ -67,26 +67,22 @@ for f in "${part_list[@]}"; do
   [[ -f "$new_folder/$f" ]] && mv -f "$new_folder/$f" "$super_work/"
 done
 
-# 6) CN_BLOAT → Super/: my_preload.img & my_company.img
-cn_bloat="$script_dir/CN_BLOAT"
-for f in my_preload.img my_company.img; do
-  if [[ -f "$cn_bloat/$f" ]]; then
-    cp -f "$cn_bloat/$f" "$super_work/"
-  else
-    echo "WARN: $f nicht gefunden in $cn_bloat"
-  fi
-done
+# 6) (entfällt) CN_BLOAT → Super/  -- wie in der .bat NICHT ausführen
+# cn_bloat="$script_dir/CN_BLOAT"
+# for f in my_preload.img my_company.img; do
+#   if [[ -f "$cn_bloat/$f" ]]; then
+#     cp -f "$cn_bloat/$f" "$super_work/"
+#   fi
+# done
 
-# 7) A5_DEBLOAT → OOS_FILES_HERE/: my_preload.img & my_company.img
-mkdir -p "$oos_here"
-a5_debloat="$script_dir/A5_DEBLOAT"
-for f in my_preload.img my_company.img; do
-  if [[ -f "$a5_debloat/$f" ]]; then
-    cp -f "$a5_debloat/$f" "$oos_here/"
-  else
-    echo "WARN: $f nicht gefunden in $a5_debloat"
-  fi
-done
+# 7) (entfällt) A5_DEBLOAT → OOS_FILES_HERE/  -- wie in der .bat NICHT ausführen
+# mkdir -p "$oos_here"
+# a5_debloat="$script_dir/A5_DEBLOAT"
+# for f in my_preload.img my_company.img; do
+#   if [[ -f "$a5_debloat/$f" ]]; then
+#     cp -f "$a5_debloat/$f" "$oos_here/"
+#   fi
+# done
 
 # 8) Restliche extrahierte Dateien nach COS_FILES_HERE/
 mkdir -p "$cos_here"
