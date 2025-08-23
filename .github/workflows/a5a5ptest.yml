@@ -435,17 +435,53 @@ jobs:
       
             # Standard bloat into Super\
             $bloatFolder = Get-BloatFolder -dev $dev -region $region
+      
             if ($dev -eq '13T' -and $ftype -eq 'Super Flasher' -and $region -eq 'IN') {
-              # Skip three files -> move to COS_FILES_HERE
+              # ---- 13T • Super Flasher • IN: 3 specific files into COS_FILES_HERE ----
+              # Skip them when copying to Super\
               Copy-BloatFromFolder -base $bloatBase -folder $bloatFolder -dest $superDir -skip @('my_region.img','oplusstanvbk.img','odm.img')
+      
               $cosHere = Join-Path $workDir 'COS_FILES_HERE'
               New-Item -ItemType Directory -Force -Path $cosHere | Out-Null
-              foreach ($f in 'my_region.img','oplusstanvbk.img','odm.img') {
-                $srcInSuper = Join-Path $superDir $f
-                $dstInCos   = Join-Path $cosHere $f
-                if (Test-Path $srcInSuper) { Move-Item $srcInSuper $dstInCos -Force }
+      
+              $inBloat = Join-Path $bloatBase 'IN_BLOAT'
+              function Copy-Or-Download {
+                param([string]$fileName, [string]$fromDir, [string]$toDir)
+                $src = Join-Path $fromDir $fileName
+                if (Test-Path $src) {
+                  Copy-Item $src -Destination $toDir -Force
+                  return
+                }
+                # Try stub (no extension)
+                $stub = Join-Path $fromDir ([System.IO.Path]::GetFileNameWithoutExtension($fileName))
+                if (Test-Path $stub) {
+                  try {
+                    $url = (Get-Content $stub -Raw).Trim()
+                    if ($url) {
+                      Invoke-WebRequest -Uri $url -OutFile (Join-Path $toDir $fileName)
+                    } else {
+                      Write-Warning ("Stub {0} was empty." -f $stub)
+                    }
+                  } catch {
+                    Write-Warning ("Failed to download {0} from {1}: {2}" -f $fileName, $stub, $_.Exception.Message)
+                  }
+                } else {
+                  Write-Warning ("{0} not found in {1} (and no stub)." -f $fileName, $fromDir)
+                }
               }
-            } else {
+      
+              # Ensure all three end up in COS_FILES_HERE
+              Copy-Or-Download -fileName 'my_region.img'    -fromDir $inBloat -toDir $cosHere
+              Copy-Or-Download -fileName 'oplusstanvbk.img' -fromDir $inBloat -toDir $cosHere
+              Copy-Or-Download -fileName 'odm.img'          -fromDir $inBloat -toDir $cosHere
+      
+              # Safety: if any of the three landed in Super\ by mistake, remove them
+              foreach ($f in 'my_region.img','oplusstanvbk.img','odm.img') {
+                $pInSuper = Join-Path $superDir $f
+                if (Test-Path $pInSuper) { Remove-Item $pInSuper -Force }
+              }
+            }
+            else {
               Copy-BloatFromFolder -base $bloatBase -folder $bloatFolder -dest $superDir
             }
       
@@ -511,7 +547,6 @@ jobs:
               }
               elseif ($dev -eq '13' -and $ftype -eq 'RegionalHybrid Flasher') {
                 # 13 • RegionalHybrid • CN → COS gets ONLY my_preload (stub ok) + my_company.img
-                # (Skip odm.img, oplusstanvbk.img, my_region.img)
                 Copy-BloatFromFolder -base $bloatBase -folder 'CN_BLOAT' -dest $cosHere -skip @('odm.img','oplusstanvbk.img','my_region.img')
               }
               else {
@@ -566,7 +601,7 @@ jobs:
               Write-Host "Moved stray 16DTBO from working folder to MAIN."
             }
       
-            # IMPORTANT: For 13 hybrids (all regions), DO NOT stage COS files in this block.
+            # IMPORTANT: For 13 SuperHybrid CN, do NOT stage COS files here.
             if ($region -eq 'CN' -and $ftype -eq 'SuperHybrid Flasher') {
               $cosFolder = Join-Path $workDir 'COS_FILES_HERE'
               if (Test-Path $cosFolder) {
@@ -578,6 +613,7 @@ jobs:
       
           # Expose for next steps
           "WORK_DIR=$workDir" | Out-File -FilePath $env:GITHUB_ENV -Append
+
 
       - name: Patch RegionalHybrid builder (force pushd, strip %~d1/%~p1)
         if: contains(env.BUILDER_BAT, 'REGIONALHYBRID')
