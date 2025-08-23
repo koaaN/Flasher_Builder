@@ -860,6 +860,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          export LC_ALL=C.UTF-8
+          export LANG=C.UTF-8
 
           device_disp="${{ inputs.device }}"
           region="$REGION"
@@ -894,45 +896,40 @@ jobs:
 
           # COS vs OOS Folder im ZIP
           if [[ "$region" == "CN" ]]; then img_folder="COS_FILES_HERE"; else img_folder="OOS_FILES_HERE"; fi
-          boot_param="$(python3 -c 'import sys,urllib.parse;print(urllib.parse.quote(sys.argv[1],safe=""))' "${img_folder}/boot.img")"
-          boot_param="${boot_param//%20/+}"
-          init_boot_param="$(python3 -c 'import sys,urllib.parse;print(urllib.parse.quote(sys.argv[1],safe=""))' "${img_folder}/init_boot.img")"
-          init_boot_param="${init_boot_param//%20/+}"
+          boot_param="$(python3 -c 'import sys,urllib.parse;print(urllib.parse.quote(sys.argv[1],safe=""))' "${img_folder}/boot.img")"; boot_param="${boot_param//%20/+}"
+          init_boot_param="$(python3 -c 'import sys,urllib.parse;print(urllib.parse.quote(sys.argv[1],safe=""))' "${img_folder}/init_boot.img")"; init_boot_param="${init_boot_param//%20/+}"
 
           boot_link="https://roms.danielspringer.at/download_from_zip.php?zip=${zip_param}&file=${boot_param}"
           init_boot_link="https://roms.danielspringer.at/download_from_zip.php?zip=${zip_param}&file=${init_boot_param}"
 
-          # -------- JSON bauen ohne Here-Doc --------
-          # Nachrichtentext
-          sparkle=$'\u2728'; dl=$'\u2B07'; pkg=$'\U0001F4E6'
-          msg="${sparkle} <b>New Build released</b> ${sparkle}\n${device_disp} <b>${artifact}</b>"
-
-          # JSON-escapen (einzeln) via Python – mit ensure_ascii=False, damit Emojis nicht \uXXXX werden
-          j_msg="$(python3 -c 'import sys,json; print(json.dumps(sys.argv[1], ensure_ascii=False))' "$msg")"
-          j_zip="$(python3 -c 'import sys,json; print(json.dumps(sys.argv[1]))' "$zip_link")"
-          j_boot="$(python3 -c 'import sys,json; print(json.dumps(sys.argv[1]))' "$boot_link")"
-          j_init="$(python3 -c 'import sys,json; print(json.dumps(sys.argv[1]))' "$init_boot_link")"
-          j_dl="$(python3 -c 'import sys,json; print(json.dumps(sys.argv[1], ensure_ascii=False))' "$dl Download ZIP")"
-          j_pkg_boot="$(python3 -c 'import sys,json; print(json.dumps(sys.argv[1], ensure_ascii=False))' "$pkg boot.img")"
-          j_pkg_init="$(python3 -c 'import sys,json; print(json.dumps(sys.argv[1], ensure_ascii=False))' "$pkg init_boot.img")"
-
+          # JSON-Payload vollständig in Python generieren (keine doppelten Escapes)
           payload_path="$RUNNER_TEMP/tg_payload.json"
-          printf '{'                                  >  "$payload_path"
-          printf '"chat_id":%s,' "193732076"     >> "$payload_path"
-          printf '"text":%s,'      "$j_msg"           >> "$payload_path"
-          printf '"parse_mode":"HTML",'               >> "$payload_path"
-          printf '"disable_web_page_preview":true,'   >> "$payload_path"
-          printf '"reply_markup":{"inline_keyboard":[['>>"$payload_path"
-          printf '{"text":%s,"url":%s}]' "$j_dl" "$j_zip" >> "$payload_path"
-          printf ',['                                  >> "$payload_path"
-          printf '{"text":%s,"url":%s},' "$j_pkg_boot" "$j_boot" >> "$payload_path"
-          printf '{"text":%s,"url":%s}' "$j_pkg_init" "$j_init"  >> "$payload_path"
-          printf ']]}}'                                >> "$payload_path"
+          python3 -c 'import sys,json
+chat_id=193732076
+device, artifact, zip_link, boot_link, init_boot_link = sys.argv[1:]
+msg = f"✨ <b>New Build released</b> ✨\n{device} <b>{artifact}</b>"
+payload = {
+  "chat_id": chat_id,
+  "text": msg,
+  "parse_mode": "HTML",
+  "disable_web_page_preview": True,
+  "reply_markup": {
+    "inline_keyboard": [
+      [ { "text": "⬇️ Download ZIP", "url": zip_link } ],
+      [
+        { "text": "📦 boot.img",      "url": boot_link },
+        { "text": "📦 init_boot.img", "url": init_boot_link }
+      ]
+    ]
+  }
+}
+print(json.dumps(payload, ensure_ascii=False, separators=(",",":")))' \
+            "$device_disp" "$artifact" "$zip_link" "$boot_link" "$init_boot_link" > "$payload_path"
 
-          # Absenden
           curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
                -H "Content-Type: application/json; charset=utf-8" \
                --data-binary "@${payload_path}"
+
 
 
 
