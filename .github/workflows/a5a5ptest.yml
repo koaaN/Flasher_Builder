@@ -140,6 +140,7 @@ jobs:
           } >> "$GITHUB_ENV"
 
       - name: Extract OTA version (from META-INF/com/android/metadata)
+        if: ${{ inputs.flasher_type != 'SuperHybrid SunOS Flasher' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -151,6 +152,14 @@ jobs:
           [ -n "$numeric" ] || { echo "Could not parse numeric version from '$val'"; exit 1; }
           echo "Parsed OTA version: $numeric"
           echo "OTA_VERSION=$numeric" >> "$GITHUB_ENV"
+
+      - name: Set default OTA version for SunOS
+        if: ${{ inputs.flasher_type == 'SuperHybrid SunOS Flasher' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Skipping OTA version extraction for SunOS, using default version"
+          echo "OTA_VERSION=UNKNOWN" >> "$GITHUB_ENV"
 
       - name: Map device → pick builder
         shell: bash
@@ -590,7 +599,7 @@ jobs:
           echo "Calling builder: \"$GITHUB_WORKSPACE/$OUT_DIR/$BUILDER_SH\" \"$OTA_PATH\""
           bash "$GITHUB_WORKSPACE/$OUT_DIR/$BUILDER_SH" "$OTA_PATH"
 
-      - name: Package final output ZIP
+      - name: Package final output (zip for SunOS, 13T, Ace5, Ace5Pro)
         shell: bash
         run: |
           set -euo pipefail
@@ -886,7 +895,7 @@ jobs:
           zip_param="${zip_param//%20/+}"
 
           # COS vs OOS Folder im ZIP
-          if [[ "$region" == "CN" ]]; then img_folder="COS_FILES_HERE"; else img_folder="OOS_FILES_HERE"; fi
+          if [[ "$region" == "CN" || "$ftype" == "SuperHybrid SunOS Flasher" ]]; then img_folder="COS_FILES_HERE"; else img_folder="OOS_FILES_HERE"; fi
           boot_param="$(python3 -c 'import sys,urllib.parse;print(urllib.parse.quote(sys.argv[1],safe=""))' "${img_folder}/boot.img")"
           boot_param="${boot_param//%20/+}"
           init_boot_param="$(python3 -c 'import sys,urllib.parse;print(urllib.parse.quote(sys.argv[1],safe=""))' "${img_folder}/init_boot.img")"
