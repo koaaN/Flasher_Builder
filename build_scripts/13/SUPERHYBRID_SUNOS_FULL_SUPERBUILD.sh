@@ -47,7 +47,7 @@ new_folder=""
 while IFS= read -r -d '' d; do
   base="$(basename "$d")"
   if [[ -z "${before[$base]+x}" ]]; then
-    new_folder Reactions:="$d"
+    new_folder="$d"
     break
   fi
 done < <(find "$input_dir" -mindepth 1 -maxdepth 1 -type d -print0)
