@@ -403,7 +403,7 @@ jobs:
               echo "WARN: lpmake nicht gefunden in $root/lpmake/lpmake"
             fi
 
-            rsync -a "$tpl_base/" "$work_dir/"
+            rsync -a --exclude '16DTBO/' --exclude 'dtbo_patcher.sh' --exclude 'Super_Flasher*.bat' "$tpl_base/" "$work_dir/"
 
             upd="$work_dir/META-INF/com/google/android/updater-script"
             if [ -f "$upd" ]; then
