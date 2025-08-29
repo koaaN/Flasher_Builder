@@ -384,6 +384,23 @@ jobs:
               curl -L --fail --retry 3 --retry-delay 5 -o "$fastbootd_files/$img" "$url" || echo "WARN: Download failed for $img"
             done
 
+                        # COS_FILES_HERE für SunOS vorbereiten
+            cos_here="$work_dir/COS_FILES_HERE"
+            mkdir -p "$cos_here"
+
+            echo "Downloading modem.img for SunOS → COS_FILES_HERE"
+            curl -L --fail --retry 3 --retry-delay 5 \
+              -o "$cos_here/modem.img" \
+              "https://roms.danielspringer.at/download.php?file=Files%2FBloat%2F13%2FSunOS%2FCOS_FILES_HERE%2Fmodem.img&download=true" \
+              || echo "WARN: Download failed for modem.img"
+
+            echo "Downloading oplusstanvbk.img for SunOS → COS_FILES_HERE"
+            curl -L --fail --retry 3 --retry-delay 5 \
+              -o "$cos_here/oplusstanvbk.img" \
+              "https://roms.danielspringer.at/download.php?file=Files%2FBloat%2F13%2FSunOS%2FCOS_FILES_HERE%2Foplusstanvbk.img&download=true" \
+              || echo "WARN: Download failed for oplusstanvbk.img"
+
+
             pdir="$root/super_packers/13"
             super_dir="$work_dir/Super"
             mkdir -p "$super_dir"
