@@ -395,6 +395,15 @@ jobs:
               exit 1
             fi
 
+            # Platform-Tools auch für SunOS bereitstellen
+            pt_src="$root/Platform-Tools"
+            if [ -d "$pt_src" ]; then
+              mkdir -p "$work_dir/Platform-Tools"
+              rsync -a "$pt_src/" "$work_dir/Platform-Tools/"
+            else
+              echo "WARN: Platform-Tools not found at repo root: $pt_src"
+            fi
+
             # Kopiere lpmake für SunOS
             if [ -f "$root/lpmake/lpmake" ]; then
               cp -f "$root/lpmake/lpmake" "$super_dir/"
