@@ -307,9 +307,9 @@ jobs:
             ;;
             "RegionalHybrid Flasher")
               if [[ "$REGION" == "CN" ]]; then
-                work_name="RegionalHybrid Flasher CN"   # exakt so, ohne Leerzeichen zw. Regional/Hybrid + CN
+                work_name="RegionalHybrid Flasher CN"
               else
-                work_name="Regional Hybrid Flasher"      # non-CN behält das Leerzeichen
+                work_name="Regional Hybrid Flasher"
               fi
             ;;
             "SuperHybrid SunOS Flasher")
@@ -355,232 +355,221 @@ jobs:
             else
               tpl_base="$tpl_base/oos/regional"
             fi
+          elif [[ "$FTYPE" == "SuperHybrid SunOS Flasher" ]]; then
+            tpl_base="$tpl_base/sunos/super"
           fi
 
-          rsync -a "$tpl_base/" "$work_dir/"
+          if [[ "$FTYPE" == "SuperHybrid SunOS Flasher" ]]; then
+            fastbootd_files="$work_dir/FASTBOOTD_FILES_HERE"
+            mkdir -p "$fastbootd_files"
+            echo "Downloading SunOS bloat files into FASTBOOTD_FILES_HERE..."
+            declare -a sunos_bloat=(
+              abl.img aop.img aop_config.img bluetooth.img cpucp.img cpucp_dtb.img
+              devcfg.img dsp.img engineering_cdt.img featenabler.img hyp.img imagefv.img
+              keymaster.img oplus_sec.img oplusstanvbk.img qupfw.img shrm.img splash.img
+              tz.img uefi.img uefisecapp.img xbl.img xbl_config.img xbl_ramdump.img
+            )
+            for img in "${sunos_bloat[@]}"; do
+              url="https://roms.danielspringer.at/download.php?file=Files%2FBloat%2F13%2FSunOS%2F${img}&download=true"
+              echo "Downloading $img from $url"
+              curl -L --fail --retry 3 --retry-delay 5 -o "$fastbootd_files/$img" "$url" || echo "WARN: Download failed for $img"
+            done
 
-          # === Regional / RegionalHybrid ===
-          # OOS_FILES_HERE immer befüllen. Für OP13+CN (RegionalHybrid) gilt:
-          #   - OOS_FILES_HERE ← EUGLO_BLOAT
-          #   - COS_FILES_HERE ← CN_BLOAT
-          if [[ "$FTYPE" == "RegionalHybrid Flasher" || "$FTYPE" == "Regional Flasher" ]]; then
-            oos_here="$work_dir/OOS_FILES_HERE"
-            mkdir -p "$oos_here"
-
-            if [[ "$FTYPE" == "RegionalHybrid Flasher" && "$DEV" == "13" && "$REGION" == "CN" ]]; then
-              # *** SPECIAL: Oneplus 13 CN (RegionalHybrid) ***
-              copy_bloat_files "$bloat_base" "GLO" "$oos_here"   # EUGLO_BLOAT → OOS
-              cos_here="$work_dir/COS_FILES_HERE"
-              mkdir -p "$cos_here"
-              copy_bloat_files "$bloat_base" "CN" "$cos_here"    # CN_BLOAT → COS
+            pdir="$root/super_packers/13"
+            if [[ -f "$pdir/super_sunos.sh" ]]; then
+              mkdir -p "$work_dir/Super"
+              cp -f "$pdir/super_sunos.sh" "$work_dir/Super/super_sunos.sh"
+              chmod +x "$work_dir/Super/super_sunos.sh"
             else
-              # Default Verhalten: OOS by region + bei CN zusätzlich COS (CN_BLOAT/A5P_BLOAT)
-              copy_bloat_files "$bloat_base" "$REGION" "$oos_here"
-
-              if [[ "$REGION" == "CN" ]]; then
-                cos_here="$work_dir/COS_FILES_HERE"
-                mkdir -p "$cos_here"
-                if [[ "$DEV" == "Ace5Pro" ]]; then
-                  copy_bloat_files "$bloat_base" "A5P" "$cos_here"
-                else
-                  copy_bloat_files "$bloat_base" "CN" "$cos_here"
-                fi
-
-                # Ace5/Ace5Pro: Switchback-Paar in OOS_FILES_HERE
-                if [[ "$DEV" == "Ace5" ]]; then
-                  deb="$bloat_base/A5_DEBLOAT"
-                  for f in my_preload.img my_company.img; do
-                    [ -f "$deb/$f" ] && cp -f "$deb/$f" "$oos_here/"
-                  done
-                elif [[ "$DEV" == "Ace5Pro" ]]; then
-                  deb="$bloat_base/A5P_DEBLOAT"; [ -d "$deb" ] || deb="$bloat_base/A5P_BLOAT"
-                  for f in my_preload.img my_company.img; do
-                    [ -f "$deb/$f" ] && cp -f "$deb/$f" "$oos_here/"
-                  done
-                fi
-              fi
+              echo "ERROR: super_sunos.sh nicht gefunden in $pdir" >&2
+              exit 1
             fi
-          fi
 
-          if [[ "$FTYPE" == *Hybrid* ]]; then
-            mi="$tpl_base/META-INF"
-            if [ -d "$mi" ]; then
-              if [ ! -d "$work_dir/META-INF" ]; then
-                mkdir -p "$work_dir/META-INF"
-                rsync -a "$mi/" "$work_dir/META-INF/"
-              else
-                echo "META-INF already present in $work_dir - skipping duplicate copy."
-              fi
-            fi
+            rsync -a "$tpl_base/" "$work_dir/"
+
             upd="$work_dir/META-INF/com/google/android/updater-script"
             if [ -f "$upd" ]; then
               awk '{ sub(/\r$/,""); print }' "$upd" > "$upd.tmp" && mv "$upd.tmp" "$upd"
             else
               echo "WARN: Expected updater-script not found at: $upd"
             fi
-          fi
-
-          pt_src="$root/Platform-Tools"
-          if [ -d "$pt_src" ]; then
-            mkdir -p "$work_dir/Platform-Tools"
-            rsync -a "$pt_src/" "$work_dir/Platform-Tools/"
           else
-            echo "WARN: Platform-Tools not found at repo root: $pt_src"
-          fi
+            rsync -a "$tpl_base/" "$work_dir/"
 
-          if [[ "$FTYPE" =~ Super ]]; then
-            super_dir="$work_dir/Super"
-            mkdir -p "$super_dir"
-            if [ -f "$root/lpmake/lpmake" ]; then
-              cp -f "$root/lpmake/lpmake" "$super_dir/"
-              chmod +x "$super_dir/lpmake"
+            if [[ "$FTYPE" == *Hybrid* ]]; then
+              mi="$tpl_base/META-INF"
+              if [ -d "$mi" ]; then
+                if [ ! -d "$work_dir/META-INF" ]; then
+                  mkdir -p "$work_dir/META-INF"
+                  rsync -a "$mi/" "$work_dir/META-INF/"
+                else
+                  echo "META-INF already present in $work_dir - skipping duplicate copy."
+                fi
+              fi
+              upd="$work_dir/META-INF/com/google/android/updater-script"
+              if [ -f "$upd" ]; then
+                awk '{ sub(/\r$/,""); print }' "$upd" > "$upd.tmp" && mv "$upd.tmp" "$upd"
+              else
+                echo "WARN: Expected updater-script not found at: $upd"
+              fi
             fi
 
-            # --- Select & copy correct super packer (CN => super_cos.sh, else super_oos.sh)
-            if [[ "$DEV" == "13T" ]]; then
-              pdir="$root/super_packers/13T"
-              if [[ "$REGION" == "CN" && -f "$pdir/super_cos.sh" ]]; then
-                cp -f "$pdir/super_cos.sh" "$super_dir/super_cos.sh" && chmod +x "$super_dir/super_cos.sh"
-              elif [[ -f "$pdir/super_oos.sh" ]]; then
-                cp -f "$pdir/super_oos.sh" "$super_dir/super_oos.sh" && chmod +x "$super_dir/super_oos.sh"
-              else
-                echo "WARN: no super packer found for 13T"
-              fi
-
-            elif [[ "$DEV" == "Ace5" ]]; then
-              pdir="$root/super_packers/Ace5"
-              if [[ "$REGION" == "CN" && -f "$pdir/super_cos.sh" ]]; then
-                cp -f "$pdir/super_cos.sh" "$super_dir/super_cos.sh" && chmod +x "$super_dir/super_cos.sh"
-              elif [[ -f "$pdir/super_oos.sh" ]]; then
-                cp -f "$pdir/super_oos.sh" "$super_dir/super_oos.sh" && chmod +x "$super_dir/super_oos.sh"
-              else
-                echo "WARN: no super packer found for Ace5"
-              fi
-
+            pt_src="$root/Platform-Tools"
+            if [ -d "$pt_src" ]; then
+              mkdir -p "$work_dir/Platform-Tools"
+              rsync -a "$pt_src/" "$work_dir/Platform-Tools/"
             else
-              pdir="$root/super_packers/$tpl_dev"
-              if [[ "$REGION" == "CN" && -f "$pdir/super_cos.sh" ]]; then
-                cp -f "$pdir/super_cos.sh" "$super_dir/super_cos.sh" && chmod +x "$super_dir/super_cos.sh"
-              elif [[ -f "$pdir/super_oos.sh" ]]; then
-                cp -f "$pdir/super_oos.sh" "$super_dir/super_oos.sh" && chmod +x "$super_dir/super_oos.sh"
-              else
-                echo "ERROR: no super packer (cos/oos) found for $tpl_dev" >&2
-                exit 1
-              fi
+              echo "WARN: Platform-Tools not found at repo root: $pt_src"
             fi
 
-            # Bloat → Super (by region) + special cases
-            if [[ "$DEV" == "Ace5" ]]; then
+            if [[ "$FTYPE" =~ Super ]]; then
+              super_dir="$work_dir/Super"
+              mkdir -p "$super_dir"
+              if [ -f "$root/lpmake/lpmake" ]; then
+                cp -f "$root/lpmake/lpmake" "$super_dir/"
+                chmod +x "$super_dir/lpmake"
+              fi
+
+              if [[ "$DEV" == "13T" ]]; then
+                pdir="$root/super_packers/13T"
+                if [[ "$REGION" == "CN" && -f "$pdir/super_cos.sh" ]]; then
+                  cp -f "$pdir/super_cos.sh" "$super_dir/super_cos.sh" && chmod +x "$super_dir/super_cos.sh"
+                elif [[ -f "$pdir/super_oos.sh" ]]; then
+                  cp -f "$pdir/super_oos.sh" "$super_dir/super_oos.sh" && chmod +x "$super_dir/super_oos.sh"
+                else
+                  echo "WARN: no super packer found for 13T"
+                fi
+              elif [[ "$DEV" == "Ace5" ]]; then
+                pdir="$root/super_packers/Ace5"
+                if [[ "$REGION" == "CN" && -f "$pdir/super_cos.sh" ]]; then
+                  cp -f "$pdir/super_cos.sh" "$super_dir/super_cos.sh" && chmod +x "$super_dir/super_cos.sh"
+                elif [[ -f "$pdir/super_oos.sh" ]]; then
+                  cp -f "$pdir/super_oos.sh" "$super_dir/super_oos.sh" && chmod +x "$super_dir/super_oos.sh"
+                else
+                  echo "WARN: no super packer found for Ace5"
+                fi
+              else
+                pdir="$root/super_packers/$tpl_dev"
+                if [[ "$REGION" == "CN" && -f "$pdir/super_cos.sh" ]]; then
+                  cp -f "$pdir/super_cos.sh" "$super_dir/super_cos.sh" && chmod +x "$super_dir/super_cos.sh"
+                elif [[ -f "$pdir/super_oos.sh" ]]; then
+                  cp -f "$pdir/super_oos.sh" "$super_dir/super_oos.sh" && chmod +x "$super_dir/super_oos.sh"
+                else
+                  echo "ERROR: no super packer (cos/oos) found for $tpl_dev" >&2
+                  exit 1
+                fi
+              fi
+
+              if [[ "$DEV" == "Ace5" ]]; then
+                if [[ "$REGION" == "CN" ]]; then
+                  copy_bloat_files "$bloat_base" "CN" "$super_dir"
+                else
+                  case "$REGION" in
+                    EU|GLO) reg_folder="EUGLO_BLOAT" ;;
+                    IN)     reg_folder="IN_BLOAT" ;;
+                    NA)     reg_folder="NA_BLOAT" ;;
+                    *)      reg_folder="EUGLO_BLOAT" ;;
+                  esac
+                  src_dir="$bloat_base/$reg_folder"
+                  copy_or_download "$src_dir" "my_preload" "$super_dir/my_preload.img"
+                  [ -f "$src_dir/my_company.img" ] && cp -f "$src_dir/my_company.img" "$super_dir/"
+                  copy_or_download "$src_dir" "odm" "$super_dir/odm.img"
+                fi
+              elif [[ "$DEV" == "Ace5Pro" ]]; then
+                copy_bloat_files "$bloat_base" "A5P" "$super_dir"
+              else
+                copy_bloat_files "$bloat_base" "$REGION" "$super_dir"
+              fi
+
+              if [[ "$DEV" == "13T" && "$FTYPE" == "Super Flasher" && "$REGION" == "IN" ]]; then
+                cos_here="$work_dir/COS_FILES_HERE"
+                mkdir -p "$cos_here"
+                in_bloat="$bloat_base/IN_BLOAT"
+                for f in my_region.img oplusstanvbk.img odm.img; do
+                  if [ -f "$super_dir/$f" ]; then mv -f "$super_dir/$f" "$cos_here/$f"; elif [ -f "$in_bloat/$f" ]; then cp -f "$in_bloat/$f" "$cos_here/$f"; fi
+                  rm -f "$super_dir/$f"
+                done
+              fi
+
               if [[ "$REGION" == "CN" ]]; then
-                copy_bloat_files "$bloat_base" "CN" "$super_dir"
-              else
-                case "$REGION" in
-                  EU|GLO) reg_folder="EUGLO_BLOAT" ;;
-                  IN)     reg_folder="IN_BLOAT" ;;
-                  NA)     reg_folder="NA_BLOAT" ;;
-                  *)      reg_folder="EUGLO_BLOAT" ;;
-                esac
-                src_dir="$bloat_base/$reg_folder"
-                copy_or_download "$src_dir" "my_preload" "$super_dir/my_preload.img"
-                [ -f "$src_dir/my_company.img" ] && cp -f "$src_dir/my_company.img" "$super_dir/"
-                copy_or_download "$src_dir" "odm" "$super_dir/odm.img"
+                oos_here="$work_dir/OOS_FILES_HERE"
+                mkdir -p "$oos_here"
+                if [[ "$DEV" == "13R" ]]; then
+                  copy_bloat_files "$bloat_base" "A5" "$oos_here"
+                elif [[ "$DEV" == "Ace5" ]]; then
+                  deb="$bloat_base/A5_DEBLOAT"
+                  for f in my_preload.img my_company.img; do
+                    [ -f "$deb/$f" ] && cp -f "$deb/$f" "$oos_here/"
+                  done
+                else
+                  copy_bloat_files "$bloat_base" "GLO" "$oos_here"
+                fi
               fi
-            elif [[ "$DEV" == "Ace5Pro" ]]; then
-              copy_bloat_files "$bloat_base" "A5P" "$super_dir"
-            else
-              copy_bloat_files "$bloat_base" "$REGION" "$super_dir"
             fi
 
-            # 13T Super IN: move 3 files to COS_FILES_HERE
-            if [[ "$DEV" == "13T" && "$FTYPE" == "Super Flasher" && "$REGION" == "IN" ]]; then
+            if [[ "$FTYPE" == "Regional Flasher" && "$DEV" == "Ace5" && "$REGION" == "CN" ]]; then
               cos_here="$work_dir/COS_FILES_HERE"
               mkdir -p "$cos_here"
-              in_bloat="$bloat_base/IN_BLOAT"
-              for f in my_region.img oplusstanvbk.img odm.img; do
-                if [ -f "$super_dir/$f" ]; then mv -f "$super_dir/$f" "$cos_here/$f"; elif [ -f "$in_bloat/$f" ]; then cp -f "$in_bloat/$f" "$cos_here/$f"; fi
-                rm -f "$super_dir/$f"
+              cn_bloat="$bloat_base/CN_BLOAT"
+              for b in my_preload my_company; do
+                if [ -f "$cn_bloat/${b}.img" ]; then
+                  cp -f "$cn_bloat/${b}.img" "$cos_here/"
+                elif [ -f "$cn_bloat/$b" ]; then
+                  url="$(tr -d '\r' < "$cn_bloat/$b" | xargs || true)"
+                  [ -n "$url" ] && curl -L --fail --retry 3 --retry-delay 5 -o "$cos_here/${b}.img" "$url" || echo "WARN: download failed for ${b}.img"
+                fi
               done
             fi
 
-            # CN extra OOS staging (for non-Ace5/Pro)
-            if [[ "$REGION" == "CN" ]]; then
-              oos_here="$work_dir/OOS_FILES_HERE"
-              mkdir -p "$oos_here"
-              if [[ "$DEV" == "13R" ]]; then
-                copy_bloat_files "$bloat_base" "A5" "$oos_here"
-              elif [[ "$DEV" == "Ace5" ]]; then
-                deb="$bloat_base/A5_DEBLOAT"
-                for f in my_preload.img my_company.img; do
-                  [ -f "$deb/$f" ] && cp -f "$deb/$f" "$oos_here/"
-                done
+            if [[ "$FTYPE" == "Regional Flasher" && "$DEV" == "Ace5Pro" && "$REGION" == "CN" ]]; then
+              cos_here="$work_dir/COS_FILES_HERE"
+              mkdir -p "$cos_here"
+              a5p_bloat="$bloat_base/A5P_BLOAT"
+              for b in my_preload my_company; do
+                if [ -f "$a5p_bloat/${b}.img" ]; then
+                  cp -f "$a5p_bloat/${b}.img" "$cos_here/"
+                elif [ -f "$a5p_bloat/$b" ]; then
+                  url="$(tr -d '\r' < "$a5p_bloat/$b" | xargs || true)"
+                  [ -n "$url" ] && curl -L --fail --retry 3 --retry-delay 5 -o "$cos_here/${b}.img" "$url" || echo "WARN: download failed for ${b}.img"
+                fi
+              done
+            fi
+
+            if [[ "$DEV" == "13" && ( "$FTYPE" == "SuperHybrid Flasher" || "$FTYPE" == "RegionalHybrid Flasher" ) ]]; then
+              repo16="$root/16DTBO"
+              main16="$OUT_DIR/16DTBO"
+              if [ -d "$repo16" ]; then
+                rm -rf "$main16"
+                mkdir -p "$main16"
+                rsync -a "$repo16/" "$main16/"
+                echo "Staged 16DTBO to MAIN: $main16"
               else
-                copy_bloat_files "$bloat_base" "GLO" "$oos_here"   # EUGLO_BLOAT → OOS_FILES_HERE (matches your rule)
+                echo "WARN: 16DTBO folder not found at repo root."
+              fi
+              work16="$work_dir/16DTBO"
+              if [ -d "$work16" ]; then
+                rm -rf "$main16"
+                mv "$work16" "$main16"
+                echo "Moved stray 16DTBO from working folder to MAIN."
               fi
             fi
-          fi
 
-          if [[ "$FTYPE" == "Regional Flasher" && "$DEV" == "Ace5" && "$REGION" == "CN" ]]; then
-            cos_here="$work_dir/COS_FILES_HERE"
-            mkdir -p "$cos_here"
-            cn_bloat="$bloat_base/CN_BLOAT"
-            for b in my_preload my_company; do
-              if [ -f "$cn_bloat/${b}.img" ]; then
-                cp -f "$cn_bloat/${b}.img" "$cos_here/"
-              elif [ -f "$cn_bloat/$b" ]; then
-                url="$(tr -d '\r' < "$cn_bloat/$b" | xargs || true)"
-                [ -n "$url" ] && curl -L --fail --retry 3 --retry-delay 5 -o "$cos_here/${b}.img" "$url" || echo "WARN: download failed for ${b}.img"
+            if [[ "$DEV" == "13" && "$FTYPE" == "SuperHybrid Flasher" ]]; then
+              cos_bloat="$bloat_base/COS_FILES_HERE"
+              if [ -d "$cos_bloat" ]; then
+                cos_dest="$work_dir/COS_FILES_HERE"
+                mkdir -p "$cos_dest"
+                rsync -a "$cos_bloat/" "$cos_dest/"
+              else
+                echo "WARN: COS_FILES_HERE not found under $bloat_base"
               fi
-            done
-          fi
-
-          if [[ "$FTYPE" == "Regional Flasher" && "$DEV" == "Ace5Pro" && "$REGION" == "CN" ]]; then
-            cos_here="$work_dir/COS_FILES_HERE"
-            mkdir -p "$cos_here"
-            a5p_bloat="$bloat_base/A5P_BLOAT"
-            for b in my_preload my_company; do
-              if [ -f "$a5p_bloat/${b}.img" ]; then
-                cp -f "$a5p_bloat/${b}.img" "$cos_here/"
-              elif [ -f "$a5p_bloat/$b" ]; then
-                url="$(tr -d '\r' < "$a5p_bloat/$b" | xargs || true)"
-                [ -n "$url" ] && curl -L --fail --retry 3 --retry-delay 5 -o "$cos_here/${b}.img" "$url" || echo "WARN: download failed for ${b}.img"
-              fi
-            done
-          fi
-
-          if [[ "$DEV" == "13" && ( "$FTYPE" == "SuperHybrid Flasher" || "$FTYPE" == "RegionalHybrid Flasher" ) ]]; then
-            repo16="$root/16DTBO"
-            main16="$OUT_DIR/16DTBO"
-            if [ -d "$repo16" ]; then
-              rm -rf "$main16"
-              mkdir -p "$main16"
-              rsync -a "$repo16/" "$main16/"
-              echo "Staged 16DTBO to MAIN: $main16"
-            else
-              echo "WARN: 16DTBO folder not found at repo root."
-            fi
-            work16="$work_dir/16DTBO"
-            if [ -d "$work16" ]; then
-              rm -rf "$main16"
-              mv "$work16" "$main16"
-              echo "Moved stray 16DTBO from working folder to MAIN."
-            fi
-          fi
-
-          if [[ "$DEV" == "13" && "$FTYPE" == "SuperHybrid Flasher" ]]; then
-            cos_bloat="$bloat_base/COS_FILES_HERE"
-            if [ -d "$cos_bloat" ]; then
-              cos_dest="$work_dir/COS_FILES_HERE"
-              mkdir -p "$cos_dest"
-              rsync -a "$cos_bloat/" "$cos_dest/"
-            else
-              echo "WARN: COS_FILES_HERE not found under $bloat_base"
             fi
           fi
 
           echo "WORK_DIR=$work_dir" >> "$GITHUB_ENV"
 
       - name: Pre-stage flasher into OTA folder (bypass flaky XCOPY)
-        if: ${{ inputs.flasher_type == 'RegionalHybrid Flasher' || inputs.flasher_type == 'SuperHybrid Flasher' }}
+        if: ${{ inputs.flasher_type == 'RegionalHybrid Flasher' || inputs.flasher_type == 'SuperHybrid Flasher' || inputs.flasher_type == 'SuperHybrid SunOS Flasher' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -601,7 +590,7 @@ jobs:
           echo "Calling builder: \"$GITHUB_WORKSPACE/$OUT_DIR/$BUILDER_SH\" \"$OTA_PATH\""
           bash "$GITHUB_WORKSPACE/$OUT_DIR/$BUILDER_SH" "$OTA_PATH"
 
-      - name: "Package final output (zip; names: 13T OOS/COS + A5 region OOS+COS ODM)"
+      - name: Package final output (zip; names: SunOS + 13T OOS/COS + A5 region OOS+COS ODM)
         shell: bash
         run: |
           set -euo pipefail
@@ -642,7 +631,6 @@ jobs:
             ;;
           esac
 
-          # Fallbacks (beide Schreibweisen + CN-Varianten)
           fallback=(
             "RegionalHybrid Flasher CN"
             "Regional Hybrid Flasher"
@@ -657,16 +645,6 @@ jobs:
           )
 
           mapfile -t candidates < <(printf "%s\n" "${by_ftype[@]}" "${fallback[@]}" | awk '!seen[$0]++')
-
-          # Kandidaten robust (CN/Space/ohne Space)
-          mapfile -t candidates < <(
-            printf "%s\n" "${by_ftype[@]}" \
-              "SuperHybrid Flasher CN" \
-              "Regional Hybrid Flasher" "RegionalHybrid Flasher" \
-              "SuperHybrid Flasher" "SuperHybrid SunOS Flasher" \
-              "Super Flasher CN" "Super Flasher" "Regional Flasher CN" "Regional Flasher" \
-            | awk '!seen[$0]++'
-          )
 
           echo "Folders in OTA_DIR:"
           ls -la "$ota_dir" || true
@@ -687,39 +665,44 @@ jobs:
           ftype_name="$FTYPE"
           region_code="$REGION"
           ver="${OTA_VERSION:-UNKNOWN}"
+          current_date=$(date +%Y%m%d)
 
-          case "$region_code" in
-            CN)  region_disp="COS" ;;
-            GLO) region_disp="Global" ;;
-            EU)  region_disp="EU" ;;
-            IN)  region_disp="IN" ;;
-            NA)  region_disp="NA" ;;
-            *)   region_disp="$region_code" ;;
-          esac
+          if [[ "$FTYPE" == "SuperHybrid SunOS Flasher" ]]; then
+            artifact_base="SuperHybrid Sun-varuna-${current_date}-dodge-Official"
+          else
+            case "$region_code" in
+              CN)  region_disp="COS" ;;
+              GLO) region_disp="Global" ;;
+              EU)  region_disp="EU" ;;
+              IN)  region_disp="IN" ;;
+              NA)  region_disp="NA" ;;
+              *)   region_disp="$region_code" ;;
+            esac
 
-          case "$DEV" in
-            "13T")
-              if [[ "$REGION" == "CN" ]]; then os_tag="COS"; else os_tag="OOS"; fi
-              artifact_base="${ftype_name} 13T ${os_tag} ${ver}"
-            ;;
-            "13S")
-              artifact_base="${ftype_name} 13S ${ver}"
-            ;;
-            "13R")
-              artifact_base="${ftype_name} 13R ${region_disp} ${ver}"
-            ;;
-            "Ace5")
-              region_tag="$region_code"
-              if [[ "$region_code" == "CN" ]]; then os_tag="COS"; else os_tag="OOS+COS"; fi
-              artifact_base="${ftype_name} A5 ${region_tag} ${os_tag} ODM ${ver}"
-            ;;
-            "Ace5Pro")
-              artifact_base="${ftype_name} A5P ${region_disp} ${ver}"
-            ;;
-            *)
-              artifact_base="${ftype_name} ${region_disp} ${ver}"
-            ;;
-          esac
+            case "$DEV" in
+              "13T")
+                if [[ "$REGION" == "CN" ]]; then os_tag="COS"; else os_tag="OOS"; fi
+                artifact_base="${ftype_name} 13T ${os_tag} ${ver}"
+              ;;
+              "13S")
+                artifact_base="${ftype_name} 13S ${ver}"
+              ;;
+              "13R")
+                artifact_base="${ftype_name} 13R ${region_disp} ${ver}"
+              ;;
+              "Ace5")
+                region_tag="$region_code"
+                if [[ "$region_code" == "CN" ]]; then os_tag="COS"; else os_tag="OOS+COS"; fi
+                artifact_base="${ftype_name} A5 ${region_tag} ${os_tag} ODM ${ver}"
+              ;;
+              "Ace5Pro")
+                artifact_base="${ftype_name} A5P ${region_disp} ${ver}"
+              ;;
+              *)
+                artifact_base="${ftype_name} ${region_disp} ${ver}"
+              ;;
+            esac
+          fi
 
           zip_path="$zip_root/${artifact_base}.zip"
           rm -f "$zip_path"
@@ -764,16 +747,22 @@ jobs:
           region="${{ inputs.region }}"
           upload_to="${{ inputs.upload_to }}"
 
-          if [[ "$device" == "Oneplus 13T" && "$ftype" == "Super Flasher" && "$region" == "IN" ]]; then
+          if [[ "$ftype" == "SuperHybrid SunOS Flasher" ]]; then
+            category="SunOS Super Flashers"
+            rel="Oneplus 13/$category"
+          elif [[ "$device" == "Oneplus 13T" && "$ftype" == "Super Flasher" && "$region" == "IN" ]]; then
             category="OxygenOS Flashers"
+            rel="$device/$category"
           elif [[ "$device" == "Oneplus Ace 5 Pro" ]]; then
             category="Regional Flashers"
+            rel="$device/$category"
           else
-            if [[ "$ftype" =~ ^(SuperHybrid Flasher|SuperHybrid SunOS Flasher|Super Flasher)$ ]]; then
+            if [[ "$ftype" =~ ^(SuperHybrid Flasher|Super Flasher)$ ]]; then
               category="Super Flashers"
             else
               category="Regional Flashers"
             fi
+            rel="$device/$category"
           fi
 
           no_region_devices=("Oneplus 13S" "Oneplus 13T" "Oneplus Ace 5" "Oneplus Ace 5 Pro")
@@ -783,9 +772,8 @@ jobs:
           done
 
           if [[ "$device" == "Oneplus Ace 5" && "$region" != "CN" ]]; then
-            base="$device/OxygenOS/$category"
-            rel="$base"
-          elif [[ $needs_region -eq 1 ]]; then
+            rel="$device/OxygenOS/$category"
+          elif [[ $needs_region -eq 1 && "$ftype" != "SuperHybrid SunOS Flasher" ]]; then
             case "$region" in
               CN)  region_folder="COS" ;;
               GLO) region_folder="Global" ;;
@@ -794,9 +782,7 @@ jobs:
               NA)  region_folder="NA" ;;
               *)   region_folder="$region" ;;
             esac
-            rel="$device/$category/$region_folder"
-          else
-            rel="$device/$category"
+            rel="$rel/$region_folder"
           fi
 
           rel="${rel//\\//}"
@@ -832,7 +818,7 @@ jobs:
           : "${DS_FTP_USER:?Missing DS_FTP_USER}"
           : "${DS_FTP_PASS:?Missing DS_FTP_PASS}"
 
-          remote_dir="$(printf "%s" "$FTP_UPLOAD_DIR" | sed 's#^/*##')"  # e.g. "Oneplus 13/Super Flashers/Global/"
+          remote_dir="$(printf "%s" "$FTP_UPLOAD_DIR" | sed 's#^/*##')"  # e.g. "Oneplus 13/SunOS Super Flashers/"
           file_name="${ARTIFACT_NAME}.zip"
           zip_path="$ZIP_FILE"
           [ -f "$zip_path" ] || { echo "ZIP not found: $zip_path"; exit 1; }
@@ -869,7 +855,9 @@ jobs:
           ftp_rel_dir="$FTP_UPLOAD_DIR"
 
           # Type-Ordner wie in Windows
-          if [[ "$ftype" == "RegionalHybrid Flasher" ]]; then
+          if [[ "$ftype" == "SuperHybrid SunOS Flasher" ]]; then
+            type_dir="SunOS Super Flashers"
+          elif [[ "$ftype" == "RegionalHybrid Flasher" ]]; then
             type_dir="Regional Flashers"
           else
             type_dir="Super Flashers"
@@ -891,7 +879,7 @@ jobs:
           # Pfad für download_from_zip.php (ohne "Files/")
           zip_dir="$ftp_rel_dir"
           zip_dir="${zip_dir#Files/}"
-          zip_dir="${zip_dir#/}"  # evtl. führenden Slash entfernen
+          zip_dir="${zip_dir#/}"
           zip_plain="${zip_dir}${artifact}.zip"
 
           zip_param="$(python3 -c 'import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$zip_plain")"
@@ -907,7 +895,6 @@ jobs:
           boot_link="https://roms.danielspringer.at/download_from_zip.php?zip=${zip_param}&file=${boot_param}"
           init_boot_link="https://roms.danielspringer.at/download_from_zip.php?zip=${zip_param}&file=${init_boot_param}"
 
-          # Variablen für Python-Einzeiler
           export TG_DEVICE="$device_disp"
           export TG_ARTIFACT="$artifact"
           export TG_ZIP_LINK="$zip_link"
@@ -916,16 +903,11 @@ jobs:
           payload_path="$RUNNER_TEMP/tg_payload.json"
           export TG_PAYLOAD_PATH="$payload_path"
 
-          # JSON komplett in Python erzeugen (ensure_ascii=False => echte Emojis)
-          python3 -c 'import os,json; dev=os.environ["TG_DEVICE"]; art=os.environ["TG_ARTIFACT"]; p={"chat_id":-1001902568181,"text":f"✨ <b>New Build released</b> ✨\n{dev} <b>{art}</b>","parse_mode":"HTML","disable_web_page_preview":True,"reply_markup":{"inline_keyboard":[[{"text":"⬇️ Download ZIP","url":os.environ["TG_ZIP_LINK"]}],[{"text":"📦 boot.img","url":os.environ["TG_BOOT_LINK"]},{"text":"📦 init_boot.img","url":os.environ["TG_INIT_BOOT_LINK"]}]]}}; open(os.environ["TG_PAYLOAD_PATH"],"w",encoding="utf-8").write(json.dumps(p, ensure_ascii=False, separators=(",",":")))' 
+          python3 -c 'import os,json; dev=os.environ["TG_DEVICE"]; art=os.environ["TG_ARTIFACT"]; p={"chat_id":193732076,"text":f"✨ <b>New Build released</b> ✨\n{dev} <b>{art}</b>","parse_mode":"HTML","disable_web_page_preview":True,"reply_markup":{"inline_keyboard":[[{"text":"⬇️ Download ZIP","url":os.environ["TG_ZIP_LINK"]}],[{"text":"📦 boot.img","url":os.environ["TG_BOOT_LINK"]},{"text":"📦 init_boot.img","url":os.environ["TG_INIT_BOOT_LINK"]}]]}}; open(os.environ["TG_PAYLOAD_PATH"],"w",encoding="utf-8").write(json.dumps(p, ensure_ascii=False, separators=(",",":")))'
 
-          # Senden
           curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
                -H "Content-Type: application/json; charset=utf-8" \
                --data-binary "@${payload_path}"
-               
-      
-
 
       - name: Setup SSH for SourceForge
         if: ${{ inputs.upload_to == 'Sourceforge' || inputs.upload_to == 'Both DS_FTP & Sourceforge' }}
@@ -940,7 +922,6 @@ jobs:
           key_path="$ssh_dir/id_ed25519"
           printf "%s\n" "$SF_SSH_PRIVATE_KEY" | sed 's/\r$//' > "$key_path"
           chmod 600 "$key_path"
-          # beide Host-Key-Typen aufnehmen
           ssh-keyscan -t rsa frs.sourceforge.net >> "$ssh_dir/known_hosts" 2>/dev/null
           ssh-keyscan -t ed25519 frs.sourceforge.net >> "$ssh_dir/known_hosts" 2>/dev/null
 
