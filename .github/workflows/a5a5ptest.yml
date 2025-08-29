@@ -590,7 +590,7 @@ jobs:
           echo "Calling builder: \"$GITHUB_WORKSPACE/$OUT_DIR/$BUILDER_SH\" \"$OTA_PATH\""
           bash "$GITHUB_WORKSPACE/$OUT_DIR/$BUILDER_SH" "$OTA_PATH"
 
-      - name: Package final output (zip; names: SunOS + 13T OOS/COS + A5 region OOS+COS ODM)
+      - name: Package final output ZIP
         shell: bash
         run: |
           set -euo pipefail
