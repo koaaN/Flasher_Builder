@@ -11,8 +11,8 @@ fi
 input_file="$(realpath "$1")"
 input_dir="$(dirname "$input_file")"
 
-# Ordner dieses Skripts
-script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# Ordner dieses Skripts (relativ zum Workflow)
+script_dir="$GITHUB_WORKSPACE/$OUT_DIR"
 
 # Tools
 otaripper_bin="$script_dir/otaripper"
@@ -22,7 +22,7 @@ if [[ ! -x "$otaripper_bin" ]]; then
 fi
 
 # Flasher-Template
-flasher_source="$script_dir/SuperHybrid SunOS Flasher"
+flasher_source="$GITHUB_WORKSPACE/flasher_scripts/13/sunos/super"
 flasher_dest="$input_dir/SuperHybrid SunOS Flasher"
 
 # 1) Ordnerliste vor der Extraktion merken
@@ -58,23 +58,12 @@ rsync -a "$flasher_source/" "$flasher_dest/"
 # 5) Alle Dateien/Ordner aus dem Extrakt in den Flasher-Ordner verschieben
 shopt -s dotglob
 if compgen -G "$extracted_folder/*" >/dev/null; then
-  mv -f "$extracted_folder"/* "$flasher_dest/"
+  mv -f "$extracted_folder"/* "$flasher_dest/FASTBOOT_FILES_HERE/"
 fi
 shopt -u dotglob
 rm -rf "$extracted_folder"
 
-# 6) Dateien in FASTBOOTD_FILES_HERE verschieben
-mkdir -p "$flasher_dest/FASTBOOTD_FILES_HERE"
-for f in \
-  abl.img aop.img aop_config.img bluetooth.img cpucp.img cpucp_dtb.img \
-  devcfg.img dsp.img engineering_cdt.img featenabler.img hyp.img imagefv.img \
-  keymaster.img oplus_sec.img oplusstanvbk.img qupfw.img shrm.img splash.img \
-  tz.img uefi.img uefisecapp.img xbl.img xbl_config.img xbl_ramdump.img
-do
-  [[ -f "$flasher_dest/$f" ]] && mv -f "$flasher_dest/$f" "$flasher_dest/FASTBOOTD_FILES_HERE/"
-done
-
-# 7) Dateien in FASTBOOT_FILES_HERE verschieben
+# 6) Dateien in FASTBOOT_FILES_HERE verschieben
 mkdir -p "$flasher_dest/FASTBOOT_FILES_HERE"
 for f in \
   boot.img dtbo.img init_boot.img modem.img recovery.img super.img \
@@ -83,7 +72,7 @@ do
   [[ -f "$flasher_dest/$f" ]] && mv -f "$flasher_dest/$f" "$flasher_dest/FASTBOOT_FILES_HERE/"
 done
 
-# 8) SUPER-relevante Images in Super/ verschieben
+# 7) SUPER-relevante Images in Super/ verschieben
 mkdir -p "$flasher_dest/Super"
 for f in odm.img product.img system.img system_dlkm.img system_ext.img vendor.img vendor_dlkm.img; do
   [[ -f "$flasher_dest/$f" ]] && mv -f "$flasher_dest/$f" "$flasher_dest/Super/"
@@ -93,7 +82,7 @@ echo
 echo "All files sorted into folders inside: $flasher_dest"
 echo "Packing super.img"
 
-# 9) super.img packen (Linux-Packer erwartet)
+# 8) super.img packen (Linux-Packer erwartet)
 packer="$flasher_dest/Super/super_sunos.sh"
 if [[ ! -x "$packer" ]]; then
   echo "ERROR: super_sunos.sh nicht gefunden/ausführbar: $packer"
@@ -102,7 +91,7 @@ if [[ ! -x "$packer" ]]; then
 fi
 ( cd "$flasher_dest/Super" && bash "./super_sunos.sh" )
 
-# 10) super.img nach FASTBOOT_FILES_HERE verschieben
+# 9) super.img nach FASTBOOT_FILES_HERE verschieben
 if [[ -f "$flasher_dest/Super/super.img" ]]; then
   echo "Moving super.img into SuperHybrid SunOS Flasher/FASTBOOT_FILES_HERE/."
   mv -f "$flasher_dest/Super/super.img" "$flasher_dest/FASTBOOT_FILES_HERE/"
@@ -111,7 +100,7 @@ else
   exit 1
 fi
 
-# 11) Super-Arbeitsordner entfernen
+# 10) Super-Arbeitsordner entfernen
 echo "Removing scrap files"
 rm -rf "$flasher_dest/Super"
 
