@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Usage: ./SUPERHYBRID_SUNOS_FULL_SUPERBUILD.sh /path/to/payload.bin
+# Usage: ./SUPERHYBRID_SUNOS_FULL_SUPERBUILD.sh /path/to/OTA.zip
 
 if [[ $# -lt 1 ]]; then
-  echo "Usage: $0 /path/to/payload.bin"
+  echo "Usage: $0 /path/to/OTA.zip"
   exit 64
 fi
 
 input_file="$(realpath "$1")"
 input_dir="$(dirname "$input_file")"
 
-# Ordner dieses Skripts (relativ zum Workflow)
+# Ordner dieses Skripts (im Workflow: $OUT_DIR)
 script_dir="$GITHUB_WORKSPACE/$OUT_DIR"
 
 # Tools
@@ -24,84 +24,84 @@ fi
 # Flasher-Template
 flasher_source="$GITHUB_WORKSPACE/flasher_scripts/13/sunos/super"
 flasher_dest="$input_dir/SuperHybrid SunOS Flasher"
+fastboot_files="$flasher_dest/FASTBOOT_FILES_HERE"
+super_work="$flasher_dest/Super"
 
-# 1) Ordnerliste vor der Extraktion merken
+# 1) Flasher-Template neben die ZIP spiegeln
+mkdir -p "$flasher_dest"
+rsync -a "$flasher_source/" "$flasher_dest/"
+
+# 2) Ordnerliste vor der Extraktion merken
 declare -A before
 while IFS= read -r -d '' d; do
   before["$(basename "$d")"]=1
 done < <(find "$input_dir" -mindepth 1 -maxdepth 1 -type d -print0)
 
-# 2) otaripper im payload-Ordner ausführen
+# 3) otaripper im ZIP-Ordner ausführen
 pushd "$input_dir" >/dev/null
 "$otaripper_bin" "$input_file"
 popd >/dev/null
 
-# 3) neuen Extraktionsordner erkennen
-extracted_folder=""
+# 4) Neu entstandenen Ordner finden
+new_folder=""
 while IFS= read -r -d '' d; do
   base="$(basename "$d")"
   if [[ -z "${before[$base]+x}" ]]; then
-    extracted_folder="$d"
+    new_folder Reactions:="$d"
     break
   fi
 done < <(find "$input_dir" -mindepth 1 -maxdepth 1 -type d -print0)
 
-if [[ -z "$extracted_folder" ]]; then
-  echo "Error: Could not detect extracted folder."
-  exit 1
-fi
+[[ -n "$new_folder" ]] || { echo "ERROR: kein neuer Ordner nach Extraktion gefunden."; exit 1; }
 
-# 4) Flasher-Template neben payload spiegeln
-mkdir -p "$flasher_dest"
-rsync -a "$flasher_source/" "$flasher_dest/"
+# 5) Definierte Partitionen in Super/ verschieben
+mkdir -p "$super_work"
+echo "Moving logical partitions into Super/ ..."
+part_list=(
+  odm.img product.img system.img system_dlkm.img system_ext.img
+  vendor.img vendor_dlkm.img
+)
+for f in "${part_list[@]}"; do
+  if [[ -f "$new_folder/$f" ]]; then
+    mv -f "$new_folder/$f" "$super_work/"
+  fi
+done
 
-# 5) Alle Dateien/Ordner aus dem Extrakt in den Flasher-Ordner verschieben
+# 6) Restliche Dateien nach FASTBOOT_FILES_HERE/
+mkdir -p "$fastboot_files"
 shopt -s dotglob
-if compgen -G "$extracted_folder/*" >/dev/null; then
-  mv -f "$extracted_folder"/* "$flasher_dest/FASTBOOT_FILES_HERE/"
+if compgen -G "$new_folder/*" >/dev/null; then
+  mv -f "$new_folder"/* "$fastboot_files/" || true
 fi
 shopt -u dotglob
-rm -rf "$extracted_folder"
 
-# 6) Dateien in FASTBOOT_FILES_HERE verschieben
-mkdir -p "$flasher_dest/FASTBOOT_FILES_HERE"
-for f in \
-  boot.img dtbo.img init_boot.img modem.img recovery.img super.img \
-  vbmeta.img vbmeta_system.img vbmeta_vendor.img vendor_boot.img
-do
-  [[ -f "$flasher_dest/$f" ]] && mv -f "$flasher_dest/$f" "$flasher_dest/FASTBOOT_FILES_HERE/"
-done
+# 7) Temporären Extraktordner löschen
+rm -rf "$new_folder"
 
-# 7) SUPER-relevante Images in Super/ verschieben
-mkdir -p "$flasher_dest/Super"
-for f in odm.img product.img system.img system_dlkm.img system_ext.img vendor.img vendor_dlkm.img; do
-  [[ -f "$flasher_dest/$f" ]] && mv -f "$flasher_dest/$f" "$flasher_dest/Super/"
-done
+echo "Done moving files into SuperHybrid SunOS Flasher"
 
-echo
-echo "All files sorted into folders inside: $flasher_dest"
-echo "Packing super.img"
-
-# 8) super.img packen (Linux-Packer erwartet)
-packer="$flasher_dest/Super/super_sunos.sh"
+# 8) super.img packen
+packer="$super_work/super_sunos.sh"
 if [[ ! -x "$packer" ]]; then
   echo "ERROR: super_sunos.sh nicht gefunden/ausführbar: $packer"
-  echo "Bitte Linux-Packer im Template unter 'SuperHybrid SunOS Flasher/Super/super_sunos.sh' bereitstellen."
+  echo "Erwarte Linux-Packer unter 'SuperHybrid SunOS Flasher/Super/super_sunos.sh'."
   exit 1
 fi
-( cd "$flasher_dest/Super" && bash "./super_sunos.sh" )
+
+echo "Packing super.img ..."
+( cd "$super_work" && bash "./super_sunos.sh" )
 
 # 9) super.img nach FASTBOOT_FILES_HERE verschieben
-if [[ -f "$flasher_dest/Super/super.img" ]]; then
-  echo "Moving super.img into SuperHybrid SunOS Flasher/FASTBOOT_FILES_HERE/."
-  mv -f "$flasher_dest/Super/super.img" "$flasher_dest/FASTBOOT_FILES_HERE/"
+if [[ -f "$super_work/super.img" ]]; then
+  echo "Moving super.img into SuperHybrid SunOS Flasher/FASTBOOT_FILES_HERE/..."
+  mv -f "$super_work/super.img" "$fastboot_files/"
 else
   echo "ERROR: super.img wurde nicht erzeugt."
   exit 1
 fi
 
-# 10) Super-Arbeitsordner entfernen
+# 10) Aufräumen: Super/ löschen
 echo "Removing scrap files"
-rm -rf "$flasher_dest/Super"
+rm -rf "$super_work"
 
 echo "BUILD DONE!!!"
