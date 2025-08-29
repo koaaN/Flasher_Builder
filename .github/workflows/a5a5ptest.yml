@@ -385,13 +385,22 @@ jobs:
             done
 
             pdir="$root/super_packers/13"
+            super_dir="$work_dir/Super"
+            mkdir -p "$super_dir"
             if [[ -f "$pdir/super_sunos.sh" ]]; then
-              mkdir -p "$work_dir/Super"
-              cp -f "$pdir/super_sunos.sh" "$work_dir/Super/super_sunos.sh"
-              chmod +x "$work_dir/Super/super_sunos.sh"
+              cp -f "$pdir/super_sunos.sh" "$super_dir/super_sunos.sh"
+              chmod +x "$super_dir/super_sunos.sh"
             else
               echo "ERROR: super_sunos.sh nicht gefunden in $pdir" >&2
               exit 1
+            fi
+
+            # Kopiere lpmake für SunOS
+            if [ -f "$root/lpmake/lpmake" ]; then
+              cp -f "$root/lpmake/lpmake" "$super_dir/"
+              chmod +x "$super_dir/lpmake"
+            else
+              echo "WARN: lpmake nicht gefunden in $root/lpmake/lpmake"
             fi
 
             rsync -a "$tpl_base/" "$work_dir/"
