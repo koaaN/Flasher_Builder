@@ -423,6 +423,13 @@ jobs:
             else
               echo "WARN: Platform-Tools not found at repo root: $pt_src"
             fi
+                        # Kopiere lpmake für SunOS
+            if [ -f "$root/lpmake/lpmake" ]; then
+              cp -f "$root/lpmake/lpmake" "$super_dir/"
+              chmod +x "$super_dir/lpmake"
+            else
+              echo "WARN: lpmake nicht gefunden in $root/lpmake/lpmake"
+            fi
 
             rsync -a --exclude '16DTBO/' --exclude 'dtbo_patcher.sh' --exclude 'Super_Flasher*.bat' "$tpl_base/" "$work_dir/"
 
