@@ -290,8 +290,7 @@ jobs:
           fi
           builder_dir="$root/build_scripts/$builder_base_dev"
 
-          rm -rf "$OUT perspective
-OUT_DIR"
+          rm -rf "$OUT_DIR"
           mkdir -p "$OUT_DIR"
 
           if [ -f "$root/otaripper/otaripper" ]; then
