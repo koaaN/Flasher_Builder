@@ -49,6 +49,14 @@ on:
           - DS_FTP
           - Artifact Only
         default: DS_FTP
+      notify_telegram:
+        description: "Notify Telegram"
+        type: choice
+        required: true
+        options:
+          - On
+          - Off
+        default: On
 
 permissions:
   contents: read
@@ -858,7 +866,7 @@ jobs:
                --fail --show-error --silent
 
       - name: Notify Telegram
-        if: ${{ inputs.upload_to == 'DS_FTP' && inputs.flasher_type != 'SuperHybrid SunOS Flasher' }}
+        if: ${{ inputs.upload_to == 'DS_FTP' && inputs.flasher_type != 'SuperHybrid SunOS Flasher' && inputs.notify_telegram == 'On' }}
         shell: bash
         run: |
           set -euo pipefail
