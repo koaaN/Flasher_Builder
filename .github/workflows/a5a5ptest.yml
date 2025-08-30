@@ -346,8 +346,7 @@ jobs:
           else
             tpl_dev="$DEV"
           fi
-          tpl_base="$root/flasher_scripts/$tpl指标
-tpl_dev"
+          tpl_base="$root/flasher_scripts/$tpl_dev"
           if [[ "$FTYPE" == *Hybrid* ]]; then
             if [[ "$REGION" == "CN" ]]; then os_root="cos"; else os_root="oos"; fi
             if [[ "$FTYPE" == *Super* ]]; then kind="super"; else kind="regional"; fi
