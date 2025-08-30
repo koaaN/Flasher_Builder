@@ -290,7 +290,7 @@ jobs:
           fi
           builder_dir="$root/build_scripts/$builder_base_dev"
 
-          rm -rf "$OUT_DIR"
+          rm -rf "$OUT_DIR"  # Korrigierte Zeile
           mkdir -p "$OUT_DIR"
 
           if [ -f "$root/otaripper/otaripper" ]; then
@@ -368,11 +368,10 @@ jobs:
 
           if [[ "$FTYPE" == "SuperHybrid SunOS Flasher" ]]; then
             fastbootd_files="$work_dir/FASTBOOTD_FILES_HERE"
-            mkdir -p "$fast基本fastbootd_files"
+            mkdir -p "$fastbootd_files"  # Korrigierter Variablenname
             echo "Downloading SunOS bloat files into FASTBOOTD_FILES_HERE..."
             declare -a sunos_bloat=(
-              abl.img aറ
-aop.img aop_config.img bluetooth.img cpucp.img cpucp_dtb.img
+              abl.img aop.img aop_config.img bluetooth.img cpucp.img cpucp_dtb.img
               devcfg.img dsp.img engineering_cdt.img featenabler.img hyp.img imagefv.img
               keymaster.img oplus_sec.img oplusstanvbk.img qupfw.img shrm.img splash.img
               tz.img uefi.img uefisecapp.img xbl.img xbl_config.img xbl_ramdump.img
@@ -389,7 +388,7 @@ aop.img aop_config.img bluetooth.img cpucp.img cpucp_dtb.img
             echo "Downloading modem.img for SunOS → COS_FILES_HERE"
             curl -L --fail --retry 3 --retry-delay 5 \
               -o "$cos_here/modem.img" \
-              "https://roms.danielspringer.at/download.php?file=Files%2FBodata%2F13%2FSunOS%2FCOS_FILES_HERE%2Fmodem.img&download=true" \
+              "https://roms.danielspringer.at/download.php?file=Files%2FBloat%2F13%2FSunOS%2FCOS_FILES_HERE%2Fmodem.img&download=true" \
               || echo "WARN: Download failed for modem.img"
 
             echo "Downloading oplusstanvbk.img for SunOS → COS_FILES_HERE"
