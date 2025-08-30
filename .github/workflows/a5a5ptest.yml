@@ -47,8 +47,6 @@ on:
         required: true
         options:
           - DS_FTP
-          - Sourceforge
-          - "Both DS_FTP & Sourceforge"
           - Artifact Only
         default: DS_FTP
 
@@ -292,7 +290,8 @@ jobs:
           fi
           builder_dir="$root/build_scripts/$builder_base_dev"
 
-          rm -rf "$OUT_DIR"
+          rm -rf "$OUT perspective
+OUT_DIR"
           mkdir -p "$OUT_DIR"
 
           if [ -f "$root/otaripper/otaripper" ]; then
@@ -348,7 +347,8 @@ jobs:
           else
             tpl_dev="$DEV"
           fi
-          tpl_base="$root/flasher_scripts/$tpl_dev"
+          tpl_base="$root/flasher_scripts/$tpl指标
+tpl_dev"
           if [[ "$FTYPE" == *Hybrid* ]]; then
             if [[ "$REGION" == "CN" ]]; then os_root="cos"; else os_root="oos"; fi
             if [[ "$FTYPE" == *Super* ]]; then kind="super"; else kind="regional"; fi
@@ -370,10 +370,11 @@ jobs:
 
           if [[ "$FTYPE" == "SuperHybrid SunOS Flasher" ]]; then
             fastbootd_files="$work_dir/FASTBOOTD_FILES_HERE"
-            mkdir -p "$fastbootd_files"
+            mkdir -p "$fast基本fastbootd_files"
             echo "Downloading SunOS bloat files into FASTBOOTD_FILES_HERE..."
             declare -a sunos_bloat=(
-              abl.img aop.img aop_config.img bluetooth.img cpucp.img cpucp_dtb.img
+              abl.img aറ
+aop.img aop_config.img bluetooth.img cpucp.img cpucp_dtb.img
               devcfg.img dsp.img engineering_cdt.img featenabler.img hyp.img imagefv.img
               keymaster.img oplus_sec.img oplusstanvbk.img qupfw.img shrm.img splash.img
               tz.img uefi.img uefisecapp.img xbl.img xbl_config.img xbl_ramdump.img
@@ -384,14 +385,13 @@ jobs:
               curl -L --fail --retry 3 --retry-delay 5 -o "$fastbootd_files/$img" "$url" || echo "WARN: Download failed for $img"
             done
 
-                        # COS_FILES_HERE für SunOS vorbereiten
             cos_here="$work_dir/COS_FILES_HERE"
             mkdir -p "$cos_here"
 
             echo "Downloading modem.img for SunOS → COS_FILES_HERE"
             curl -L --fail --retry 3 --retry-delay 5 \
               -o "$cos_here/modem.img" \
-              "https://roms.danielspringer.at/download.php?file=Files%2FBloat%2F13%2FSunOS%2FCOS_FILES_HERE%2Fmodem.img&download=true" \
+              "https://roms.danielspringer.at/download.php?file=Files%2FBodata%2F13%2FSunOS%2FCOS_FILES_HERE%2Fmodem.img&download=true" \
               || echo "WARN: Download failed for modem.img"
 
             echo "Downloading oplusstanvbk.img for SunOS → COS_FILES_HERE"
@@ -399,7 +399,6 @@ jobs:
               -o "$cos_here/oplusstanvbk.img" \
               "https://roms.danielspringer.at/download.php?file=Files%2FBloat%2F13%2FSunOS%2FCOS_FILES_HERE%2Foplusstanvbk.img&download=true" \
               || echo "WARN: Download failed for oplusstanvbk.img"
-
 
             pdir="$root/super_packers/13"
             super_dir="$work_dir/Super"
@@ -412,21 +411,12 @@ jobs:
               exit 1
             fi
 
-            # Platform-Tools auch für SunOS bereitstellen
             pt_src="$root/Platform-Tools"
             if [ -d "$pt_src" ]; then
               mkdir -p "$work_dir/Platform-Tools"
               rsync -a "$pt_src/" "$work_dir/Platform-Tools/"
             else
               echo "WARN: Platform-Tools not found at repo root: $pt_src"
-            fi
-
-            # Kopiere lpmake für SunOS
-            if [ -f "$root/lpmake/lpmake" ]; then
-              cp -f "$root/lpmake/lpmake" "$super_dir/"
-              chmod +x "$super_dir/lpmake"
-            else
-              echo "WARN: lpmake nicht gefunden in $root/lpmake/lpmake"
             fi
 
             rsync -a --exclude '16DTBO/' --exclude 'dtbo_patcher.sh' --exclude 'Super_Flasher*.bat' "$tpl_base/" "$work_dir/"
@@ -622,7 +612,6 @@ jobs:
           dst="$OTA_DIR/$(basename "$src")"
           mkdir -p "$dst"
           rsync -a --info=progress2 "$src/" "$dst/"
-          # otaripper neben die ZIP legen
           [ -f "$OUT_DIR/otaripper" ] && cp -f "$OUT_DIR/otaripper" "$OTA_DIR/"
 
       - name: Run builder
@@ -789,7 +778,6 @@ jobs:
           device="${{ inputs.device }}"
           ftype="${{ inputs.flasher_type }}"
           region="${{ inputs.region }}"
-          upload_to="${{ inputs.upload_to }}"
 
           if [[ "$ftype" == "SuperHybrid SunOS Flasher" ]]; then
             category="SunOS Super Flashers"
@@ -837,20 +825,8 @@ jobs:
           if [ -n "$ftp_base" ]; then ftp_abs="$ftp_base/$rel"; else ftp_abs="$rel"; fi
           echo "FTP_UPLOAD_DIR=$ftp_abs" >> "$GITHUB_ENV"
 
-          if [[ "$upload_to" == "Sourceforge" || "$upload_to" == "Both DS_FTP & Sourceforge" ]]; then
-            sf_base_abs="$(printf "%s" "${{ secrets.SF_PROJECT_PATH }}" | tr -d '\r')"
-            if [ -z "$sf_base_abs" ] || [[ "$sf_base_abs" != /* ]]; then
-              echo "SF_PROJECT_PATH must be an absolute path like /home/frs/project/oneplus13flashers"
-              exit 1
-            fi
-            sf_base_abs="$(printf "%s" "$sf_base_abs" | sed 's#\\#/#g; s#/*$##')"
-            echo "SF_UPLOAD_DIR=$sf_base_abs/$rel" >> "$GITHUB_ENV"
-          else
-            echo "SF_UPLOAD_DIR=" >> "$GITHUB_ENV"
-          fi
-
       - name: Upload to DS_FTP (curl, streamed)
-        if: ${{ inputs.upload_to == 'DS_FTP' || inputs.upload_to == 'Both DS_FTP & Sourceforge' }}
+        if: ${{ inputs.upload_to == 'DS_FTP' }}
         env:
           DS_FTP_HOST: ${{ secrets.DS_FTP_HOST }}
           DS_FTP_USER: ${{ secrets.DS_FTP_USER }}
@@ -885,7 +861,7 @@ jobs:
                --fail --show-error --silent
 
       - name: Notify Telegram
-        if: ${{ (inputs.upload_to == 'DS_FTP' || inputs.upload_to == 'Both DS_FTP & Sourceforge') && inputs.flasher_type != 'SuperHybrid SunOS Flasher' }}
+        if: ${{ inputs.upload_to == 'DS_FTP' && inputs.flasher_type != 'SuperHybrid SunOS Flasher' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -947,44 +923,9 @@ jobs:
           export TG_PAYLOAD_PATH="$payload_path"
 
           # JSON komplett in Python erzeugen (ensure_ascii=False => echte Emojis)
-          python3 -c 'import os,json; dev=os.environ["TG_DEVICE"]; art=os.environ["TG_ARTIFACT"]; p={"chat_id":-1001902568181,"text":f"✨ <b>New Build released</b> ✨\n{dev} <b>{art}</b>","parse_mode":"HTML","disable_web_page_preview":True,"reply_markup":{"inline_keyboard":[[{"text":"⬇️ Download ZIP","url":os.environ["TG_ZIP_LINK"]}],[{"text":"📦 boot.img","url":os.environ["TG_BOOT_LINK"]},{"text":"📦 init_boot.img","url":os.environ["TG_INIT_BOOT_LINK"]}]]}}; open(os.environ["TG_PAYLOAD_PATH"],"w",encoding="utf-8").write(json.dumps(p, ensure_ascii=False, separators=(",",":")))' 
+          python3 -c 'import os,json; dev=os.environ["TG_DEVICE"]; art=os.environ["TG_ARTIFACT"]; p={"chat_id":-1001902568181,"text":f"✨ <b>New Build released</b> ✨\n{dev} <b>{art}</b>","parse_mode":"HTML","disable_web_page_preview":True,"reply_markup":{"inline_keyboard":[[{"text":"⬇️ Download ZIP","url":os.environ["TG_ZIP_LINK"]}],[{"text":"📦 boot.img","url":os.environ["TG_BOOT_LINK"]},{"text":"📦 init_boot.img","url":os.environ["TG_INIT_BOOT_LINK"]}]]}}; open(os.environ["TG_PAYLOAD_PATH"],"w",encoding="utf-8").write(json.dumps(p, ensure_ascii=False, separators=(",",":")))'
 
           # Senden
           curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
                -H "Content-Type: application/json; charset=utf-8" \
                --data-binary "@${payload_path}"
-
-      - name: Setup SSH for SourceForge
-        if: ${{ inputs.upload_to == 'Sourceforge' || inputs.upload_to == 'Both DS_FTP & Sourceforge' }}
-        env:
-          SF_SSH_PRIVATE_KEY: ${{ secrets.SF_SSH_PRIVATE_KEY }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          : "${SF_SSH_PRIVATE_KEY:?Missing SF_SSH_PRIVATE_KEY}"
-          ssh_dir="$HOME/.ssh"
-          mkdir -p "$ssh_dir"
-          key_path="$ssh_dir/id_ed25519"
-          printf "%s\n" "$SF_SSH_PRIVATE_KEY" | sed 's/\r$//' > "$key_path"
-          chmod 600 "$key_path"
-          ssh-keyscan -t rsa frs.sourceforge.net >> "$ssh_dir/known_hosts" 2>/dev/null
-          ssh-keyscan -t ed25519 frs.sourceforge.net >> "$ssh_dir/known_hosts" 2>/dev/null
-
-      - name: Upload to SourceForge (SCP)
-        if: ${{ inputs.upload_to == 'Sourceforge' || inputs.upload_to == 'Both DS_FTP & Sourceforge' }}
-        env:
-          SF_USERNAME: ${{ secrets.SF_USERNAME }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          : "${SF_USERNAME:?Missing SF_USERNAME}"
-          : "${SF_UPLOAD_DIR:?Missing SF_UPLOAD_DIR}"
-          zip="$ZIP_FILE"
-          [ -f "$zip" ] || { echo "ZIP file not found: $zip"; exit 1; }
-          dest_dir="$(printf "%s" "$SF_UPLOAD_DIR" | sed 's#\\#/#g; s#/*$##')"
-          dest="${dest_dir}/${ARTIFACT_NAME}.zip"
-          key="$HOME/.ssh/id_ed25519"
-
-          ssh -i "$key" -o StrictHostKeyChecking=yes "${SF_USERNAME}@frs.sourceforge.net" "test -d \"$dest_dir\" || { echo 'ERROR: Destination folder does not exist on SourceForge: ' \"$dest_dir\"; exit 66; }"
-          echo "Uploading to SourceForge: $dest"
-          scp -i "$key" -o StrictHostKeyChecking=yes "$zip" "${SF_USERNAME}@frs.sourceforge.net:\"$dest\""
