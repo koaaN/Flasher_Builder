@@ -72,9 +72,12 @@ env:
 jobs:
   build:
     name: Build • ${{ inputs.device }} • ${{ inputs.flasher_type }} • ${{ inputs.region }}
-    runs-on: ${{ inputs.runner }}
+    runs-on: ${{ github.event.inputs.runner }}
 
     steps:
+      - name: Print runner
+        run: echo "Using runner ${{ github.event.inputs.runner }}"
+    
       - name: Checkout repo
         uses: actions/checkout@v4
 
