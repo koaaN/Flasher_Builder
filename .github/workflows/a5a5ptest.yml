@@ -88,25 +88,6 @@ jobs:
           [ -f lpmake/lpmake ] && chmod +x lpmake/lpmake || true
           [ -f otaripper/otaripper ] && chmod +x otaripper/otaripper || true
 
-      - name: Ensure deps (optional, falls Runner schon alles hat)
-        if: ${{ runner.os == 'Linux' }}
-        shell: bash
-        run: |
-          set -e
-          if command -v apt-get >/dev/null 2>&1; then
-            if [ "$(id -u)" -eq 0 ]; then
-              apt-get update
-              DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-                aria2 curl unzip zip rsync openssh-client ca-certificates tar coreutils grep sed gawk p7zip-full python3
-            elif sudo -n true 2>/dev/null; then
-              sudo apt-get update
-              sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-                aria2 curl unzip zip rsync openssh-client ca-certificates tar coreutils grep sed gawk p7zip-full python3
-            else
-              echo "No passwordless sudo → skip apt install (assume deps present)."
-            fi
-          fi
-
       - name: Prep dirs and placeholder
         shell: bash
         run: |
