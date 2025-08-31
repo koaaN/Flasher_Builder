@@ -851,7 +851,7 @@ jobs:
                --fail --show-error --silent
 
       - name: Notify Telegram
-        if: ${{ inputs.upload_to == 'DS_FTP' && inputs.flasher_type != 'SuperHybrid SunOS Flasher' && inputs.notify_telegram == 'true' }}
+        if: ${{ inputs.upload_to == 'DS_FTP' && inputs.flasher_type != 'SuperHybrid SunOS Flasher' && inputs.notify_telegram }}
         shell: bash
         run: |
           set -euo pipefail
