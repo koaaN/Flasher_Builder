@@ -51,12 +51,12 @@ on:
         default: DS_FTP
       notify_telegram:
         description: "Notify Telegram"
-        type: choice
+        type: boolean
         required: true
         options:
           - On
           - Off
-        default: On
+        default: true
 
 permissions:
   contents: read
