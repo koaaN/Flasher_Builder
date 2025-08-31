@@ -7,8 +7,8 @@ on:
         description: "Which runner to use"
         type: choice
         options:
-          - github (Own Server)
-          - netcup (Amsterdam)
+          - github
+          - netcup
         default: github
       device:
         description: "Device"
