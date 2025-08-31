@@ -3,13 +3,6 @@ name: Build Tools (Linux)
 on:
   workflow_dispatch:
     inputs:
-      runner:
-        description: "Which runner to use"
-        type: choice
-        options:
-          - github
-          - netcup
-        default: github
       device:
         description: "Device"
         type: choice
@@ -72,12 +65,9 @@ env:
 jobs:
   build:
     name: Build • ${{ inputs.device }} • ${{ inputs.flasher_type }} • ${{ inputs.region }}
-    runs-on: ${{ github.event.inputs.runner }}
+    runs-on: [self-hosted, Linux, X64]
 
     steps:
-      - name: Print runner
-        run: echo "Using runner ${{ github.event.inputs.runner }}"
-    
       - name: Checkout repo
         uses: actions/checkout@v4
 
