@@ -53,9 +53,6 @@ on:
         description: "Notify Telegram"
         type: boolean
         required: true
-        options:
-          - On
-          - Off
         default: true
 
 permissions:
