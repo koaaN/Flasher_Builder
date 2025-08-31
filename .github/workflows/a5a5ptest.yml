@@ -71,7 +71,7 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Make scripts executable (+ normalize line endings)
+      - name: Make scripts executable
         shell: bash
         run: |
           set -euo pipefail
@@ -98,7 +98,7 @@ jobs:
             (cd download && zip -q OTA.zip PLACEHOLDER.txt)
           fi
 
-      - name: Download OTA zip (aria2 → curl fallback)
+      - name: Download OTA zip
         if: ${{ inputs.ota_url != '' }}
         shell: bash
         run: |
@@ -216,7 +216,7 @@ jobs:
             echo "BUILDER_SH=$builder_sh"
           } >> "$GITHUB_ENV"
 
-      - name: Stage files (13-series + Ace 5 / Ace 5 Pro; fix updater-script LF)
+      - name: Stage files
         shell: bash
         run: |
           set -euo pipefail
@@ -592,7 +592,7 @@ jobs:
 
           echo "WORK_DIR=$work_dir" >> "$GITHUB_ENV"
 
-      - name: Pre-stage flasher into OTA folder (bypass flaky XCOPY)
+      - name: Pre-stage flasher into OTA folder
         if: ${{ inputs.flasher_type == 'RegionalHybrid Flasher' || inputs.flasher_type == 'SuperHybrid Flasher' || inputs.flasher_type == 'SuperHybrid SunOS Flasher' }}
         shell: bash
         run: |
@@ -613,7 +613,7 @@ jobs:
           echo "Calling builder: \"$GITHUB_WORKSPACE/$OUT_DIR/$BUILDER_SH\" \"$OTA_PATH\""
           bash "$GITHUB_WORKSPACE/$OUT_DIR/$BUILDER_SH" "$OTA_PATH"
 
-      - name: Package final output (zip for SunOS, 13T, Ace5, Ace5Pro)
+      - name: Package final output
         shell: bash
         run: |
           set -euo pipefail
@@ -753,7 +753,7 @@ jobs:
             echo "ZIP_FILE=$zip_path"
           } >> "$GITHUB_ENV"
 
-      - name: Upload artifact (single zip only)
+      - name: Upload artifact
         if: ${{ inputs.upload_to == 'Artifact Only' }}
         uses: actions/upload-artifact@v4
         with:
@@ -815,7 +815,7 @@ jobs:
           if [ -n "$ftp_base" ]; then ftp_abs="$ftp_base/$rel"; else ftp_abs="$rel"; fi
           echo "FTP_UPLOAD_DIR=$ftp_abs" >> "$GITHUB_ENV"
 
-      - name: Upload to DS_FTP (curl, streamed)
+      - name: Upload to DS_FTP
         if: ${{ inputs.upload_to == 'DS_FTP' }}
         env:
           DS_FTP_HOST: ${{ secrets.DS_FTP_HOST }}
