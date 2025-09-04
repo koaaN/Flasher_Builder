@@ -606,24 +606,26 @@ jobs:
               copy_bloat_from_folder "$bloat_base" "$bloat_folder" "$super_dir"
             fi
 
-            # OP13 • SuperHybrid • non-CN → copy my_region & oplusstanvbk from repo bloat\13\COS_FILES_HERE to work COS_FILES_HERE
-            if ($dev -eq '13' -and $ftype -eq 'SuperHybrid Flasher' -and $region -ne 'CN') {
-              $repoCos = Join-Path $root 'bloat\13\COS_FILES_HERE'
-              if (Test-Path $repoCos) {
-                $cosHere = Join-Path $workDir 'COS_FILES_HERE'
-                New-Item -ItemType Directory -Force -Path $cosHere | Out-Null
-                foreach ($f in 'my_region.img','oplusstanvbk.img') {
-                  $src = Join-Path $repoCos $f
-                  if (Test-Path $src) {
-                    Copy-Item $src -Destination $cosHere -Force
-                  } else {
-                    Write-Warning ("Wanted {0} in {1} but it was not found." -f $f,$repoCos)
-                  }
-                }
-              } else {
-                Write-Warning ("Repo COS_FILES_HERE not found: {0}" -f $repoCos)
-              }
-            }
+            # OP13 • SuperHybrid • non-CN → copy my_region & oplusstanvbk from repo bloat/13/COS_FILES_HERE to work COS_FILES_HERE
+            if [[ "$dev" == "13" && "$ftype" == "SuperHybrid Flasher" && "$region" != "CN" ]]; then
+              repo_cos="$root/bloat/13/COS_FILES_HERE"
+              if [[ -d "$repo_cos" ]]; then
+                cos_here="$work_dir/COS_FILES_HERE"
+                mkdir -p "$cos_here"
+
+                for f in my_region.img oplusstanvbk.img; do
+                  src="$repo_cos/$f"
+                  if [[ -f "$src" ]]; then
+                    cp -f "$src" "$cos_here/"
+                  else
+                    echo "WARN: wanted $f in $repo_cos but not found"
+                  fi
+                done
+              else
+                echo "WARN: repo COS_FILES_HERE not found: $repo_cos"
+              fi
+            fi
+
 
 
             # CN extra OOS staging
