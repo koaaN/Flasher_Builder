@@ -606,6 +606,26 @@ jobs:
               copy_bloat_from_folder "$bloat_base" "$bloat_folder" "$super_dir"
             fi
 
+                        # --- OP13 • SuperHybrid • non-CN: ensure my_region & oplusstanvbk go to COS_FILES_HERE ---
+            if [[ "$dev" == "13" && "$ftype" == "SuperHybrid Flasher" && "$region" != "CN" ]]; then
+              cos_here="$work_dir/COS_FILES_HERE"
+              mkdir -p "$cos_here"
+
+              case "$region" in
+                EU|GLO) src_dir="$bloat_base/EUGLO_BLOAT" ;;
+                IN)     src_dir="$bloat_base/IN_BLOAT"    ;;
+                NA)     src_dir="$bloat_base/NA_BLOAT"    ;;
+                *)      src_dir="$bloat_base/EUGLO_BLOAT" ;;
+              esac
+
+              copy_or_download "$src_dir" "my_region"    "$cos_here/my_region.img"
+              copy_or_download "$src_dir" "oplusstanvbk" "$cos_here/oplusstanvbk.img"
+
+              for f in my_region.img oplusstanvbk.img; do
+                [ -f "$super_dir/$f" ] && rm -f "$super_dir/$f"
+              done
+            fi
+
             # CN extra OOS staging
             if [[ "$region" == "CN" ]]; then
               if [[ "$dev" == "13" && "$ftype" == "SuperHybrid Flasher" ]]; then
