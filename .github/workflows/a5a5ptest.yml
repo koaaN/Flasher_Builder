@@ -216,7 +216,7 @@ jobs:
             echo "BUILDER_SH=$builder_sh"
           } >> "$GITHUB_ENV"
 
-      - name: Stage files (Linux merged: Jonas logic + SunOS)
+      - name: Stage files
         shell: bash
         run: |
           set -euo pipefail
