@@ -19,8 +19,8 @@ tool="$script_dir/otaripper"   # Linux-Binary (im selben Ordner wie dieses Skrip
 # Entspricht:
 # set "regional_flasher_src=%~dp0Regional Hybrid Flasher"
 # set "regional_flasher_dest=%input_dir%Regional Hybrid Flasher"
-regional_flasher_src="$script_dir/Regional Hybrid Flasher"
-regional_flasher_dest="$input_dir/Regional Hybrid Flasher"
+regional_flasher_src="$script_dir/RegionalHybrid Flasher"
+regional_flasher_dest="$input_dir/RegionalHybrid Flasher"
 
 # --- Copy Regional Hybrid Flasher folder to zip location (xcopy-Äquivalent, ohne Löschen) ---
 if [[ ! -d "$regional_flasher_src" ]]; then
