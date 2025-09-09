@@ -1128,10 +1128,10 @@ jobs:
           boot_link="https://roms.danielspringer.at/download_from_zip.php?zip=${zip_param}&file=${boot_param}"
           init_boot_link="https://roms.danielspringer.at/download_from_zip.php?zip=${zip_param}&file=${init_boot_param}"
 
-          # Spezieller Anzeigename für SunOS Builds
+          # Spezieller Anzeigename für SunOS Builds (ohne doppeltes "Oneplus 13")
           if [[ "$ftype" == "SuperHybrid SunOS Flasher" ]]; then
             ver="$(date +%Y%m%d)"
-            tg_artifact="Oneplus 13 SunOS SuperHybrid Flasher ${ver}"
+            tg_artifact="SunOS SuperHybrid Flasher ${ver}"
           else
             tg_artifact="$artifact"
           fi
@@ -1152,3 +1152,4 @@ jobs:
           curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
                -H "Content-Type: application/json; charset=utf-8" \
                --data-binary "@${payload_path}"
+
