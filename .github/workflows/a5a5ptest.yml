@@ -1109,11 +1109,11 @@ jobs:
           zip_param="${zip_param//%20/+}"
 
           # Image-Ordner im ZIP wählen:
-          # - SunOS: FASTBOOTD_FILES_HERE
+          # - SunOS: FASTBOOT_FILES_HERE
           # - CN:    COS_FILES_HERE
           # - sonst: OOS_FILES_HERE
           if [[ "$ftype" == "SuperHybrid SunOS Flasher" ]]; then
-            img_folder="FASTBOOTD_FILES_HERE"
+            img_folder="FASTBOOT_FILES_HERE"
           elif [[ "$region" == "CN" ]]; then
             img_folder="COS_FILES_HERE"
           else
