@@ -872,15 +872,15 @@ jobs:
                 artifact_base="${ftype_name} 13R ${region_disp} ${ver}"
               ;;
               "Ace5")
-                region_tag="$region_code"
                 if [[ "$region_code" == "CN" ]]; then
-                  # CN: nur "CN" + Version
-                  artifact_base="${ftype_name} A5 CN ${ver}"
-                else
-                  # Nicht-CN: nur "COS" + Version (ohne Region, ohne ODM)
+                  # CN → immer nur COS
                   artifact_base="${ftype_name} A5 COS ${ver}"
+                else
+                  # Non-CN → Region + OOS+COS ODM
+                  artifact_base="${ftype_name} A5 ${region_code} OOS+COS ODM ${ver}"
                 fi
               ;;
+
               "Ace5Pro")
                 artifact_base="${ftype_name} A5P ${region_disp} ${ver}"
               ;;
