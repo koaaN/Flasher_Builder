@@ -871,11 +871,16 @@ jobs:
               "13R")
                 artifact_base="${ftype_name} 13R ${region_disp} ${ver}"
               ;;
-              "Ace5")
-                region_tag="$region_code"
-                if [[ "$region_code" == "CN" ]]; then os_tag="COS"; else os_tag="OOS+COS"; fi
-                artifact_base="${ftype_name} A5 ${region_tag} ${os_tag} ODM ${ver}"
-              ;;
+          "Ace5")
+            region_tag="$region_code"
+            if [[ "$region_code" == "CN" ]]; then
+              # CN: kein COS/ODM im Namen
+              artifact_base="${ftype_name} A5 CN ${ver}"
+            else
+              # Nicht-CN: "COS ODM" im Namen
+              artifact_base="${ftype_name} A5 ${region_tag} COS ODM ${ver}"
+            fi
+          ;;
               "Ace5Pro")
                 artifact_base="${ftype_name} A5P ${region_disp} ${ver}"
               ;;
