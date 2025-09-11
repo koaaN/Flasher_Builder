@@ -888,6 +888,8 @@ jobs:
 
           if [[ "$FTYPE" == "SuperHybrid SunOS Flasher" ]]; then
             artifact_base="SuperHybrid Sun-varuna-${current_date}-dodge-Official"
+          elif [[ "$FTYPE" == "SuperHybrid Matrixx Flasher" ]]; then
+            artifact_base="SuperHybrid Matrixx-v11.7.0-Unofficial-dodge-${current_date}"
           else
             case "$region_code" in
               CN)  region_disp="COS" ;;
