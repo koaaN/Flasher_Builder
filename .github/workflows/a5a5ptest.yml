@@ -904,10 +904,10 @@ jobs:
           ver="${OTA_VERSION:-UNKNOWN}"
           current_date=$(date +%Y%m%d)
 
-          if [[ "$FTYPE" == "SuperHybrid SunOS Flasher" ]]; then
-            artifact_base="SuperHybrid Sun-varuna-${current_date}-dodge-Official"
-          elif [[ "$FTYPE" == "SuperHybrid Matrixx Flasher" ]]; then
-            artifact_base="SuperHybrid Matrixx-v11.7.0-Unofficial-dodge-Gapps-${current_date}"
+          if [[ "$FTYPE" == "SuperHybrid SunOS Flasher" || "$FTYPE" == "SuperHybrid Matrixx Flasher" ]]; then
+            ota_file="${OTA_ORIG_NAME:-OTA.zip}"
+            ota_name="${ota_file%.zip}"
+            artifact_base="SuperHybrid-${ota_name}"
           else
             case "$region_code" in
               CN)  region_disp="COS" ;;
