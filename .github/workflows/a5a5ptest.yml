@@ -101,6 +101,8 @@ jobs:
 
       - name: Download OTA zip
         if: ${{ inputs.ota_url != '' }}
+        orig_name="$(basename "$url")"
+        echo "OTA_ORIG_NAME=${orig_name}" >> "$GITHUB_ENV"
         shell: bash
         run: |
           set -euo pipefail
@@ -887,7 +889,7 @@ jobs:
           current_date=$(date +%Y%m%d)
 
           if [[ "$FTYPE" == "SuperHybrid SunOS Flasher" || "$FTYPE" == "SuperHybrid Matrixx Flasher" ]]; then
-            ota_file="$(basename "$OTA_PATH")"   # z.B. Matrixx-v11.7.0-Unofficial-dodge-Gapps-202509102128.zip
+            ota_file="${OTA_ORIG_NAME:-OTA.zip}"   # z.B. Matrixx-v11.7.0-Unofficial-dodge-Gapps-202509102128.zip
             ota_name="${ota_file%.zip}"          # ohne .zip
             artifact_base="SuperHybrid-${ota_name}"   # vorne "SuperHybrid-" dran
           else
