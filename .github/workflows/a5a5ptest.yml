@@ -970,7 +970,6 @@ jobs:
           if [[ "$ftype" == "SuperHybrid SunOS Flasher" ]]; then
             category="SunOS Super Flashers"
             rel="Oneplus 13/$category"
-            # SPECIAL: Project Matrixx
           elif [[ "$ftype" == "SuperHybrid Matrixx Flasher" ]]; then
             category="Project Matrixx Super Flashers"
             rel="Oneplus 13/${category}"    # fixed path, no region suffix
