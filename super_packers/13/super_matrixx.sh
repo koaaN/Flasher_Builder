@@ -1,50 +1,56 @@
-@echo off
-setlocal EnableDelayedExpansion
+#!/usr/bin/env bash
+set -euo pipefail
 
-pushd "%~dp0"
+SUPER_SIZE="${SUPER_SIZE:-13329498112}"
 
-:: Super partition total size
-set SUPER_SIZE=13329498112
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+cd "$script_dir"
 
-:: lpmake path (assumes this script is in the same folder as lpmake.exe)
-set LPM=lpmake.exe
+# lpmake suchen
+LPM="$script_dir/lpmake"
+if [[ ! -x "$LPM" ]]; then
+  if command -v lpmake >/dev/null 2>&1; then
+    LPM="$(command -v lpmake)"
+  else
+    echo "ERROR: lpmake nicht gefunden." >&2
+    exit 1
+  fi
+fi
 
-:: Start building the command
-set CMD=%LPM% --metadata-size 65536 --metadata-slots 3 --virtual-ab --super-name super
-set CMD=!CMD! --device super:%SUPER_SIZE%
-set CMD=!CMD! --group qti_dynamic_partitions_a:%SUPER_SIZE%
-set CMD=!CMD! --group qti_dynamic_partitions_b:%SUPER_SIZE%
-
-:: Define list of A slot partitions with image files
-set PARTS_A=odm product system system_dlkm system_ext vendor vendor_dlkm
-
-:: Loop through A slot parts and get file size
-for %%P in (!PARTS_A!) do (
-    set FILE=%%P.img
-    if exist "!FILE!" (
-        for %%S in (!FILE!) do (
-            set SIZE=%%~zS
-            set CMD=!CMD! --partition %%P_a:readonly:!SIZE!:qti_dynamic_partitions_a --image %%P_a="%%P.img"
-        )
-    ) else (
-        echo Warning: !FILE! not found!
-    )
+# Basis args
+args=(
+  --metadata-size 65536
+  --metadata-slots 3
+  --virtual-ab
+  --super-name super
+  --device "super:${SUPER_SIZE}"
+  --group "qti_dynamic_partitions_a:${SUPER_SIZE}"
+  --group "qti_dynamic_partitions_b:${SUPER_SIZE}"
 )
 
-:: Add 0-byte B slot partitions
-set PARTS_B=odm product system system_dlkm system_ext vendor vendor_dlkm
+# A-Slot Partitionen
+parts_a=(odm product system system_dlkm system_ext vendor vendor_dlkm)
+for p in "${parts_a[@]}"; do
+  f="${p}.img"
+  if [[ -f "$f" ]]; then
+    size="$(stat -c%s "$f")"
+    args+=( --partition "${p}_a:readonly:${size}:qti_dynamic_partitions_a" --image "${p}_a=${f}" )
+  else
+    echo "Warning: $f not found!" >&2
+  fi
+done
 
-for %%P in (!PARTS_B!) do (
-    set CMD=!CMD! --partition %%P_b:readonly:0:qti_dynamic_partitions_b
-)
+# B-Slot Partitionen (leer)
+parts_b=(odm product system system_dlkm system_ext vendor vendor_dlkm)
+for p in "${parts_b[@]}"; do
+  args+=( --partition "${p}_b:readonly:0:qti_dynamic_partitions_b" )
+done
 
-:: Final options
-set CMD=!CMD! --sparse --output "%CD%\super.img"
+# Output
+args+=( --sparse --output "${PWD}/super.img" )
 
-:: Run and show command
-echo Running command:
-echo !CMD!
-call !CMD!
+echo "Running command:"
+printf '%q ' "$LPM" "${args[@]}"; echo
+"$LPM" "${args[@]}"
 
-popd
-pause
+echo "Done. Wrote super.img to: ${PWD}/super.img"
