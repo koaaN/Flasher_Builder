@@ -108,7 +108,13 @@ jobs:
           url="${{ inputs.ota_url }}"
           ftype="${{ inputs.flasher_type }}"
 
-          # Nur SunOS/Matrixx: Originalnamen ermitteln (wie zuvor bei dir)
+          # SourceForge-Wrapper entfernen → URL immer auf .zip enden lassen
+          if [[ "$url" == *"sourceforge.net/"* ]]; then
+            url="$(printf '%s\n' "$url" | sed -E 's#/download(\?.*)?$##')"
+            echo "Cleaned SourceForge URL: $url"
+          fi
+
+          # Nur SunOS/Matrixx: Originalnamen ermitteln
           if [[ "$ftype" == "SuperHybrid SunOS Flasher" || "$ftype" == "SuperHybrid Matrixx Flasher" ]]; then
             fname="$(curl -sIL "$url" \
               | tr -d '\r' \
@@ -127,26 +133,14 @@ jobs:
             echo "OTA_ORIG_NAME=${fname}" >> "$GITHUB_ENV"
           fi
 
-          # SourceForge-Handling: finalen Mirror auflösen + UA/Referer setzen
+          # Download
           ua="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127 Safari/537.36"
-          if [[ "$url" == *"sourceforge.net/"* ]]; then
-            final_url="$(curl -Ls -o /dev/null -w '%{url_effective}' "$url")"
-            echo "Resolved SourceForge mirror: $final_url"
-            if command -v aria2c >/dev/null 2>&1; then
-              aria2c -x 8 -s 8 -c --file-allocation=none --retry-wait=5 --max-tries=10 --timeout=30 \
-                --user-agent "$ua" --referer "$url" \
-                -o "download/OTA.zip" "$final_url"
-            else
-              curl -L --fail --retry 5 --retry-delay 5 -A "$ua" -e "$url" -o "download/OTA.zip" "$final_url"
-            fi
+          if command -v aria2c >/dev/null 2>&1; then
+            aria2c -x 8 -s 8 -c --file-allocation=none --retry-wait=5 --max-tries=10 --timeout=30 \
+              --user-agent "$ua" \
+              -o "download/OTA.zip" "$url"
           else
-            # Standard-Download
-            if command -v aria2c >/dev/null 2>&1; then
-              aria2c -x 8 -s 8 -c --file-allocation=none --retry-wait=5 --max-tries=10 --timeout=30 \
-                -o "download/OTA.zip" "$url"
-            else
-              curl -L --fail --retry 5 --retry-delay 5 -o "download/OTA.zip" "$url"
-            fi
+            curl -L --fail --retry 5 --retry-delay 5 -A "$ua" -o "download/OTA.zip" "$url"
           fi
 
       - name: Export OTA env
