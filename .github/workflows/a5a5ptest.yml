@@ -1163,7 +1163,7 @@ jobs:
           # - CN:      COS_FILES_HERE
           # - else:    OOS_FILES_HERE
           if [[ "$ftype" == "SuperHybrid Matrixx Flasher" ]]; then
-            img_folder="COS_FILES_HERE"
+            img_folder="FASTBOOT_FILES_HERE"
           elif [[ "$ftype" == "SuperHybrid SunOS Flasher" ]]; then
             img_folder="FASTBOOT_FILES_HERE"
           elif [[ "$region" == "CN" ]]; then
