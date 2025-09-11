@@ -970,7 +970,11 @@ jobs:
           if [[ "$ftype" == "SuperHybrid SunOS Flasher" ]]; then
             category="SunOS Super Flashers"
             rel="Oneplus 13/$category"
-          elif [[ "$device" == "Oneplus 13T" && "$ftype" == "Super Flasher" && "$region" == "IN" ]]; then
+            # SPECIAL: Project Matrixx
+          elif [[ "$ftype" == "SuperHybrid Matrixx Flasher" ]]; then
+            category="Project Matrixx Super Flashers"
+            rel="Oneplus 13/${category}"    # fixed path, no region suffix
+         elif [[ "$device" == "Oneplus 13T" && "$ftype" == "Super Flasher" && "$region" == "IN" ]]; then
             category="OxygenOS Flashers"
             rel="$device/$category"
           elif [[ "$device" == "Oneplus Ace 5 Pro" ]]; then
@@ -1160,7 +1164,7 @@ jobs:
           # - CN:      COS_FILES_HERE
           # - else:    OOS_FILES_HERE
           if [[ "$ftype" == "SuperHybrid Matrixx Flasher" ]]; then
-            img_folder="COS_FILES_HERE"
+            img_folder="FASTBOOT_FILES_HERE"
           elif [[ "$ftype" == "SuperHybrid SunOS Flasher" ]]; then
             img_folder="FASTBOOT_FILES_HERE"
           elif [[ "$region" == "CN" ]]; then
