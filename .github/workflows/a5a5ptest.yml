@@ -134,7 +134,6 @@ jobs:
             fi
 
             # Präfix "SuperHybrid" immer vorne dran
-            fname="SuperHybrid ${fname}"
 
             echo "Using OTA artifact filename: ${fname}"
             echo "OTA_ORIG_NAME=${fname}" >> "$GITHUB_ENV"
