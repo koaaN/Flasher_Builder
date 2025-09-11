@@ -125,7 +125,7 @@ jobs:
           } >> "$GITHUB_ENV"
 
       - name: Extract OTA version (from META-INF/com/android/metadata)
-        if: ${{ inputs.flasher_type != 'SuperHybrid SunOS Flasher' }}
+        if: ${{ inputs.flasher_type != 'SuperHybrid SunOS Flasher' && inputs.flasher_type != 'SuperHybrid Matrixx Flasher' }}
         shell: bash
         run: |
           set -euo pipefail
