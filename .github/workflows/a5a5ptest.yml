@@ -105,18 +105,12 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p download
-
-          url="${{ inputs.ota_url }}"
-          orig_name="$(basename "$url")"
-          echo "OTA_ORIG_NAME=${orig_name}" >> "$GITHUB_ENV"
-
           if command -v aria2c >/dev/null 2>&1; then
             aria2c -x 8 -s 8 -c --file-allocation=none --retry-wait=5 --max-tries=10 --timeout=30 \
-              -o "download/OTA.zip" "$url"
+              -o "download/OTA.zip" "${{ inputs.ota_url }}"
           else
-            curl -L --fail --retry 5 --retry-delay 5 -o "download/OTA.zip" "$url"
+            curl -L --fail --retry 5 --retry-delay 5 -o "download/OTA.zip" "${{ inputs.ota_url }}"
           fi
-
 
       - name: Export OTA env
         shell: bash
@@ -892,10 +886,10 @@ jobs:
           ver="${OTA_VERSION:-UNKNOWN}"
           current_date=$(date +%Y%m%d)
 
-          if [[ "$FTYPE" == "SuperHybrid SunOS Flasher" || "$FTYPE" == "SuperHybrid Matrixx Flasher" ]]; then
-            ota_file="${OTA_ORIG_NAME:-OTA.zip}"   # z.B. Matrixx-v11.7.0-Unofficial-dodge-Gapps-202509102128.zip
-            ota_name="${ota_file%.zip}"          # ohne .zip
-            artifact_base="SuperHybrid-${ota_name}"   # vorne "SuperHybrid-" dran
+          if [[ "$FTYPE" == "SuperHybrid SunOS Flasher" ]]; then
+            artifact_base="SuperHybrid Sun-varuna-${current_date}-dodge-Official"
+          elif [[ "$FTYPE" == "SuperHybrid Matrixx Flasher" ]]; then
+            artifact_base="SuperHybrid Matrixx-v11.7.0-Unofficial-dodge-Gapps-${current_date}"
           else
             case "$region_code" in
               CN)  region_disp="COS" ;;
