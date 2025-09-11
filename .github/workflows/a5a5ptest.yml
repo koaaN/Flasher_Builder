@@ -924,7 +924,7 @@ jobs:
           if [[ "$FTYPE" == "SuperHybrid SunOS Flasher" || "$FTYPE" == "SuperHybrid Matrixx Flasher" ]]; then
             ota_file="${OTA_ORIG_NAME:-OTA.zip}"
             ota_name="${ota_file%.zip}"
-            artifact_base="SuperHybrid-${ota_name}"
+            artifact_base="SuperHybrid ${ota_name}"
           else
             case "$region_code" in
               CN)  region_disp="COS" ;;
