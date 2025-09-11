@@ -432,8 +432,11 @@ jobs:
             tpl_dev="$dev"
           fi
 
-          if [[ "$ftype" == "SuperHybrid SunOS Flasher" ]]; then
-            tpl_base="$root/flasher_scripts/$tpl_dev/sunos/super"
+          if [[ "$ftype" == "SuperHybrid Matrixx Flasher" ]]; then
+            # Fixer Pfad für Matrixx Templates
+            tpl_base="$root/flasher_scripts/13/matrixx/super"
+          elif [[ "$ftype" == "SuperHybrid SunOS Flasher" ]]; then
+             tpl_base="$root/flasher_scripts/$tpl_dev/sunos/super"
           else
             os_sub="$(get_os_subtree "$dev" "$ftype" "$region")"
             kind="$([[ "$ftype" == *Super* ]] && echo "super" || echo "regional")"
