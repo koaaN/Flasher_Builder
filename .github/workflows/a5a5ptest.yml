@@ -119,18 +119,24 @@ jobs:
 
             # 2) URL-Decoding für %xx (nur Shell, kein Python)
             if [ -n "$fname" ]; then
-              # Beispiel: "SuperHybrid%20Flasher%20Global%20840.zip" -> "SuperHybrid Flasher Global 840.zip"
               fname_decoded="$(printf '%b' "${fname//%/\\x}")" || true
               [ -n "$fname_decoded" ] && fname="$fname_decoded"
             fi
 
-            # 3) Fallback: generischer Name mit Datum
+            # 3) Fallback: Basisname + aktuelles Datum
             if [ -z "$fname" ]; then
               current_date="$(date +%Y%m%d)"
-              fname="Fallback-${current_date}.zip"
+              if [[ "$ftype" == "SuperHybrid SunOS Flasher" ]]; then
+                fname="Sun-varuna-${current_date}-dodge-Official.zip"
+              elif [[ "$ftype" == "SuperHybrid Matrixx Flasher" ]]; then
+                fname="Matrixx-v11.7.0-Unofficial-dodge-Gapps-${current_date}.zip"
+              fi
             fi
 
-            echo "Using original OTA filename: ${fname}"
+            # Präfix "SuperHybrid" immer vorne dran
+            fname="SuperHybrid ${fname}"
+
+            echo "Using OTA artifact filename: ${fname}"
             echo "OTA_ORIG_NAME=${fname}" >> "$GITHUB_ENV"
           fi
 
@@ -141,8 +147,6 @@ jobs:
           else
             curl -L --fail --retry 5 --retry-delay 5 -o "download/OTA.zip" "$url"
           fi
-
-
 
       - name: Export OTA env
         shell: bash
