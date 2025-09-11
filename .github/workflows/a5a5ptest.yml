@@ -1009,7 +1009,7 @@ jobs:
           fi
 
           rel="${rel//\\//}"
-          [[ "${rel: -1}" == "/" ]] || rel="${rel}/"
+          [[ "$rel" == */ ]] || rel="${rel}/"
           echo "REL_UPLOAD_DIR=$rel" >> "$GITHUB_ENV"
 
           ftp_base="$(printf "%s" "${{ secrets.DS_FTP_PATH }}" | sed 's#^/*##; s#/*$##;')"
