@@ -23,6 +23,7 @@ on:
           - SuperHybrid Flasher
           - RegionalHybrid Flasher
           - SuperHybrid SunOS Flasher
+          - SuperHybrid Matrixx Flasher
           - Super Flasher
           - Regional Flasher
         default: SuperHybrid Flasher
@@ -145,7 +146,7 @@ jobs:
           echo "Skipping OTA version extraction for SunOS, using default version"
           echo "OTA_VERSION=UNKNOWN" >> "$GITHUB_ENV"
 
-      - name: Map device → pick builder
+            - name: Map device → pick builder
         shell: bash
         run: |
           set -euo pipefail
@@ -176,6 +177,10 @@ jobs:
               "SuperHybrid SunOS Flasher")
                 if [[ "$dev" == "Ace5" || "$dev" == "Ace5Pro" ]]; then echo "Hybrid flashers are not supported for $dev_disp." >&2; exit 1; fi
                 echo "SUPERHYBRID_SUNOS_FULL_SUPERBUILD"
+              ;;
+              "SuperHybrid Matrixx Flasher")
+                if [[ "$dev" != "13" ]]; then echo "Matrixx flasher is available for Oneplus 13 only." >&2; exit 1; fi
+                echo "SUPERHYBRID_MATRIXX_FULL_SUPERBUILD"
               ;;
               "Super Flasher")
                 if   [[ "$dev" == "13R" && "$region" == "CN" ]]; then echo "SUPER_CN_FULL_SUPERBUILD"
@@ -215,6 +220,7 @@ jobs:
             echo "REGION=$region"
             echo "BUILDER_SH=$builder_sh"
           } >> "$GITHUB_ENV"
+
 
       - name: Stage files
         shell: bash
