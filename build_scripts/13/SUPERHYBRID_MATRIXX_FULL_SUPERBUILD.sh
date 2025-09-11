@@ -1,117 +1,109 @@
+#!/usr/bin/env bash
+set -euo pipefail
 
-@echo off
-setlocal enabledelayedexpansion
+if [[ $# -lt 1 ]]; then
+  echo "Usage: $0 /path/to/payload.bin"
+  exit 64
+fi
 
-:: Path to dropped payload.bin
-set "input_file=%~1"
-set "input_dir=%~dp1"
+input_file="$(realpath "$1")"
+input_dir="$(dirname "$input_file")"
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
-:: Path to otaripper.exe
-set "tool=%~dp0otaripper.exe"
-set "tool_name=otaripper.exe"
+# Tools
+otaripper_bin="$script_dir/otaripper"
+if [[ ! -x "$otaripper_bin" ]]; then
+  echo "ERROR: otaripper (Linux) nicht gefunden/ausführbar: $otaripper_bin"
+  exit 1
+fi
 
-:: Copy otaripper.exe to the payload's folder
-copy "%tool%" "%input_dir%" >nul
+# Flasher-Template
+flasher_source="$script_dir/SuperHybrid Matrixx Flasher"
+flasher_dest="$input_dir/SuperHybrid Matrixx Flasher"
+fastbootd_dir="$flasher_dest/FASTBOOTD_FILES_HERE"
+fastboot_dir="$flasher_dest/FASTBOOT_FILES_HERE"
+super_dir="$flasher_dest/super"
 
-:: Save list of folders before extraction
-set "before_folders="
-for /d %%D in ("%input_dir%*") do (
-    set "before_folders=!before_folders! %%~nxD"
+# 1) Flasher kopieren
+mkdir -p "$flasher_dest"
+rsync -a "$flasher_source/" "$flasher_dest/"
+
+# 2) Vorherige Ordner merken
+declare -A before
+while IFS= read -r -d '' d; do
+  before["$(basename "$d")"]=1
+done < <(find "$input_dir" -mindepth 1 -maxdepth 1 -type d -print0)
+
+# 3) otaripper laufen lassen
+pushd "$input_dir" >/dev/null
+"$otaripper_bin" "$input_file"
+popd >/dev/null
+
+# 4) Neuen Ordner finden
+new_folder=""
+while IFS= read -r -d '' d; do
+  base="$(basename "$d")"
+  if [[ -z "${before[$base]+x}" ]]; then
+    new_folder="$d"
+    break
+  fi
+done < <(find "$input_dir" -mindepth 1 -maxdepth 1 -type d -print0)
+
+[[ -n "$new_folder" ]] || { echo "ERROR: kein neuer Ordner nach Extraktion gefunden."; exit 1; }
+
+# 5) Alles in Flasher-Ordner verschieben
+shopt -s dotglob
+mv -f "$new_folder"/* "$flasher_dest/" || true
+shopt -u dotglob
+rm -rf "$new_folder"
+
+# 6) Sortierung der .img Dateien
+mkdir -p "$fastbootd_dir" "$fastboot_dir" "$super_dir"
+
+# FASTBOOTD_FILES_HERE
+fastbootd_imgs=(
+  abl aop aop_config bluetooth cpucp cpucp_dtb devcfg dsp engineering_cdt featenabler hyp
+  imagefv keymaster oplus_sec oplusstanvbk qupfw shrm splash tz uefi uefisecapp
+  xbl xbl_config xbl_ramdump pdp pdp_cdb pvmfw soccp_dcd soccp_debug spuservice
 )
+for p in "${fastbootd_imgs[@]}"; do
+  [[ -f "$flasher_dest/$p.img" ]] && mv -f "$flasher_dest/$p.img" "$fastbootd_dir/"
+done
 
-:: Run otaripper.exe on payload.bin
-pushd "%input_dir%"
-"%tool_name%" "%input_file%"
-popd
+# FASTBOOT_FILES_HERE
+fastboot_imgs=(boot dtbo init_boot modem recovery super vbmeta vbmeta_system vbmeta_vendor vendor_boot)
+for p in "${fastboot_imgs[@]}"; do
+  [[ -f "$flasher_dest/$p.img" ]] && mv -f "$flasher_dest/$p.img" "$fastboot_dir/"
+done
 
-:: Delete temporary otaripper.exe
-del "%input_dir%%tool_name%" >nul
+# super/
+super_imgs=(odm product system system_dlkm system_ext vendor vendor_dlkm)
+for p in "${super_imgs[@]}"; do
+  [[ -f "$flasher_dest/$p.img" ]] && mv -f "$flasher_dest/$p.img" "$super_dir/"
+done
 
-:: Detect the new extraction folder
-set "extracted_folder="
-for /d %%D in ("%input_dir%*") do (
-    echo !before_folders! | find "%%~nxD" >nul
-    if errorlevel 1 (
-        set "extracted_folder=%%D"
-    )
-)
+echo "All files sorted into folders inside: $flasher_dest"
 
-:: Make sure we found an extracted folder
-if not defined extracted_folder (
-    echo Error: Could not detect extracted folder.
-    pause
-    exit /b 1
-)
+# 7) super.img packen
+packer="$super_dir/super_matrixx.sh"
+if [[ ! -x "$packer" ]]; then
+  echo "ERROR: super_matrixx.sh nicht gefunden/ausführbar: $packer"
+  exit 1
+fi
 
-:: Copy Super Lineage Flasher to payload.bin directory
-set "flasher_source=%~dp0SuperHybrid Matrixx Flasher"
-set "flasher_dest=%input_dir%\SuperHybrid Matrixx Flasher"
-xcopy /E /I /Y "%flasher_source%" "!flasher_dest!" >nul
+echo "Packing super.img ..."
+( cd "$super_dir" && bash "./super_matrixx.sh" )
 
-:: Move all files/folders from extracted folder into flasher folder
-move /Y "!extracted_folder!\*" "!flasher_dest!" >nul
-rd "!extracted_folder!" >nul 2>nul
+# 8) super.img verschieben
+if [[ -f "$super_dir/super.img" ]]; then
+  echo "Moving super.img into FASTBOOT_FILES_HERE ..."
+  mv -f "$super_dir/super.img" "$fastboot_dir/"
+else
+  echo "ERROR: super.img wurde nicht erzeugt."
+  exit 1
+fi
 
-:: Move listed .img files into FASTBOOTD_FILES_HERE
-if exist "!flasher_dest!\abl.img" move /Y "!flasher_dest!\abl.img" "!flasher_dest!\FASTBOOTD_FILES_HERE\" >nul
-if exist "!flasher_dest!\aop.img" move /Y "!flasher_dest!\aop.img" "!flasher_dest!\FASTBOOTD_FILES_HERE\" >nul
-if exist "!flasher_dest!\aop_config.img" move /Y "!flasher_dest!\aop_config.img" "!flasher_dest!\FASTBOOTD_FILES_HERE\" >nul
-if exist "!flasher_dest!\bluetooth.img" move /Y "!flasher_dest!\bluetooth.img" "!flasher_dest!\FASTBOOTD_FILES_HERE\" >nul
-if exist "!flasher_dest!\cpucp.img" move /Y "!flasher_dest!\cpucp.img" "!flasher_dest!\FASTBOOTD_FILES_HERE\" >nul
-if exist "!flasher_dest!\cpucp_dtb.img" move /Y "!flasher_dest!\cpucp_dtb.img" "!flasher_dest!\FASTBOOTD_FILES_HERE\" >nul
-if exist "!flasher_dest!\devcfg.img" move /Y "!flasher_dest!\devcfg.img" "!flasher_dest!\FASTBOOTD_FILES_HERE\" >nul
-if exist "!flasher_dest!\dsp.img" move /Y "!flasher_dest!\dsp.img" "!flasher_dest!\FASTBOOTD_FILES_HERE\" >nul
-if exist "!flasher_dest!\engineering_cdt.img" move /Y "!flasher_dest!\engineering_cdt.img" "!flasher_dest!\FASTBOOTD_FILES_HERE\" >nul
-if exist "!flasher_dest!\featenabler.img" move /Y "!flasher_dest!\featenabler.img" "!flasher_dest!\FASTBOOTD_FILES_HERE\" >nul
-if exist "!flasher_dest!\hyp.img" move /Y "!flasher_dest!\hyp.img" "!flasher_dest!\FASTBOOTD_FILES_HERE\" >nul
-if exist "!flasher_dest!\imagefv.img" move /Y "!flasher_dest!\imagefv.img" "!flasher_dest!\FASTBOOTD_FILES_HERE\" >nul
-if exist "!flasher_dest!\keymaster.img" move /Y "!flasher_dest!\keymaster.img" "!flasher_dest!\FASTBOOTD_FILES_HERE\" >nul
-if exist "!flasher_dest!\oplus_sec.img" move /Y "!flasher_dest!\oplus_sec.img" "!flasher_dest!\FASTBOOTD_FILES_HERE\" >nul
-if exist "!flasher_dest!\oplusstanvbk.img" move /Y "!flasher_dest!\oplusstanvbk.img" "!flasher_dest!\FASTBOOTD_FILES_HERE\" >nul
-if exist "!flasher_dest!\qupfw.img" move /Y "!flasher_dest!\qupfw.img" "!flasher_dest!\FASTBOOTD_FILES_HERE\" >nul
-if exist "!flasher_dest!\shrm.img" move /Y "!flasher_dest!\shrm.img" "!flasher_dest!\FASTBOOTD_FILES_HERE\" >nul
-if exist "!flasher_dest!\splash.img" move /Y "!flasher_dest!\splash.img" "!flasher_dest!\FASTBOOTD_FILES_HERE\" >nul
-if exist "!flasher_dest!\tz.img" move /Y "!flasher_dest!\tz.img" "!flasher_dest!\FASTBOOTD_FILES_HERE\" >nul
-if exist "!flasher_dest!\uefi.img" move /Y "!flasher_dest!\uefi.img" "!flasher_dest!\FASTBOOTD_FILES_HERE\" >nul
-if exist "!flasher_dest!\uefisecapp.img" move /Y "!flasher_dest!\uefisecapp.img" "!flasher_dest!\FASTBOOTD_FILES_HERE\" >nul
-if exist "!flasher_dest!\xbl.img" move /Y "!flasher_dest!\xbl.img" "!flasher_dest!\FASTBOOTD_FILES_HERE\" >nul
-if exist "!flasher_dest!\xbl_config.img" move /Y "!flasher_dest!\xbl_config.img" "!flasher_dest!\FASTBOOTD_FILES_HERE\" >nul
-if exist "!flasher_dest!\xbl_ramdump.img" move /Y "!flasher_dest!\xbl_ramdump.img" "!flasher_dest!\FASTBOOTD_FILES_HERE\" >nul
-if exist "!flasher_dest!\pdp.img" move /Y "!flasher_dest!\pdp.img" "!flasher_dest!\FASTBOOTD_FILES_HERE\" >nul
-if exist "!flasher_dest!\pdp_cdb.img" move /Y "!flasher_dest!\pdp_cdb.img" "!flasher_dest!\FASTBOOTD_FILES_HERE\" >nul
-if exist "!flasher_dest!\pvmfw.img" move /Y "!flasher_dest!\pvmfw.img" "!flasher_dest!\FASTBOOTD_FILES_HERE\" >nul
-if exist "!flasher_dest!\soccp_dcd.img" move /Y "!flasher_dest!\soccp_dcd.img" "!flasher_dest!\FASTBOOTD_FILES_HERE\" >nul
-if exist "!flasher_dest!\soccp_debug.img" move /Y "!flasher_dest!\soccp_debug.img" "!flasher_dest!\FASTBOOTD_FILES_HERE\" >nul
-if exist "!flasher_dest!\spuservice.img" move /Y "!flasher_dest!\spuservice.img" "!flasher_dest!\FASTBOOTD_FILES_HERE\" >nul
+# 9) Aufräumen
+rm -rf "$super_dir"
 
-:: Move listed .img files into FASTBOOT_FILES_HERE
-if exist "!flasher_dest!\boot.img" move /Y "!flasher_dest!\boot.img" "!flasher_dest!\FASTBOOT_FILES_HERE\" >nul
-if exist "!flasher_dest!\dtbo.img" move /Y "!flasher_dest!\dtbo.img" "!flasher_dest!\FASTBOOT_FILES_HERE\" >nul
-if exist "!flasher_dest!\init_boot.img" move /Y "!flasher_dest!\init_boot.img" "!flasher_dest!\FASTBOOT_FILES_HERE\" >nul
-if exist "!flasher_dest!\modem.img" move /Y "!flasher_dest!\modem.img" "!flasher_dest!\FASTBOOT_FILES_HERE\" >nul
-if exist "!flasher_dest!\recovery.img" move /Y "!flasher_dest!\recovery.img" "!flasher_dest!\FASTBOOT_FILES_HERE\" >nul
-if exist "!flasher_dest!\super.img" move /Y "!flasher_dest!\super.img" "!flasher_dest!\FASTBOOT_FILES_HERE\" >nul
-if exist "!flasher_dest!\vbmeta.img" move /Y "!flasher_dest!\vbmeta.img" "!flasher_dest!\FASTBOOT_FILES_HERE\" >nul
-if exist "!flasher_dest!\vbmeta_system.img" move /Y "!flasher_dest!\vbmeta_system.img" "!flasher_dest!\FASTBOOT_FILES_HERE\" >nul
-if exist "!flasher_dest!\vbmeta_vendor.img" move /Y "!flasher_dest!\vbmeta_vendor.img" "!flasher_dest!\FASTBOOT_FILES_HERE\" >nul
-if exist "!flasher_dest!\vendor_boot.img" move /Y "!flasher_dest!\vendor_boot.img" "!flasher_dest!\FASTBOOT_FILES_HERE\" >nul
-
-:: Move SUPER-related .img files into super
-if exist "!flasher_dest!\odm.img" move /Y "!flasher_dest!\odm.img" "!flasher_dest!\super\" >nul
-if exist "!flasher_dest!\product.img" move /Y "!flasher_dest!\product.img" "!flasher_dest!\super\" >nul
-if exist "!flasher_dest!\system.img" move /Y "!flasher_dest!\system.img" "!flasher_dest!\super\" >nul
-if exist "!flasher_dest!\system_dlkm.img" move /Y "!flasher_dest!\system_dlkm.img" "!flasher_dest!\super\" >nul
-if exist "!flasher_dest!\system_ext.img" move /Y "!flasher_dest!\system_ext.img" "!flasher_dest!\super\" >nul
-if exist "!flasher_dest!\vendor.img" move /Y "!flasher_dest!\vendor.img" "!flasher_dest!\super\" >nul
-if exist "!flasher_dest!\vendor_dlkm.img" move /Y "!flasher_dest!\vendor_dlkm.img" "!flasher_dest!\super\" >nul
-
-echo.
-echo All files sorted into folders inside: !flasher_dest!
-echo Packing super.img
-call "SuperHybrid Matrixx Flasher\Super\super_matrixx.bat"
-echo Moving super.img into SuperHybrid Matrixx Flasher\FASTBOOT_FILES_HERE\.
-move /Y "SuperHybrid Matrixx Flasher\Super\super.img" "SuperHybrid Matrixx Flasher\FASTBOOT_FILES_HERE\"
-echo Removing scrap files
-rmdir /S /Q "SuperHybrid Matrixx Flasher\Super"
-echo BUILD DONE!!!
-pause
+echo "BUILD DONE!!!"
