@@ -996,7 +996,7 @@ jobs:
 
           if [[ "$device" == "Oneplus Ace 5" && "$region" != "CN" ]]; then
             rel="$device/OxygenOS/$category"
-          elif [[ $needs_region -eq 1 && "$ftype" != "SuperHybrid SunOS Flasher" && "$ftype" != "SuperHybrid Matrixx Flasher" ]]; then
+          elif [[ $needs_region -eq 1 && "$ftype" != "SuperHybrid SunOS Flasher" ]]; then
             case "$region" in
               CN)  region_folder="COS" ;;
               GLO) region_folder="Global" ;;
