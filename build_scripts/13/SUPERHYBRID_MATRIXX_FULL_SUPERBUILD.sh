@@ -22,7 +22,7 @@ flasher_source="$script_dir/SuperHybrid Matrixx Flasher"
 flasher_dest="$input_dir/SuperHybrid Matrixx Flasher"
 fastbootd_dir="$flasher_dest/FASTBOOTD_FILES_HERE"
 fastboot_dir="$flasher_dest/FASTBOOT_FILES_HERE"
-super_dir="$flasher_dest/super"
+super_dir="$flasher_dest/Super"
 
 # 1) Flasher kopieren
 mkdir -p "$flasher_dest"
