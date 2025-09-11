@@ -78,11 +78,11 @@ jobs:
           set -euo pipefail
           # CRLF -> LF
           git ls-files '*.sh' | while read -r f; do sed -i 's/\r$//' "$f"; done
-          # Ausführbar machen
+          # Make executable
           find build_scripts   -type f -name "*.sh" -exec chmod +x {} +
           find super_packers   -type f -name "*.sh" -exec chmod +x {} +
           find flasher_scripts -type f -name "*.sh" -exec chmod +x {} +
-          # Binaries (falls vorhanden)
+          # Binaries (if present)
           [ -f lpmake/lpmake ] && chmod +x lpmake/lpmake || true
           [ -f otaripper/otaripper ] && chmod +x otaripper/otaripper || true
 
@@ -146,7 +146,7 @@ jobs:
           echo "Skipping OTA version extraction for SunOS, using default version"
           echo "OTA_VERSION=UNKNOWN" >> "$GITHUB_ENV"
 
-            - name: Map device → pick builder
+      - name: Map device → pick builder
         shell: bash
         run: |
           set -euo pipefail
@@ -220,7 +220,6 @@ jobs:
             echo "REGION=$region"
             echo "BUILDER_SH=$builder_sh"
           } >> "$GITHUB_ENV"
-
 
       - name: Stage files
         shell: bash
@@ -433,10 +432,10 @@ jobs:
           fi
 
           if [[ "$ftype" == "SuperHybrid Matrixx Flasher" ]]; then
-            # Fixer Pfad für Matrixx Templates
+            # Fixed path for Matrixx templates
             tpl_base="$root/flasher_scripts/13/matrixx/super"
           elif [[ "$ftype" == "SuperHybrid SunOS Flasher" ]]; then
-             tpl_base="$root/flasher_scripts/$tpl_dev/sunos/super"
+            tpl_base="$root/flasher_scripts/$tpl_dev/sunos/super"
           else
             os_sub="$(get_os_subtree "$dev" "$ftype" "$region")"
             kind="$([[ "$ftype" == *Super* ]] && echo "super" || echo "regional")"
@@ -454,7 +453,7 @@ jobs:
           fi
 
           # -----------------------------
-          # SunOS block (UNCHANGED from your ich.yml)
+          # SunOS block (UNCHANGED)
           # -----------------------------
           if [[ "$ftype" == "SuperHybrid SunOS Flasher" ]]; then
             fastbootd_files="$work_dir/FASTBOOTD_FILES_HERE"
@@ -494,7 +493,7 @@ jobs:
               cp -f "$pdir/super_sunos.sh" "$super_dir/super_sunos.sh"
               chmod +x "$super_dir/super_sunos.sh"
             else
-              echo "ERROR: super_sunos.sh nicht gefunden in $pdir" >&2
+              echo "ERROR: super_sunos.sh not found in $pdir" >&2
               exit 1
             fi
 
@@ -511,7 +510,7 @@ jobs:
               cp -f "$root/lpmake/lpmake" "$super_dir/"
               chmod +x "$super_dir/lpmake"
             else
-              echo "WARN: lpmake nicht gefunden in $root/lpmake/lpmake"
+              echo "WARN: lpmake not found at $root/lpmake/lpmake"
             fi
 
             rsync -a --exclude '16DTBO/' --exclude 'dtbo_patcher.sh' --exclude 'Super_Flasher*.bat' "$tpl_base/" "$work_dir/"
@@ -567,100 +566,127 @@ jobs:
               chmod +x "$super_dir/lpmake"
             fi
 
-            # Packer scripts
-            if [[ "$dev" == "13" ]]; then
+            # Special handling: SuperHybrid Matrixx Flasher
+            if [[ "$ftype" == "SuperHybrid Matrixx Flasher" ]]; then
+              # Packer
               pdir="$root/super_packers/13"
-              if [[ "$region" == "CN" && "$ftype" == "SuperHybrid Flasher" && -f "$pdir/super_cos.sh" ]]; then
-                cp -f "$pdir/super_cos.sh" "$super_dir/super_cos.sh"; chmod +x "$super_dir/super_cos.sh"
-              elif [[ -f "$pdir/super_oos.sh" ]]; then
-                cp -f "$pdir/super_oos.sh" "$super_dir/super_oos.sh"; chmod +x "$super_dir/super_oos.sh"
+              if [[ -f "$pdir/super_matrixx.sh" ]]; then
+                cp -f "$pdir/super_matrixx.sh" "$super_dir/super_matrixx.sh"
+                chmod +x "$super_dir/super_matrixx.sh"
+              else
+                echo "ERROR: super_matrixx.sh not found in $pdir" >&2
+                exit 1
               fi
-            elif [[ "$dev" == "13T" ]]; then
-              pdir="$root/super_packers/13T"
-              if [[ "$region" == "CN" && -f "$pdir/super_cos.sh" ]]; then
-                cp -f "$pdir/super_cos.sh" "$super_dir/super_cos.sh"; chmod +x "$super_dir/super_cos.sh"
-              elif [[ -f "$pdir/super_oos.sh" ]]; then
-                cp -f "$pdir/super_oos.sh" "$super_dir/super_oos.sh"; chmod +x "$super_dir/super_oos.sh"
-              fi
-            elif [[ "$dev" == "Ace5" ]]; then
-              pdir="$root/super_packers/Ace5"
-              if [[ "$region" == "CN" && -f "$pdir/super_cos.sh" ]]; then
-                cp -f "$pdir/super_cos.sh" "$super_dir/super_cos.sh"; chmod +x "$super_dir/super_cos.sh"
-              elif [[ -f "$pdir/super_oos.sh" ]]; then
-                cp -f "$pdir/super_oos.sh" "$super_dir/super_oos.sh"; chmod +x "$super_dir/super_oos.sh"
-              fi
-            else
-              p="$root/super_packers/$dev/super_oos.sh"
-              [ -f "$p" ] && cp -f "$p" "$super_dir/super_oos.sh" && chmod +x "$super_dir/super_oos.sh"
-            fi
 
-            # Standard bloat into Super/
-            bloat_folder="$(get_bloat_folder "$dev" "$region")"
-
-            if [[ "$dev" == "13T" && "$ftype" == "Super Flasher" && "$region" == "IN" ]]; then
-              # Copy all except 3 specific files into Super/
-              copy_bloat_from_folder "$bloat_base" "$bloat_folder" "$super_dir" "my_region.img" "oplusstanvbk.img" "odm.img"
-              # Then ensure the 3 go into COS_FILES_HERE
+              # COS_FILES_HERE: ONLY modem.img + oplusstanvbk.img
               cos_here="$work_dir/COS_FILES_HERE"
               mkdir -p "$cos_here"
-              in_bloat="$bloat_base/IN_BLOAT"
-              copy_or_download "$in_bloat" "my_region" "$cos_here/my_region.img"
-              copy_or_download "$in_bloat" "oplusstanvbk" "$cos_here/oplusstanvbk.img"
-              copy_or_download "$in_bloat" "odm" "$cos_here/odm.img"
-              # Remove if accidentally landed in Super/
-              for f in my_region.img oplusstanvbk.img odm.img; do
-                [ -f "$super_dir/$f" ] && rm -f "$super_dir/$f"
-              done
-            else
-              copy_bloat_from_folder "$bloat_base" "$bloat_folder" "$super_dir"
-            fi
 
-            # OP13 • SuperHybrid • non-CN → copy my_region & oplusstanvbk from repo bloat/13/COS_FILES_HERE to work COS_FILES_HERE
-            if [[ "$dev" == "13" && "$ftype" == "SuperHybrid Flasher" && "$region" != "CN" ]]; then
-              repo_cos="$root/bloat/13/COS_FILES_HERE"
-              if [[ -d "$repo_cos" ]]; then
+              echo "Downloading Matrixx COS files (oplusstanvbk.img, modem.img)..."
+              curl -L --fail --retry 3 --retry-delay 5 \
+                -o "$cos_here/oplusstanvbk.img" \
+                "https://roms.danielspringer.at/download.php?file=Files%2FBloat%2F13%2FSunOS%2FCOS_FILES_HERE%2Foplusstanvbk.img&download=true" \
+                || echo "WARN: Download failed for oplusstanvbk.img"
+
+              curl -L --fail --retry 3 --retry-delay 5 \
+                -o "$cos_here/modem.img" \
+                "https://roms.danielspringer.at/download.php?file=Files%2FBloat%2F13%2FSunOS%2FCOS_FILES_HERE%2Fmodem.img&download=true" \
+                || echo "WARN: Download failed for modem.img"
+
+              # No other bloat for Matrixx
+            else
+              # Packer scripts (existing logic)
+              if [[ "$dev" == "13" ]]; then
+                pdir="$root/super_packers/13"
+                if [[ "$region" == "CN" && "$ftype" == "SuperHybrid Flasher" && -f "$pdir/super_cos.sh" ]]; then
+                  cp -f "$pdir/super_cos.sh" "$super_dir/super_cos.sh"; chmod +x "$super_dir/super_cos.sh"
+                elif [[ -f "$pdir/super_oos.sh" ]]; then
+                  cp -f "$pdir/super_oos.sh" "$super_dir/super_oos.sh"; chmod +x "$super_dir/super_oos.sh"
+                fi
+              elif [[ "$dev" == "13T" ]]; then
+                pdir="$root/super_packers/13T"
+                if [[ "$region" == "CN" && -f "$pdir/super_cos.sh" ]]; then
+                  cp -f "$pdir/super_cos.sh" "$super_dir/super_cos.sh"; chmod +x "$super_dir/super_cos.sh"
+                elif [[ -f "$pdir/super_oos.sh" ]]; then
+                  cp -f "$pdir/super_oos.sh" "$super_dir/super_oos.sh"; chmod +x "$super_dir/super_oos.sh"
+                fi
+              elif [[ "$dev" == "Ace5" ]]; then
+                pdir="$root/super_packers/Ace5"
+                if [[ "$region" == "CN" && -f "$pdir/super_cos.sh" ]]; then
+                  cp -f "$pdir/super_cos.sh" "$super_dir/super_cos.sh"; chmod +x "$super_dir/super_cos.sh"
+                elif [[ -f "$pdir/super_oos.sh" ]]; then
+                  cp -f "$pdir/super_oos.sh" "$super_dir/super_oos.sh"; chmod +x "$super_dir/super_oos.sh"
+                fi
+              else
+                p="$root/super_packers/$dev/super_oos.sh"
+                [ -f "$p" ] && cp -f "$p" "$super_dir/super_oos.sh" && chmod +x "$super_dir/super_oos.sh"
+              fi
+
+              # Standard bloat into Super/
+              bloat_folder="$(get_bloat_folder "$dev" "$region")"
+
+              if [[ "$dev" == "13T" && "$ftype" == "Super Flasher" && "$region" == "IN" ]]; then
+                # Copy all except 3 specific files into Super/
+                copy_bloat_from_folder "$bloat_base" "$bloat_folder" "$super_dir" "my_region.img" "oplusstanvbk.img" "odm.img"
+                # Then ensure the 3 go into COS_FILES_HERE
                 cos_here="$work_dir/COS_FILES_HERE"
                 mkdir -p "$cos_here"
-
-                for f in my_region.img oplusstanvbk.img; do
-                  src="$repo_cos/$f"
-                  if [[ -f "$src" ]]; then
-                    cp -f "$src" "$cos_here/"
-                  else
-                    echo "WARN: wanted $f in $repo_cos but not found"
-                  fi
+                in_bloat="$bloat_base/IN_BLOAT"
+                copy_or_download "$in_bloat" "my_region" "$cos_here/my_region.img"
+                copy_or_download "$in_bloat" "oplusstanvbk" "$cos_here/oplusstanvbk.img"
+                copy_or_download "$in_bloat" "odm" "$cos_here/odm.img"
+                # Remove if accidentally landed in Super/
+                for f in my_region.img oplusstanvbk.img odm.img; do
+                  [ -f "$super_dir/$f" ] && rm -f "$super_dir/$f"
                 done
               else
-                echo "WARN: repo COS_FILES_HERE not found: $repo_cos"
+                copy_bloat_from_folder "$bloat_base" "$bloat_folder" "$super_dir"
               fi
-            fi
 
-
-
-            # CN extra OOS staging
-            if [[ "$region" == "CN" ]]; then
-              if [[ "$dev" == "13" && "$ftype" == "SuperHybrid Flasher" ]]; then
-                # OnePlus 13 SuperHybrid CN: EUGLO_BLOAT → OOS_FILES_HERE; NO COS_FILES_HERE
-                oos_here="$work_dir/OOS_FILES_HERE"
-                mkdir -p "$oos_here"
-                copy_bloat_from_folder "$bloat_base" "EUGLO_BLOAT" "$oos_here"
-              elif [[ "$dev" != "Ace5" && "$dev" != "Ace5Pro" ]]; then
-                # Other CN 13-series behavior
-                oos_here="$work_dir/OOS_FILES_HERE"
-                mkdir -p "$oos_here"
-                if [[ "$dev" == "13R" ]]; then
-                  copy_bloat_from_folder "$bloat_base" "A5_DEBLOAT" "$oos_here"
+              # OP13 • SuperHybrid • non-CN → copy my_region & oplusstanvbk to COS_FILES_HERE
+              if [[ "$dev" == "13" && "$ftype" == "SuperHybrid Flasher" && "$region" != "CN" ]]; then
+                repo_cos="$root/bloat/13/COS_FILES_HERE"
+                if [[ -d "$repo_cos" ]]; then
+                  cos_here="$work_dir/COS_FILES_HERE"
+                  mkdir -p "$cos_here"
+                  for f in my_region.img oplusstanvbk.img; do
+                    src="$repo_cos/$f"
+                    if [[ -f "$src" ]]; then
+                      cp -f "$src" "$cos_here/"
+                    else
+                      echo "WARN: wanted $f in $repo_cos but not found"
+                    fi
+                  done
                 else
-                  copy_bloat_from_folder "$bloat_base" "EUGLO_BLOAT" "$oos_here"
+                  echo "WARN: repo COS_FILES_HERE not found: $repo_cos"
                 fi
               fi
-            fi
 
-            # Ace5 CN: put A5_DEBLOAT pair into OOS_FILES_HERE
-            if [[ "$dev" == "Ace5" && "$region" == "CN" ]]; then
-              oos_here="$work_dir/OOS_FILES_HERE"
-              mkdir -p "$oos_here"
-              copy_debloat_pair "$bloat_base/A5_DEBLOAT" "$oos_here"
+              # CN extra OOS staging
+              if [[ "$region" == "CN" ]]; then
+                if [[ "$dev" == "13" && "$ftype" == "SuperHybrid Flasher" ]]; then
+                  # OnePlus 13 SuperHybrid CN: EUGLO_BLOAT → OOS_FILES_HERE; NO COS_FILES_HERE
+                  oos_here="$work_dir/OOS_FILES_HERE"
+                  mkdir -p "$oos_here"
+                  copy_bloat_from_folder "$bloat_base" "EUGLO_BLOAT" "$oos_here"
+                elif [[ "$dev" != "Ace5" && "$dev" != "Ace5Pro" ]]; then
+                  # Other CN 13-series behavior
+                  oos_here="$work_dir/OOS_FILES_HERE"
+                  mkdir -p "$oos_here"
+                  if [[ "$dev" == "13R" ]]; then
+                    copy_bloat_from_folder "$bloat_base" "A5_DEBLOAT" "$oos_here"
+                  else
+                    copy_bloat_from_folder "$bloat_base" "EUGLO_BLOAT" "$oos_here"
+                  fi
+                fi
+              fi
+
+              # Ace5 CN: put A5_DEBLOAT pair into OOS_FILES_HERE
+              if [[ "$dev" == "Ace5" && "$region" == "CN" ]]; then
+                oos_here="$work_dir/OOS_FILES_HERE"
+                mkdir -p "$oos_here"
+                copy_debloat_pair "$bloat_base/A5_DEBLOAT" "$oos_here"
+              fi
             fi
           fi
 
@@ -758,9 +784,8 @@ jobs:
           # Expose for next steps
           echo "WORK_DIR=$work_dir" >> "$GITHUB_ENV"
 
-
       - name: Pre-stage flasher into OTA folder
-        if: ${{ inputs.flasher_type == 'RegionalHybrid Flasher' || inputs.flasher_type == 'SuperHybrid Flasher' || inputs.flasher_type == 'SuperHybrid SunOS Flasher' }}
+        if: ${{ inputs.flasher_type == 'RegionalHybrid Flasher' || inputs.flasher_type == 'SuperHybrid Flasher' || inputs.flasher_type == 'SuperHybrid SunOS Flasher' || inputs.flasher_type == 'SuperHybrid Matrixx Flasher' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -805,6 +830,9 @@ jobs:
             "SuperHybrid SunOS Flasher")
               by_ftype=("SuperHybrid SunOS Flasher")
             ;;
+            "SuperHybrid Matrixx Flasher")
+              by_ftype=("SuperHybrid Matrixx Flasher")
+            ;;
             "Super Flasher")
               if [[ "$REGION" == "CN" && ( "$DEV" == "13R" || "$DEV" == "13T" || "$DEV" == "Ace5" ) ]]; then
                 by_ftype=("Super Flasher CN")
@@ -827,6 +855,7 @@ jobs:
             "RegionalHybrid Flasher"
             "SuperHybrid Flasher CN"
             "SuperHybrid Flasher"
+            "SuperHybrid Matrixx Flasher"
             "SuperHybrid SunOS Flasher"
             "Super Flasher CN"
             "Super Flasher"
@@ -882,14 +911,11 @@ jobs:
               ;;
               "Ace5")
                 if [[ "$region_code" == "CN" ]]; then
-                  # CN → immer nur COS
                   artifact_base="${ftype_name} A5 COS ${ver}"
                 else
-                  # Non-CN → Region + OOS+COS ODM
                   artifact_base="${ftype_name} A5 ${region_code} OOS+COS ODM ${ver}"
                 fi
               ;;
-
               "Ace5Pro")
                 artifact_base="${ftype_name} A5P ${region_disp} ${ver}"
               ;;
@@ -951,7 +977,7 @@ jobs:
             category="Regional Flashers"
             rel="$device/$category"
           else
-            if [[ "$ftype" =~ ^(SuperHybrid Flasher|Super Flasher)$ ]]; then
+            if [[ "$ftype" =~ ^(SuperHybrid Flasher|Super Flasher|SuperHybrid Matrixx Flasher)$ ]]; then
               category="Super Flashers"
             else
               category="Regional Flashers"
@@ -1005,7 +1031,7 @@ jobs:
           zip_path="$ZIP_FILE"
           [ -f "$zip_path" ] || { echo "ZIP not found: $zip_path"; exit 1; }
 
-          # URL-encode (Slash bleibt erhalten)
+          # URL-encode (keep slashes)
           if command -v python3 >/dev/null 2>&1; then
             enc_path="$(python3 -c "import sys,urllib.parse;print(urllib.parse.quote(sys.argv[1], safe='/'))" "${remote_dir}${file_name}")"
           else
@@ -1036,37 +1062,44 @@ jobs:
           artifact="$ARTIFACT_NAME"
           ftp_rel_dir="$FTP_UPLOAD_DIR"
 
-          # Type-Ordner wie in Windows
+          # Type folder like on Windows
           if [[ "$ftype" == "RegionalHybrid Flasher" ]]; then
             type_dir="Regional Flashers"
           else
             type_dir="Super Flashers"
           fi
 
-          # Region-Anzeige wie in Windows
+          # Region display like on Windows
           case "$region" in
             GLO) region_dir="Global" ;;
             CN)  region_dir="COS" ;;
             *)   region_dir="$region" ;;
           esac
 
-          # Hauptdownload-Link
+          # Main download link
           raw_path="Files/${ftp_rel_dir}${artifact}.zip"
           enc_raw="$(python3 -c 'import sys,urllib.parse;print(urllib.parse.quote(sys.argv[1],safe=""))' "$raw_path")"
           enc_raw="${enc_raw//%20/+}"
           zip_link="https://roms.danielspringer.at/download.php?file=${enc_raw}&download=true"
 
-          # Pfad für download_from_zip.php (ohne "Files/")
+          # Path for download_from_zip.php (without "Files/")
           zip_dir="$ftp_rel_dir"
           zip_dir="${zip_dir#Files/}"
-          zip_dir="${zip_dir#/}"  # evtl. führenden Slash entfernen
+          zip_dir="${zip_dir#/}"
           zip_plain="${zip_dir}${artifact}.zip"
 
           zip_param="$(python3 -c 'import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$zip_plain")"
           zip_param="${zip_param//%20/+}"
 
-          # COS vs OOS Folder im ZIP
-          if [[ "$region" == "CN" ]]; then img_folder="COS_FILES_HERE"; else img_folder="OOS_FILES_HERE"; fi
+          # Image folder in ZIP
+          if [[ "$ftype" == "SuperHybrid Matrixx Flasher" ]]; then
+            img_folder="COS_FILES_HERE"
+          elif [[ "$region" == "CN" ]]; then
+            img_folder="COS_FILES_HERE"
+          else
+            img_folder="OOS_FILES_HERE"
+          fi
+
           boot_param="$(python3 -c 'import sys,urllib.parse;print(urllib.parse.quote(sys.argv[1],safe=""))' "${img_folder}/boot.img")"
           boot_param="${boot_param//%20/+}"
           init_boot_param="$(python3 -c 'import sys,urllib.parse;print(urllib.parse.quote(sys.argv[1],safe=""))' "${img_folder}/init_boot.img")"
@@ -1075,7 +1108,7 @@ jobs:
           boot_link="https://roms.danielspringer.at/download_from_zip.php?zip=${zip_param}&file=${boot_param}"
           init_boot_link="https://roms.danielspringer.at/download_from_zip.php?zip=${zip_param}&file=${init_boot_param}"
 
-          # Variablen für Python-Einzeiler
+          # Variables for Python one-liner
           export TG_DEVICE="$device_disp"
           export TG_ARTIFACT="$artifact"
           export TG_ZIP_LINK="$zip_link"
@@ -1084,17 +1117,16 @@ jobs:
           payload_path="$RUNNER_TEMP/tg_payload.json"
           export TG_PAYLOAD_PATH="$payload_path"
 
-          # JSON komplett in Python erzeugen (ensure_ascii=False => echte Emojis)
+          # Build JSON (ensure_ascii=False => real emojis)
           python3 -c 'import os,json; dev=os.environ["TG_DEVICE"]; art=os.environ["TG_ARTIFACT"]; p={"chat_id":-1001902568181,"text":f"✨ <b>New Build released</b> ✨\n{dev} <b>{art}</b>","parse_mode":"HTML","disable_web_page_preview":True,"reply_markup":{"inline_keyboard":[[{"text":"⬇️ Download ZIP","url":os.environ["TG_ZIP_LINK"]}],[{"text":"📦 boot.img","url":os.environ["TG_BOOT_LINK"]},{"text":"📦 init_boot.img","url":os.environ["TG_INIT_BOOT_LINK"]}]]}}; open(os.environ["TG_PAYLOAD_PATH"],"w",encoding="utf-8").write(json.dumps(p, ensure_ascii=False, separators=(",",":")))'
 
-          # Senden
+          # Send
           curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
                -H "Content-Type: application/json; charset=utf-8" \
                --data-binary "@${payload_path}"
 
-
       - name: Notify Telegram (Oneplus 13 ROM Discussion -1002626357574)
-        if: ${{ inputs.upload_to == 'DS_FTP' && inputs.notify_telegram && inputs.device == 'Oneplus 13' && (inputs.flasher_type == 'SuperHybrid Flasher' || inputs.flasher_type == 'RegionalHybrid Flasher' || inputs.flasher_type == 'SuperHybrid SunOS Flasher') }}
+        if: ${{ inputs.upload_to == 'DS_FTP' && inputs.notify_telegram && inputs.device == 'Oneplus 13' && (inputs.flasher_type == 'SuperHybrid Flasher' || inputs.flasher_type == 'RegionalHybrid Flasher' || inputs.flasher_type == 'SuperHybrid SunOS Flasher' || inputs.flasher_type == 'SuperHybrid Matrixx Flasher') }}
         shell: bash
         run: |
           set -euo pipefail
@@ -1107,13 +1139,13 @@ jobs:
           artifact="$ARTIFACT_NAME"
           ftp_rel_dir="$FTP_UPLOAD_DIR"
 
-          # Hauptdownload-Link
+          # Main download link
           raw_path="Files/${ftp_rel_dir}${artifact}.zip"
           enc_raw="$(python3 -c 'import sys,urllib.parse;print(urllib.parse.quote(sys.argv[1],safe=""))' "$raw_path")"
           enc_raw="${enc_raw//%20/+}"
           zip_link="https://roms.danielspringer.at/download.php?file=${enc_raw}&download=true"
 
-          # Pfad für download_from_zip.php (ohne "Files/")
+          # Path for download_from_zip.php (without "Files/")
           zip_dir="$ftp_rel_dir"
           zip_dir="${zip_dir#Files/}"
           zip_dir="${zip_dir#/}"
@@ -1122,11 +1154,14 @@ jobs:
           zip_param="$(python3 -c 'import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$zip_plain")"
           zip_param="${zip_param//%20/+}"
 
-          # Image-Ordner im ZIP wählen:
-          # - SunOS: FASTBOOT_FILES_HERE
-          # - CN:    COS_FILES_HERE
-          # - sonst: OOS_FILES_HERE
-          if [[ "$ftype" == "SuperHybrid SunOS Flasher" ]]; then
+          # Choose image folder in ZIP:
+          # - Matrixx: COS_FILES_HERE
+          # - SunOS:   FASTBOOT_FILES_HERE
+          # - CN:      COS_FILES_HERE
+          # - else:    OOS_FILES_HERE
+          if [[ "$ftype" == "SuperHybrid Matrixx Flasher" ]]; then
+            img_folder="COS_FILES_HERE"
+          elif [[ "$ftype" == "SuperHybrid SunOS Flasher" ]]; then
             img_folder="FASTBOOT_FILES_HERE"
           elif [[ "$region" == "CN" ]]; then
             img_folder="COS_FILES_HERE"
@@ -1142,7 +1177,7 @@ jobs:
           boot_link="https://roms.danielspringer.at/download_from_zip.php?zip=${zip_param}&file=${boot_param}"
           init_boot_link="https://roms.danielspringer.at/download_from_zip.php?zip=${zip_param}&file=${init_boot_param}"
 
-          # Spezieller Anzeigename für SunOS Builds (ohne doppeltes "Oneplus 13")
+          # Special display name for SunOS builds (avoid double "Oneplus 13")
           if [[ "$ftype" == "SuperHybrid SunOS Flasher" ]]; then
             ver="$(date +%Y%m%d)"
             tg_artifact="SunOS SuperHybrid Flasher ${ver}"
@@ -1150,7 +1185,7 @@ jobs:
             tg_artifact="$artifact"
           fi
 
-          # Variablen für Python-Einzeiler
+          # Variables for Python one-liner
           export TG_DEVICE="$device_disp"
           export TG_ARTIFACT_TG="$tg_artifact"
           export TG_ZIP_LINK="$zip_link"
@@ -1159,11 +1194,10 @@ jobs:
           payload_path="$RUNNER_TEMP/tg_payload_op13.json"
           export TG_PAYLOAD_PATH="$payload_path"
 
-          # JSON für den Oneplus 13 Channel
+          # JSON for the Oneplus 13 channel
           python3 -c 'import os,json; dev=os.environ["TG_DEVICE"]; art=os.environ["TG_ARTIFACT_TG"]; p={"chat_id":-1002626357574,"text":f"✨ <b>New Build released</b> ✨\n{dev} <b>{art}</b>","parse_mode":"HTML","disable_web_page_preview":True,"reply_markup":{"inline_keyboard":[[{"text":"⬇️ Download ZIP","url":os.environ["TG_ZIP_LINK"]}],[{"text":"📦 boot.img","url":os.environ["TG_BOOT_LINK"]},{"text":"📦 init_boot.img","url":os.environ["TG_INIT_BOOT_LINK"]}]]}}; open(os.environ["TG_PAYLOAD_PATH"],"w",encoding="utf-8").write(json.dumps(p, ensure_ascii=False, separators=(",",":")))'
 
-          # Senden
+          # Send
           curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
                -H "Content-Type: application/json; charset=utf-8" \
                --data-binary "@${payload_path}"
-
