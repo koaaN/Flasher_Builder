@@ -173,14 +173,6 @@ jobs:
           echo "Parsed OTA version: $numeric"
           echo "OTA_VERSION=$numeric" >> "$GITHUB_ENV"
 
-      - name: Set default OTA version for SunOS
-        if: ${{ inputs.flasher_type == 'SuperHybrid SunOS Flasher' }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          echo "Skipping OTA version extraction for SunOS, using default version"
-          echo "OTA_VERSION=UNKNOWN" >> "$GITHUB_ENV"
-
       - name: Map device → pick builder
         shell: bash
         run: |
