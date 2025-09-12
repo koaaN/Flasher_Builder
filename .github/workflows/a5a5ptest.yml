@@ -254,8 +254,6 @@ jobs:
           set -euo pipefail
           bash scripts/stage_files.sh
 
-
-    
       - name: Pre-stage flasher into OTA folder
         if: ${{ inputs.flasher_type == 'RegionalHybrid Flasher' || inputs.flasher_type == 'SuperHybrid Flasher' || inputs.flasher_type == 'SuperHybrid SunOS Flasher' || inputs.flasher_type == 'SuperHybrid Matrixx Flasher' }}
         shell: bash
