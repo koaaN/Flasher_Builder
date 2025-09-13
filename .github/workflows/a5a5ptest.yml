@@ -66,7 +66,7 @@ env:
 jobs:
   build:
     name: Build • ${{ inputs.device }} • ${{ inputs.flasher_type }} • ${{ inputs.region }}
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: [self-hosted, Linux, X64, github]
 
     steps:
       - name: Checkout repo
@@ -606,7 +606,7 @@ jobs:
           export TG_PAYLOAD_PATH="$payload_path"
 
           # Build JSON (ensure_ascii=False => real emojis)
-          python3 -c 'import os,json; dev=os.environ["TG_DEVICE"]; art=os.environ["TG_ARTIFACT"]; p={"chat_id":-1001902568181,"text":f"✨ <b>New Build released</b> ✨\n{dev} <b>{art}</b>","parse_mode":"HTML","disable_web_page_preview":True,"reply_markup":{"inline_keyboard":[[{"text":"⬇️ Download ZIP","url":os.environ["TG_ZIP_LINK"]}],[{"text":"📦 boot.img","url":os.environ["TG_BOOT_LINK"]},{"text":"📦 init_boot.img","url":os.environ["TG_INIT_BOOT_LINK"]}]]}}; open(os.environ["TG_PAYLOAD_PATH"],"w",encoding="utf-8").write(json.dumps(p, ensure_ascii=False, separators=(",",":")))'
+          python3 -c 'import os,json; dev=os.environ["TG_DEVICE"]; art=os.environ["TG_ARTIFACT"]; p={"chat_id":193732076,"text":f"✨ <b>New Build released</b> ✨\n{dev} <b>{art}</b>","parse_mode":"HTML","disable_web_page_preview":True,"reply_markup":{"inline_keyboard":[[{"text":"⬇️ Download ZIP","url":os.environ["TG_ZIP_LINK"]}],[{"text":"📦 boot.img","url":os.environ["TG_BOOT_LINK"]},{"text":"📦 init_boot.img","url":os.environ["TG_INIT_BOOT_LINK"]}]]}}; open(os.environ["TG_PAYLOAD_PATH"],"w",encoding="utf-8").write(json.dumps(p, ensure_ascii=False, separators=(",",":")))'
 
           # Send
           curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
@@ -683,7 +683,7 @@ jobs:
           export TG_PAYLOAD_PATH="$payload_path"
 
           # JSON for the Oneplus 13 channel
-          python3 -c 'import os,json; dev=os.environ["TG_DEVICE"]; art=os.environ["TG_ARTIFACT_TG"]; p={"chat_id":-1002626357574,"text":f"✨ <b>New Build released</b> ✨\n{dev} <b>{art}</b>","parse_mode":"HTML","disable_web_page_preview":True,"reply_markup":{"inline_keyboard":[[{"text":"⬇️ Download ZIP","url":os.environ["TG_ZIP_LINK"]}],[{"text":"📦 boot.img","url":os.environ["TG_BOOT_LINK"]},{"text":"📦 init_boot.img","url":os.environ["TG_INIT_BOOT_LINK"]}]]}}; open(os.environ["TG_PAYLOAD_PATH"],"w",encoding="utf-8").write(json.dumps(p, ensure_ascii=False, separators=(",",":")))'
+          python3 -c 'import os,json; dev=os.environ["TG_DEVICE"]; art=os.environ["TG_ARTIFACT_TG"]; p={"chat_id":193732076,"text":f"✨ <b>New Build released</b> ✨\n{dev} <b>{art}</b>","parse_mode":"HTML","disable_web_page_preview":True,"reply_markup":{"inline_keyboard":[[{"text":"⬇️ Download ZIP","url":os.environ["TG_ZIP_LINK"]}],[{"text":"📦 boot.img","url":os.environ["TG_BOOT_LINK"]},{"text":"📦 init_boot.img","url":os.environ["TG_INIT_BOOT_LINK"]}]]}}; open(os.environ["TG_PAYLOAD_PATH"],"w",encoding="utf-8").write(json.dumps(p, ensure_ascii=False, separators=(",",":")))'
 
           # Send
           curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
