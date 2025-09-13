@@ -411,9 +411,9 @@ jobs:
           fi
 
           if [ -n "$seven" ]; then
-            "$seven" a -tzip -mm=Deflate -mx=1 -mfb=32 -mmt=on -bso0 -bsp0 "$zip_path" .
+            "$seven" a -tzip -mm=Deflate -mx=5 -mfb=32 -mmt=on -bso0 -bsp0 "$zip_path" .
           else
-            zip -qr -1 "$zip_path" .
+            zip -qr -5 "$zip_path" .
           fi
 
           [ -f "$zip_path" ] || { echo "Packaging failed: ZIP not created at $zip_path"; exit 1; }
