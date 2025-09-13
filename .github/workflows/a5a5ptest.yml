@@ -488,6 +488,7 @@ jobs:
           if [ -n "$ftp_base" ]; then ftp_abs="$ftp_base/$rel"; else ftp_abs="$rel"; fi
           echo "FTP_UPLOAD_DIR=$ftp_abs" >> "$GITHUB_ENV"
 
+
       - name: Upload to DS_FTP
         if: ${{ inputs.upload_to == 'DS_FTP' }}
         env:
@@ -514,13 +515,25 @@ jobs:
               | sed -e 's/%/%25/g' -e 's/ /%20/g' -e 's/#/%23/g' -e 's/+/%2B/g' -e 's/?/%3F/g')"
           fi
 
-          url="ftp://${DS_FTP_HOST}/${enc_path}"
-          echo "Uploading via curl to: $url"
+          # Upload als .filepart
+          part_url="ftp://${DS_FTP_HOST}/${enc_path}.filepart"
+          echo "Uploading via curl to: $part_url"
 
           curl --ftp-pasv --disable-eprt --ftp-method nocwd \
                --user "${DS_FTP_USER}:${DS_FTP_PASS}" \
                --ftp-create-dirs \
-               -T "$zip_path" "$url" \
+               -T "$zip_path" "$part_url" \
+               --fail --show-error --silent
+
+          # Nach erfolgreichem Upload im Zielordner umbenennen (.filepart -> final)
+          cwd_path="${remote_dir%/}"  # ggf. trailing slash entfernen
+          if [[ -n "$cwd_path" ]]; then CWD_Q=(-Q "CWD $cwd_path"); else CWD_Q=(); fi
+
+          curl --ftp-pasv --disable-eprt -sS -o /dev/null \
+               --user "${DS_FTP_USER}:${DS_FTP_PASS}" "ftp://${DS_FTP_HOST}/" \
+               "${CWD_Q[@]}" \
+               -Q "RNFR ${file_name}.filepart" \
+               -Q "RNTO ${file_name}" \
                --fail --show-error --silent
 
       - name: Notify Telegram (Oneplus 13 Main Group -1001902568181)
