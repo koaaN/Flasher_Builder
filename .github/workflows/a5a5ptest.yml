@@ -487,48 +487,54 @@ jobs:
           ftp_base="$(printf "%s" "${{ secrets.DS_FTP_PATH }}" | sed 's#^/*##; s#/*$##;')"
           if [ -n "$ftp_base" ]; then ftp_abs="$ftp_base/$rel"; else ftp_abs="$rel"; fi
           echo "FTP_UPLOAD_DIR=$ftp_abs" >> "$GITHUB_ENV"
-  - name: Upload to DS_FTP
-    if: ${{ inputs.upload_to == 'DS_FTP' }}
-    env:
-      DS_FTP_HOST: ${{ secrets.DS_FTP_HOST }}
-      DS_FTP_USER: ${{ secrets.DS_FTP_USER }}
-      DS_FTP_PASS: ${{ secrets.DS_FTP_PASS }}
-    shell: bash
-    run: |
-      set -euo pipefail
-      : "${DS_FTP_HOST:?Missing DS_FTP_HOST}"
-      : "${DS_FTP_USER:?Missing DS_FTP_USER}"
-      : "${DS_FTP_PASS:?Missing DS_FTP_PASS}"
 
-      remote_dir="$(printf "%s" "$FTP_UPLOAD_DIR" | sed 's#^/*##')"  # e.g. "Oneplus 13/SunOS Super Flashers/"
-      file_name="${ARTIFACT_NAME}.zip"
-      tmp_name="${file_name}.filepart"
 
-      zip_path="$ZIP_FILE"
-      [ -f "$zip_path" ] || { echo "ZIP not found: $zip_path"; exit 1; }
 
-      # URL-encode (keep slashes)
-      if command -v python3 >/dev/null 2>&1; then
-        enc_tmp="$(python3 -c 'import sys,urllib.parse;d,f,t=sys.argv[1:];q=urllib.parse.quote;print(q(d+t,safe="/"))' "$remote_dir" "$file_name" "$tmp_name")"
-        enc_final="$(python3 -c 'import sys,urllib.parse;d,f,t=sys.argv[1:];q=urllib.parse.quote;print(q(d+f,safe="/"))' "$remote_dir" "$file_name" "$tmp_name")"
-      else
-        enc_tmp="$(printf '%s' "${remote_dir}${tmp_name}" \
-          | sed -e 's/%/%25/g' -e 's/ /%20/g' -e 's/#/%23/g' -e 's/+/%2B/g' -e 's/?/%3F/g')"
-        enc_final="$(printf '%s' "${remote_dir}${file_name}" \
-          | sed -e 's/%/%25/g' -e 's/ /%20/g' -e 's/#/%23/g' -e 's/+/%2B/g' -e 's/?/%3F/g')"
-      fi
+      - name: Upload to DS_FTP
+        if: ${{ inputs.upload_to == 'DS_FTP' }}
+        env:
+          DS_FTP_HOST: ${{ secrets.DS_FTP_HOST }}
+          DS_FTP_USER: ${{ secrets.DS_FTP_USER }}
+          DS_FTP_PASS: ${{ secrets.DS_FTP_PASS }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${DS_FTP_HOST:?Missing DS_FTP_HOST}"
+          : "${DS_FTP_USER:?Missing DS_FTP_USER}"
+          : "${DS_FTP_PASS:?Missing DS_FTP_PASS}"
 
-      url_tmp="ftp://${DS_FTP_HOST}/${enc_tmp}"
-      echo "Uploading as: $url_tmp  (will rename to ${remote_dir}${file_name})"
+          remote_dir="$(printf "%s" "$FTP_UPLOAD_DIR" | sed 's#^/*##')"  # e.g. "Oneplus 13/SunOS Super Flashers/"
+          file_name="${ARTIFACT_NAME}.zip"
+          tmp_name="${file_name}.filepart"
+          zip_path="$ZIP_FILE"
+          [ -f "$zip_path" ] || { echo "ZIP not found: $zip_path"; exit 1; }
 
-      curl --ftp-pasv --disable-eprt --ftp-method nocwd \
-           --user "${DS_FTP_USER}:${DS_FTP_PASS}" \
-           --ftp-create-dirs \
-           -T "$zip_path" "$url_tmp" \
-           --postquote "RNFR \"${remote_dir}${tmp_name}\"" \
-           --postquote "RNTO \"${remote_dir}${file_name}\"" \
-           --fail --show-error --silent
+          # URL-encode (keep slashes)
+          if command -v python3 >/dev/null 2>&1; then
+            enc_tmp="$(python3 -c 'import sys,urllib.parse;d,f,t=sys.argv[1:];q=urllib.parse.quote;print(q(d+t,safe="/"))' "$remote_dir" "$file_name" "$tmp_name")"
+            enc_final="$(python3 -c 'import sys,urllib.parse;d,f,t=sys.argv[1:];q=urllib.parse.quote;print(q(d+f,safe="/"))' "$remote_dir" "$file_name" "$tmp_name")"
+          else
+            enc_tmp="$(printf '%s' "${remote_dir}${tmp_name}" \
+              | sed -e 's/%/%25/g' -e 's/ /%20/g' -e 's/#/%23/g' -e 's/+/%2B/g' -e 's/?/%3F/g')"
+            enc_final="$(printf '%s' "${remote_dir}${file_name}" \
+              | sed -e 's/%/%25/g' -e 's/ /%20/g' -e 's/#/%23/g' -e 's/+/%2B/g' -e 's/?/%3F/g')"
+          fi
 
+          url_tmp="ftp://${DS_FTP_HOST}/${enc_tmp}"
+          echo "Uploading as: $url_tmp  (will rename to ${remote_dir}${file_name})"
+
+          curl --ftp-pasv --disable-eprt --ftp-method nocwd \
+               --user "${DS_FTP_USER}:${DS_FTP_PASS}" \
+               --ftp-create-dirs \
+               -T "$zip_path" "$url_tmp" \
+               --postquote "RNFR \"${remote_dir}${tmp_name}\"" \
+               --postquote "RNTO \"${remote_dir}${file_name}\"" \
+               --fail --show-error --silent
+
+
+
+
+ 
 
       - name: Notify Telegram (Oneplus 13 Main Group -1001902568181)
         if: ${{ inputs.upload_to == 'DS_FTP' && inputs.flasher_type != 'SuperHybrid SunOS Flasher' && inputs.flasher_type != 'SuperHybrid Matrixx Flasher' && inputs.notify_telegram }}
