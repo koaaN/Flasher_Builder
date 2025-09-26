@@ -441,10 +441,10 @@ jobs:
 
           if [[ "$ftype" == "SuperHybrid SunOS Flasher" ]]; then
             category="SunOS Super Flashers"
-            rel="Oneplus 13/$category"
+            rel="Oneplus 13/Custom Roms/$category"
           elif [[ "$ftype" == "SuperHybrid Matrixx Flasher" ]]; then
             category="Project Matrixx Super Flashers"
-            rel="Oneplus 13/$category"
+            rel="Oneplus 13/Custom Roms/$category"
           elif [[ "$device" == "Oneplus 13T" && "$ftype" == "Super Flasher" && "$region" == "IN" ]]; then
             category="OxygenOS Flashers"
             rel="$device/$category"
