@@ -43,20 +43,7 @@ if errorlevel 2 (
 
 ) else (
     echo ***** Flashing COS oplusstanvbk *****
-	"%fastboot%" flash --slot=all oplusstanvbk COS_FILES_HERE\oplusstanvbk.img
-	echo *****      REBOOTING TO FASTBOOT     *****
-	"%fastboot%" reboot bootloader 
-	echo *****  Wait for phone to boot into bootloader and *****
-	echo *****        press enter to flash CN modem     *****
-	pause
-	echo ***** Flashing COS modem *****
-	"%fastboot%" flash --slot=all modem COS_FILES_HERE\modem.img
-	echo *****      REBOOTING TO FASTBOOTD     *****
-	"%fastboot%" reboot fastboot
-	echo *****  Wait for phone to boot into fastbootd and *****
-	echo *****        press enter to continue     *****
-	pause
-	
+	"%fastboot%" flash --slot=all oplusstanvbk COS_FILES_HERE\oplusstanvbk.img	
     echo                ****************** FLASHING COMPLETE *****************
     echo         Wipe data by tapping Enter recovery on the screen. Then tap Factory reset
     echo                   Tap the power button to format data/factory reset
