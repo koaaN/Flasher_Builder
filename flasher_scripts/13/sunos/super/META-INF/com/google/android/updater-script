@@ -8,7 +8,7 @@ ui_print("############# SunOS ###############");
 ui_print("##########  Oneplus 13  ###########");
 ui_print("####  by Chandu Dyavanapelli  #####");
 ui_print("########### Packaged by ###########");
-ui_print("###### docnok63 & Jonas Salo ######");
+ui_print("## docnok63, Jonas Salo & Daniel ##");
 ui_print("########### Inspired by ###########");
 ui_print("##### FTH PHONE 1902 & Venkay #####");
 ui_print("###################################");
