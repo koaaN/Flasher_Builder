@@ -4,7 +4,7 @@ echo.**********************************************************************
 echo.
 echo.          Oneplus 13 - Super Matrixx Flasher
 echo.          Matrixx for OP13 created by Brian
-echo.         Packaged by docnok63 and Jonas Salo
+echo.       Packaged by docnok63, Jonas Salo & Daniel
 echo.     script inspired by FTH PHONE 1902 and Venkay
 @echo off
 
