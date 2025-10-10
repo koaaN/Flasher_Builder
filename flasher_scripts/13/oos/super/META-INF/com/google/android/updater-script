@@ -7,7 +7,7 @@ ui_print("###################################");
 ui_print("############ OxygenOS #############");
 ui_print("########## Super Hybrid ###########");
 ui_print("############# Made by #############");
-ui_print("###### docnok63 & Jonas Salo ######");
+ui_print("## docnok63, Jonas Salo & Daniel ##");
 ui_print("########### Inspired by ###########");
 ui_print("##### FTH PHONE 1902 & Venkay #####");
 ui_print("###################################");
