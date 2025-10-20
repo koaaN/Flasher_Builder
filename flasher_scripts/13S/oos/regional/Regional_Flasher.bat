@@ -4,7 +4,7 @@ echo.**********************************************************************
 echo.
 echo.              Oneplus 13T - OOS Regional Flasher                      
 echo.       Originally two scripts by FTH PHONE 1902 and Venkay
-echo.            modified by docnok63, Jonas Salo & Daniel
+echo.            modified by docnok63, Jonas Salo ^& Daniel
 echo.
 @echo off
 
@@ -125,4 +125,5 @@ if errorlevel 2 (
 )
 
 pause
+
 
