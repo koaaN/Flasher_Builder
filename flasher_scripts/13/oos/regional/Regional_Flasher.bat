@@ -3,7 +3,7 @@ title OOS Regional Flasher
 echo.**********************************************************************
 echo.
 echo.              Oneplus 13 - OOS Regional Flasher                      
-echo.           Packaged by docnok63, Jonas Salo & Daniel
+echo.           Packaged by docnok63, Jonas Salo ^& Daniel
 echo.        script inspired by FTH PHONE 1902 and Venkay
 echo.
 @echo off
@@ -125,4 +125,5 @@ if errorlevel 2 (
 )
 
 pause
+
 
