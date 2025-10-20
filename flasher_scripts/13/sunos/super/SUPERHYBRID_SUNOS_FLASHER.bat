@@ -4,7 +4,7 @@ echo.**********************************************************************
 echo.
 echo.          Oneplus 13 - Super SunOS Flasher
 echo.    SunOS for OP13 created by Chandu Dyavanapelli
-echo.      Packaged by docnok63, Jonas Salo & Daniel
+echo.      Packaged by docnok63, Jonas Salo ^& Daniel
 echo.     script inspired by FTH PHONE 1902 and Venkay
 @echo off
 
