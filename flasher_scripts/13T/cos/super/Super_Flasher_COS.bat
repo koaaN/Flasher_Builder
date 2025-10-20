@@ -4,7 +4,7 @@ echo.**********************************************************************
 echo.
 echo.              Oneplus 13T - COS Super Flasher                      
 echo.       Originally two scripts by FTH PHONE 1902 and Venkay
-echo.            modified by docnok63, Jonas Salo & Daniel
+echo.            modified by docnok63, Jonas Salo ^& Daniel
 echo.
 @echo off
 
