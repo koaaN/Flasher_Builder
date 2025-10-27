@@ -91,13 +91,23 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p download "${OUT_DIR}"
-          url="${{ inputs.ota_url }}"
-          url="$(printf "%s" "$url" | xargs)"  # trim
+
+          # URL säubern: trim, Quotes weg, \u0026 -> &
+          raw="${{ inputs.ota_url }}"
+          url="$(printf '%s' "$raw" \
+            | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' \
+                  -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'$//" \
+                  -e 's/\\u0026/\&/g')"
+
+          # für den nächsten Step in die Environment legen (auch wenn leer)
+          echo "SANITIZED_URL=$url" >> "$GITHUB_ENV"
+
           if [ -z "$url" ]; then
             echo "Placeholder OTA for dry-run" > download/PLACEHOLDER.txt
             rm -f download/OTA.zip
             (cd download && zip -q OTA.zip PLACEHOLDER.txt)
           fi
+
 
       - name: Download OTA zip
         if: ${{ inputs.ota_url != '' }}
