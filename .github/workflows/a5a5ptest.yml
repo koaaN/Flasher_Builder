@@ -142,9 +142,18 @@ jobs:
           # Download: Datei MUSS OTA.zip heißen (immer)
           if command -v aria2c >/dev/null 2>&1; then
             aria2c -x 8 -s 8 -c --file-allocation=none --retry-wait=5 --max-tries=10 --timeout=30 \
+              --header="User-Agent: Dalvik/2.1.0 (Linux; U; Android 16; CPH2653 Build/AP3A.240617.008)" \
+              --header="userId: oplus-ota|15002017" \
+              --header="language: en-US" \
+              --header="brand: oneplus-exp" \
               -o "download/OTA.zip" "$url"
           else
-            curl -L --fail --retry 5 --retry-delay 5 -o "download/OTA.zip" "$url"
+            curl -L --fail --retry 5 --retry-delay 5 \
+              -H "User-Agent: Dalvik/2.1.0 (Linux; U; Android 16; CPH2653 Build/AP3A.240617.008)" \
+              -H "userId: oplus-ota|15002017" \
+              -H "language: en-US" \
+              -H "brand: oneplus-exp" \
+              -o "download/OTA.zip" "$url"
           fi
 
       - name: Export OTA env
