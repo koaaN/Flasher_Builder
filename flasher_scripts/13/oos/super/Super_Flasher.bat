@@ -104,12 +104,13 @@ if errorlevel 2 (
 	%fastboot% flash oplusstanvbk_b COS_FILES_HERE\oplusstanvbk.img
     %fastboot% flash my_region_a COS_FILES_HERE\my_region.img
 	%fastboot% flash my_region_b COS_FILES_HERE\my_region.img
+	echo ***** !!!!DO NOT LOCK BOOTLOADER AFTER FLASHING THIS ROM!!!! *****
+	echo ***** !!!!DO NOT LOCK BOOTLOADER AFTER FLASHING THIS ROM!!!! *****
 ) else (
-    echo ***** Flashing Patched DTBO to make LTPO work *****
-	echo ***** !!!!DO NOT LOCK BOOTLOADER AFTER FLASHING THIS DTBO!!!! *****
-	%fastboot% flash dtbo dtbo_patched.img
-	echo ***** !!!!DO NOT LOCK BOOTLOADER AFTER FLASHING THIS DTBO!!!! *****
-    echo ***** After rooting, you must flash @greg44f's module to get signal back *****
+    echo *****         !!!!Flashing NO files for signal!!!!           *****
+	echo *****     !!!!Root-Module will be needed for signal!!!!      *****
+	echo ***** !!!!DO NOT LOCK BOOTLOADER AFTER FLASHING THIS ROM!!!! *****
+	echo ***** !!!!DO NOT LOCK BOOTLOADER AFTER FLASHING THIS ROM!!!! *****
 )
 
 :: Ask if flashing from ColorOS (press Y for yes or N for no)
@@ -120,14 +121,19 @@ choice /c YN /n > nul
 if errorlevel 2 (
     echo *********************** NO NEED TO WIPE DATA ****************************
     echo ***** Flashing complete. Hit any key to reboot the phone to Android *****
+	echo *****     !!!!DO NOT LOCK BOOTLOADER AFTER FLASHING THIS ROM!!!!    *****
+	echo *****     !!!!DO NOT LOCK BOOTLOADER AFTER FLASHING THIS ROM!!!!    *****
     pause
     %fastboot% reboot
 ) else if errorlevel 1 (
     echo ****************** FLASHING COMPLETE *****************
     echo Wipe data by tapping Format Data on the screen, enter the code, and press format data.
     echo Phone will automatically reboot into Android after wipe is done.
+	echo *****     !!!!DO NOT LOCK BOOTLOADER AFTER FLASHING THIS ROM!!!!    *****
+	echo *****     !!!!DO NOT LOCK BOOTLOADER AFTER FLASHING THIS ROM!!!!    *****
 )
 
 pause
+
 
 
