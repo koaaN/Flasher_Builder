@@ -108,13 +108,15 @@ if [[ -f "$super_dest/dtbo.img" ]]; then
   fi
 fi
 
-# 10) 16DTBO/dtbo.img in OOS_FILES_HERE kopieren (entspricht deinem BAT)
-dtbo16_src="$script_dir/16DTBO/dtbo.img"
+# 10) /dtbo.img in OOS_FILES_HERE kopieren (entspricht deinem BAT)
+dtbo16_src="$script_dir/dtbo_patched.img"
+dtbo16_dst="$oos_here/dtbo.img"
+
 if [[ -f "$dtbo16_src" ]]; then
-  echo "Copying 16.0.0.1 dtbo.img into OOS_FILES_HERE..."
-  cp -f "$dtbo16_src" "$oos_here/"
+  echo "Kopiere gepatchte dtbo nach OOS_FILES_HERE als dtbo.img..."
+  cp -f "$dtbo16_src" "$dtbo16_dst"
 else
-  echo "WARN: 16DTBO dtbo.img nicht gefunden: $dtbo16_src"
+  echo "WARN: Gepatchte dtbo nicht gefunden: $dtbo16_src"
 fi
 
 # 11) super.img packen (Super/super_oos.sh wird im Template erwartet)
