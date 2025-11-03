@@ -524,22 +524,6 @@ fi
 # OnePlus 13 + Hybrid extras (SuperHybrid + RegionalHybrid)
 # -----------------------------
 if [[ "$dev" == "13" && ( "$ftype" == "SuperHybrid Flasher" || "$ftype" == "RegionalHybrid Flasher" ) ]]; then
-  # Stage 16DTBO from flasher_scripts/13/oos/super/16DTBO
-  src16="$root/flasher_scripts/13/oos/super/16DTBO"
-  main16="$OUT_DIR/16DTBO"
-
-  if [ -d "$src16" ]; then
-    mkdir -p "$main16"
-    rsync -a "$src16/" "$main16/"
-    dtbo_plain="$main16/dtbo.img"
-    dtbo_named="$main16/16.0.0.1_dtbo.img"
-    if [ -f "$dtbo_plain" ] && [ ! -f "$dtbo_named" ]; then
-      cp -f "$dtbo_plain" "$dtbo_named"
-    fi
-  else
-    echo "WARN: 16DTBO source not found: $src16"
-  fi
-
   # If template dropped 16DTBO inside working dir, move up
   work16="$work_dir/16DTBO"
   if [ -d "$work16" ]; then
@@ -560,3 +544,4 @@ fi
 
 # Expose for next steps
 echo "WORK_DIR=$work_dir" >> "$GITHUB_ENV"
+
