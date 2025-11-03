@@ -127,12 +127,10 @@ if (run_program("/tmp/volprompt") == 0) then
 	ui_print("#");
 	ui_print("#################################################");
 	ui_print("#    You chose YES - No signal files flashed!   #");
-	ui_print("#         Flashing super & patched dtbo!        #");
-    ui_print("# To have working signal, root module is needed #");
+	ui_print("# To have working signal, root module is needed #");
+	ui_print("#            Flashing super partition!          #");
 	ui_print("#################################################");
 	run_program("/system/bin/simg2img", "/sdcard/super.img", "/dev/block/by-name/super");
-	package_extract_file("dtbo_patched.img", "/dev/block/by-name/dtbo_a");
-	package_extract_file("dtbo_patched.img", "/dev/block/by-name/dtbo_b");
 else
     ui_print("#");
 	ui_print("#");
