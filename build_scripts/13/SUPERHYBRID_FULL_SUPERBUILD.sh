@@ -142,7 +142,7 @@ fi
 # 13) Aufräumen: Super/ löschen, dtbo.img + Patcher entfernen (wie BAT)
 echo "Removing scrap files"
 rm -rf "$super_work"
-rm -f  "$super_dest/dtbo.img"
+rm -f  "$super_dest/dtbo_patched.img"
 rm -f  "$super_dest/dtbo_patcher.sh" "$super_dest/dtbo_patcher.py" "$super_dest/dtbo_patcher" || true
 # (BAT löschte nur .bat; wir entfernen hier die Linux-Varianten. Wenn du die .bat mitlieferst, kannst du die nächste Zeile aktivieren:)
 # rm -f  "$super_dest/dtbo_patcher.bat" || true
