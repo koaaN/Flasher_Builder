@@ -109,7 +109,7 @@ if [[ -f "$super_dest/dtbo.img" ]]; then
 fi
 
 # 10) /dtbo.img in OOS_FILES_HERE kopieren (entspricht deinem BAT)
-dtbo16_src="$script_dir/dtbo_patched.img"
+dtbo16_src="$super_dest/dtbo_patched.img"
 dtbo16_dst="$oos_here/dtbo.img"
 
 if [[ -f "$dtbo16_src" ]]; then
