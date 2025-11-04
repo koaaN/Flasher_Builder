@@ -80,12 +80,3 @@ shopt -u dotglob
 rm -rf "$new_folder"
 
 echo "Done moving files into Regional Hybrid Flasher."
-echo "Copying 16.0.0.1_dtbo.img into Regional Hybrid Flasher..."
-
-# Entspricht: copy /Y "%~dp016DTBO\16.0.0.1_dtbo.img" "%Regional Hybrid Flasher_dest%"
-dtbo_src="$script_dir/16DTBO/16.0.0.1_dtbo.img"
-if [[ -f "$dtbo_src" ]]; then
-  cp -f "$dtbo_src" "$regional_flasher_dest/"
-else
-  echo "WARN: dtbo nicht gefunden: $dtbo_src"
-fi
