@@ -80,44 +80,6 @@ shopt -u dotglob
 rm -rf "$new_folder"
 
 echo "Done moving files into Super Flasher"
-echo "Copying and Patching dtbo.img"
-
-# 8) dtbo.img aus OOS_FILES_HERE ins Super-Flasher-Root kopieren
-if [[ -f "$oos_here/dtbo.img" ]]; then
-  cp -f "$oos_here/dtbo.img" "$super_dest/dtbo.img"
-else
-  echo "WARN: dtbo.img nicht in $oos_here gefunden (überspringe Patch-Schritt)."
-fi
-
-# 9) dtbo_patcher ausführen (Linux-Äquivalent erwartet)
-#   LOGIK bleibt identisch: wir rufen den Patcher im Flasher-Root auf.
-#   Akzeptierte Varianten (in dieser Reihenfolge): .sh, (Python) .py, ausführbare Binary.
-#   Falls nur eine .bat existiert, brich mit Fehler ab (Windows-Tool).
-if [[ -f "$super_dest/dtbo.img" ]]; then
-  if [[ -x "$super_dest/dtbo_patcher.sh" ]]; then
-    ( cd "$super_dest" && bash "./dtbo_patcher.sh" )
-  elif [[ -f "$super_dest/dtbo_patcher.py" ]]; then
-    ( cd "$super_dest" && python3 "./dtbo_patcher.py" )
-  elif [[ -x "$super_dest/dtbo_patcher" ]]; then
-    ( cd "$super_dest" && "./dtbo_patcher" )
-  elif [[ -f "$super_dest/dtbo_patcher.bat" ]]; then
-    echo "ERROR: dtbo_patcher.bat gefunden, aber kein Linux-Patcher (sh/py/bin). Bitte Linux-Variante bereitstellen."
-    exit 1
-  else
-    echo "WARN: Kein dtbo_patcher gefunden (sh/py/bin) – Patch-Schritt übersprungen."
-  fi
-fi
-
-# 10) /dtbo.img in OOS_FILES_HERE kopieren (entspricht deinem BAT)
-dtbo16_src="$super_dest/dtbo_patched.img"
-dtbo16_dst="$oos_here/dtbo.img"
-
-if [[ -f "$dtbo16_src" ]]; then
-  echo "Kopiere gepatchte dtbo nach OOS_FILES_HERE als dtbo.img..."
-  cp -f "$dtbo16_src" "$dtbo16_dst"
-else
-  echo "WARN: Gepatchte dtbo nicht gefunden: $dtbo16_src"
-fi
 
 # 11) super.img packen (Super/super_oos.sh wird im Template erwartet)
 packer="$super_work/super_oos.sh"
