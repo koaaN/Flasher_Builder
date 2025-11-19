@@ -1,58 +1,66 @@
-@echo off
-setlocal enabledelayedexpansion
+#!/usr/bin/env bash
+set -euo pipefail
 
-:: Path to dropped ZIP
-set "input_file=%~1"
-set "input_dir=%~dp1"
+# Usage: ./REGIONALHYBRID_IN_FULL_BUILD.sh /path/to/OTA.zip
+# RegionalHybrid IN – OnePlus 15
 
-:: Paths to tools and folders
-set "tool=%~dp0otaripper.exe"
-set "tool_name=otaripper.exe"
-set "regional_hybrid_flasher_src=%~dp0RegionalHybrid Flasher"
-set "regional_hybrid_flasher_dest=%input_dir%RegionalHybrid Flasher"
+if [[ $# -lt 1 ]]; then
+  echo "Usage: $0 /path/to/OTA.zip"
+  exit 64
+fi
 
-:: Copy Regional Hybrid Flasher folder to zip location
-xcopy /E /I /Y "%regional_hybrid_flasher_src%" "%regional_hybrid_flasher_dest%"
+input_file="$(realpath "$1")"
+input_dir="$(dirname "$input_file")"
 
-:: Copy otaripper.exe to the zip's folder
-copy "%tool%" "%input_dir%" >nul
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
-:: Save list of folders before extraction
-set "before_folders="
-for /d %%D in ("%input_dir%*") do (
-    set "before_folders=!before_folders! %%~nxD"
-)
+otaripper_bin="$script_dir/otaripper"
+if [[ ! -x "$otaripper_bin" ]]; then
+  echo "ERROR: otaripper (Linux) nicht gefunden/ausführbar: $otaripper_bin"
+  exit 1
+fi
 
-:: Run otaripper.exe (no --partitions)
-pushd "%input_dir%"
-"%tool_name%" "%input_file%"
-popd
+reg_src="$script_dir/RegionalHybrid Flasher"
+reg_dest="$input_dir/RegionalHybrid Flasher"
+oos_here="$reg_dest/OOS_FILES_HERE"
 
-:: Delete temporary otaripper.exe
-del "%input_dir%%tool_name%" >nul
+if [[ ! -d "$reg_src" ]]; then
+  echo "ERROR: Template 'RegionalHybrid Flasher' nicht gefunden: $reg_src"
+  exit 1
+fi
 
-:: Detect the new folder created by extraction
-set "new_folder="
-for /d %%D in ("%input_dir%*") do (
-    echo !before_folders! | find " %%~nxD" >nul
-    if errorlevel 1 (
-        set "new_folder=%%~fD"
-    )
-)
+mkdir -p "$reg_dest"
+rsync -a "$reg_src/" "$reg_dest/"
 
-:: Move all extracted files and handle bloat
-if defined new_folder (
-    echo Moving all extracted files into OOS_FILES_HERE...
-    if not exist "%regional_hybrid_flasher_dest%\OOS_FILES_HERE" mkdir "%regional_hybrid_flasher_dest%\OOS_FILES_HERE"
-    move /Y "!new_folder!\*" "%regional_hybrid_flasher_dest%\OOS_FILES_HERE\" >nul
+declare -A before
+while IFS= read -r -d '' d; do
+  before["$(basename "$d")"]=1
+done < <(find "$input_dir" -mindepth 1 -maxdepth 1 -type d -print0)
 
-    echo Copying my_preload.img ^& my_company.img from EUGLO_BLOAT into OOS_FILES_HERE
-    copy /Y "%~dp0IN_BLOAT\my_preload.img" "%regional_hybrid_flasher_dest%\OOS_FILES_HERE\"
-    copy /Y "%~dp0IN_BLOAT\my_company.img" "%regional_hybrid_flasher_dest%\OOS_FILES_HERE\"
-	copy /Y "%~dp0IN_BLOAT\system_dlkm_oki.img" "%regional_hybrid_flasher_dest%\OOS_FILES_HERE\"
+pushd "$input_dir" >/dev/null
+"$otaripper_bin" "$input_file"
+popd >/dev/null
 
-    rd /s /q "!new_folder!"
-)
+new_folder=""
+while IFS= read -r -d '' d; do
+  base="$(basename "$d")"
+  if [[ -z "${before[$base]+x}" ]]; then
+    new_folder="$d"
+    break
+  fi
+done < <(find "$input_dir" -mindepth 1 -maxdepth 1 -type d -print0)
 
-echo Done moving files into Regional Hybrid Flasher.
-pause
+[[ -n "$new_folder" ]] || { echo "ERROR: kein neuer Ordner nach Extraktion gefunden."; exit 1; }
+
+mkdir -p "$oos_here"
+echo "Moving extracted files into RegionalHybrid Flasher/OOS_FILES_HERE ..."
+shopt -s dotglob
+if compgen -G "$new_folder/*" >/dev/null; then
+  mv -f "$new_folder"/* "$oos_here/" || true
+fi
+shopt -u dotglob
+
+rm -rf "$new_folder"
+
+echo "Done moving files into Regional Hybrid Flasher."
+echo "BUILD DONE!!!"
