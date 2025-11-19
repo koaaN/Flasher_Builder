@@ -4,7 +4,7 @@ set -euo pipefail
 # Super OOS Packer for OnePlus 15 (Linux-Version von super_oos.bat)
 
 # Ordner des Scripts ermitteln
-script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
 # Super partition total size
 SUPER_SIZE=18907922432
