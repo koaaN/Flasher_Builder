@@ -1,132 +1,99 @@
-@echo off
-setlocal enabledelayedexpansion
+#!/usr/bin/env bash
+set -euo pipefail
 
-:: Path to dropped ZIP
-set "input_file=%~1"
-set "input_dir=%~dp1"
+# Usage: ./SUPERHYBRID_IN_FULL_SUPERBUILD.sh /path/to/OTA.zip
+# SuperHybrid IN (OOS) – OnePlus 15
 
-:: Path to otaripper.exe and Super Flasher folder
-set "tool=%~dp0otaripper.exe"
-set "tool_name=otaripper.exe"
-set "super_flasher_src=%~dp0SuperHybrid Flasher"
-set "super_flasher_dest=%input_dir%SuperHybrid Flasher"
+if [[ $# -lt 1 ]]; then
+  echo "Usage: $0 /path/to/OTA.zip"
+  exit 64
+fi
 
-:: Copy Super Flasher folder to zip location
-xcopy /E /I /Y "%super_flasher_src%" "%super_flasher_dest%"
+input_file="$(realpath "$1")"
+input_dir="$(dirname "$input_file")"
 
-:: Copy otaripper.exe to the zip's folder
-copy "%tool%" "%input_dir%" >nul
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
-:: Save list of folders before extraction
-set "before_folders="
-for /d %%D in ("%input_dir%*") do (
-    set "before_folders=!before_folders! %%~nxD"
+otaripper_bin="$script_dir/otaripper"
+if [[ ! -x "$otaripper_bin" ]]; then
+  echo "ERROR: otaripper (Linux) nicht gefunden/ausführbar: $otaripper_bin"
+  exit 1
+fi
+
+super_src="$script_dir/SuperHybrid Flasher"
+super_dest="$input_dir/SuperHybrid Flasher"
+super_work="$super_dest/Super"
+oos_here="$super_dest/OOS_FILES_HERE"
+
+mkdir -p "$super_dest"
+rsync -a "$super_src/" "$super_dest/"
+
+declare -A before
+while IFS= read -r -d '' d; do
+  before["$(basename "$d")"]=1
+done < <(find "$input_dir" -mindepth 1 -maxdepth 1 -type d -print0)
+
+pushd "$input_dir" >/dev/null
+"$otaripper_bin" "$input_file"
+popd >/dev/null
+
+new_folder=""
+while IFS= read -r -d '' d; do
+  base="$(basename "$d")"
+  if [[ -z "${before[$base]+x}" ]]; then
+    new_folder="$d"
+    break
+  fi
+done < <(find "$input_dir" -mindepth 1 -maxdepth 1 -type d -print0)
+
+[[ -n "$new_folder" ]] || { echo "ERROR: kein neuer Ordner nach Extraktion gefunden."; exit 1; }
+
+mkdir -p "$super_work"
+echo "Moving logical partitions into Super/ ..."
+part_list=(
+  my_bigball.img my_carrier.img my_engineering.img my_heytap.img
+  my_manifest.img my_product.img my_region.img my_stock.img
+  odm.img product.img system.img system_dlkm.img system_ext.img
+  vendor.img vendor_dlkm.img
 )
+for f in "${part_list[@]}"; do
+  if [[ -f "$new_folder/$f" ]]; then
+    mv -f "$new_folder/$f" "$super_work/"
+  fi
+done
 
-:: Run otaripper.exe (no --partitions)
-pushd "%input_dir%"
-"%tool_name%" "%input_file%"
-popd
+mkdir -p "$oos_here"
+shopt -s dotglob
+if compgen -G "$new_folder/*" >/dev/null; then
+  mv -f "$new_folder"/* "$oos_here/" || true
+fi
+shopt -u dotglob
 
-:: Delete temporary otaripper.exe
-del "%input_dir%%tool_name%" >nul
+rm -rf "$new_folder"
 
-:: Detect the new folder created by extraction
-set "new_folder="
-for /d %%D in ("%input_dir%*") do (
-    echo !before_folders! | find " %%~nxD" >nul
-    if errorlevel 1 (
-        set "new_folder=%%~fD"
-    )
-)
+echo "Done moving files into SuperHybrid Flasher"
 
-:: Move files
-if defined new_folder (
-    :: First move selected .img files to the super folder
-    if not exist "%super_flasher_dest%\super" mkdir "%super_flasher_dest%\super"
+packer="$super_work/super_oos.sh"
+if [[ ! -x "$packer" ]]; then
+  echo "ERROR: Super packer script nicht gefunden/ausführbar: $packer"
+  exit 1
+fi
 
-    echo Moving logical partitions into super folder...
-    for %%F in (
-        my_bigball.img my_carrier.img my_engineering.img my_heytap.img
-        my_manifest.img my_product.img my_region.img my_stock.img
-        odm.img product.img system.img system_dlkm.img system_ext.img
-        vendor.img vendor_dlkm.img
-    ) do (
-        if exist "!new_folder!\%%F" move /Y "!new_folder!\%%F" "%super_flasher_dest%\super\"
-    )
+echo "Packing super.img ..."
+( cd "$super_work" && bash "./super_oos.sh" )
 
-    echo Copying my_preload.img ^& my_company.img from EUGLO_BLOAT into super folder
-copy /Y "%~dp0IN_BLOAT\my_preload.img" "%super_flasher_dest%\super\" 
-copy /Y "%~dp0IN_BLOAT\my_company.img" "%super_flasher_dest%\super\"
-copy /Y "%~dp0IN_BLOAT\system_dlkm_oki.img" "%super_flasher_dest%\super\"
+if [[ -f "$super_work/super.img" ]]; then
+  echo "Moving super.img into SuperHybrid Flasher ..."
+  mv -f "$super_work/super.img" "$super_dest/"
+else
+  echo "ERROR: super.img wurde nicht erzeugt."
+  exit 1
+fi
 
-    :: Then move remaining files to OOS_FILES_HERE
-    if not exist "%super_flasher_dest%\OOS_FILES_HERE" mkdir "%super_flasher_dest%\OOS_FILES_HERE"
-    move /Y "!new_folder!\*" "%super_flasher_dest%\OOS_FILES_HERE\" >nul
+echo "Removing scrap files"
+rm -rf "$super_work"
+rm -f  "$super_dest/dtbo.img"
+rm -f  "$super_dest/dtbo_patched.img"
+rm -f  "$super_dest/dtbo_patcher.sh" "$super_dest/dtbo_patcher.py" "$super_dest/dtbo_patcher" || true
 
-    
-
-    rd /s /q "!new_folder!"
-)
-
-echo Cleaning OOS_FILES_HERE, keeping only required images...
-    pushd "%super_flasher_dest%\OOS_FILES_HERE"
-
-    for %%F in (*.*) do (
-        set "name=%%~nF"
-        set "keep="
-
-        for %%K in (
-			boot
-			init_boot
-			modem
-			recovery
-			vbmeta
-			vbmeta_system
-			vbmeta_vendor
-			vendor_boot
-            abl
-            aop
-            aop_config
-            bluetooth
-            cpucp
-            devcfg
-            dsp
-            dtbo
-            engineering_cdt
-            featenabler
-            hyp
-            imagefv
-            keymaster
-            oplus_sec
-            qupfw
-            shrm
-            splash
-            tz
-            uefi
-            uefisecapp
-            xbl
-            xbl_config
-            xbl_ramdump
-        ) do (
-            if /I "!name!"=="%%K" set "keep=1"
-        )
-
-        if not defined keep del /q "%%F"
-    )
-
-    popd
-
-echo Done moving files into Super Flasher
-
-:: Pack super.img and moving it to Super Flasher directory
-echo Packing super.img
-call "SuperHybrid Flasher\Super\super.bat"
-echo Moving super.img into Super Flasher.
-move /Y "SuperHybrid Flasher\Super\super.img" "SuperHybrid Flasher\"
-
-:: Remove unnessesary files used to make the build
-echo Removing scrap files
-rmdir /S /Q "SuperHybrid Flasher\Super"
-echo BUILD DONE!!!
-pause
+echo "BUILD DONE!!!"
