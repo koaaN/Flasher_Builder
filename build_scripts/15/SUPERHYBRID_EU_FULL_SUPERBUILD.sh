@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Usage: ./SUPERHYBRID_EU_FULL_SUPERBUILD.sh /path/to/OTA.zip
-# SuperHybrid EU (OOS) – OnePlus 15 – gleiches Prinzip wie beim 13er
+# SuperHybrid EU (OOS) – OnePlus 15 – Port der BAT inkl. OOS_FILES_HERE-Cleanup
 
 if [[ $# -lt 1 ]]; then
   echo "Usage: $0 /path/to/OTA.zip"
@@ -26,6 +26,11 @@ super_src="$script_dir/SuperHybrid Flasher"
 super_dest="$input_dir/SuperHybrid Flasher"
 super_work="$super_dest/Super"
 oos_here="$super_dest/OOS_FILES_HERE"
+
+if [[ ! -d "$super_src" ]]; then
+  echo "ERROR: Template 'SuperHybrid Flasher' nicht gefunden: $super_src"
+  exit 1
+fi
 
 # 1) SuperHybrid-Flasher-Template neben die ZIP spiegeln
 mkdir -p "$super_dest"
@@ -65,6 +70,7 @@ part_list=(
 )
 for f in "${part_list[@]}"; do
   if [[ -f "$new_folder/$f" ]]; then
+    echo "  moving $f"
     mv -f "$new_folder/$f" "$super_work/"
   fi
 done
@@ -80,9 +86,67 @@ shopt -u dotglob
 # 7) temporären Extraktordner löschen
 rm -rf "$new_folder"
 
+# 8) OOS_FILES_HERE bereinigen – nur Whitelist behalten (wie im BAT)
+echo "Cleaning OOS_FILES_HERE, keeping only required images..."
+if [[ -d "$oos_here" ]]; then
+  pushd "$oos_here" >/dev/null
+
+  keep_names=(
+    boot
+    init_boot
+    modem
+    recovery
+    vbmeta
+    vbmeta_system
+    vbmeta_vendor
+    vendor_boot
+    abl
+    aop
+    aop_config
+    bluetooth
+    cpucp
+    devcfg
+    dsp
+    dtbo
+    engineering_cdt
+    featenabler
+    hyp
+    imagefv
+    keymaster
+    oplus_sec
+    qupfw
+    shrm
+    splash
+    tz
+    uefi
+    uefisecapp
+    xbl
+    xbl_config
+    xbl_ramdump
+  )
+
+  shopt -s nullglob
+  for f in *.*; do
+    name="${f%.*}"
+    keep=0
+    for k in "${keep_names[@]}"; do
+      if [[ "${name,,}" == "${k,,}" ]]; then
+        keep=1
+        break
+      fi
+    done
+    if (( keep == 0 )); then
+      rm -f -- "$f"
+    fi
+  done
+  shopt -u nullglob
+
+  popd >/dev/null
+fi
+
 echo "Done moving files into SuperHybrid Flasher"
 
-# 8) super.img packen (Super/super_oos.sh wird vom stage_files-Template erwartet)
+# 9) super.img packen (Super/super_oos.sh wird vom stage_files-Template erwartet)
 packer="$super_work/super_oos.sh"
 if [[ ! -x "$packer" ]]; then
   echo "ERROR: Super packer script nicht gefunden/ausführbar: $packer"
@@ -93,7 +157,7 @@ fi
 echo "Packing super.img ..."
 ( cd "$super_work" && bash "./super_oos.sh" )
 
-# 9) super.img ins Flasher-Root verschieben
+# 10) super.img ins Flasher-Root verschieben
 if [[ -f "$super_work/super.img" ]]; then
   echo "Moving super.img into SuperHybrid Flasher ..."
   mv -f "$super_work/super.img" "$super_dest/"
@@ -102,7 +166,7 @@ else
   exit 1
 fi
 
-# 10) Aufräumen: Super/ löschen, dtbo-Kram weg (falls vorhanden)
+# 11) Aufräumen: Super/ löschen, dtbo-Kram weg (falls vorhanden)
 echo "Removing scrap files"
 rm -rf "$super_work"
 rm -f  "$super_dest/dtbo.img"
