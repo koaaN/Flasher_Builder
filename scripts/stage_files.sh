@@ -184,6 +184,10 @@ case "$ftype" in
   "SuperHybrid Flasher")
     if [[ "$dev" == "13" && "$region" == "CN" ]]; then work_name="SuperHybrid Flasher CN"; else work_name="SuperHybrid Flasher"; fi
   ;;
+  case "$ftype" in
+  "SuperHybrid Flasher")
+    if [[ "$dev" == "15" && "$region" == "CN" ]]; then work_name="SuperHybrid Flasher CN"; else work_name="SuperHybrid Flasher"; fi
+  ;;
   "RegionalHybrid Flasher")
     if [[ "$region" == "CN" ]]; then work_name="RegionalHybrid Flasher CN"; else work_name="RegionalHybrid Flasher"; fi
   ;;
@@ -553,3 +557,4 @@ fi
 
 # Expose for next steps
 echo "WORK_DIR=$work_dir" >> "$GITHUB_ENV"
+
