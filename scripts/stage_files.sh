@@ -13,7 +13,7 @@ copy_bloat_from_folder () {
   local src="${base}/${folder}"
   [ -d "$src" ] || return 0
   mkdir -p "$dest"
-  local needed=( "my_preload.img" "my_company.img" "odm.img" "oplusstanvbk.img" "my_region.img" )
+  local needed=( "my_preload.img" "my_company.img" "odm.img" "oplusstanvbk.img" "my_region.img" "system_dlkm_oki.img" )
   for f in "${needed[@]}"; do
     local skip=0
     for s in "${skip_list[@]}"; do
@@ -78,6 +78,15 @@ get_bloat_folder () {
     ;;
     "Ace5Pro")
       if [[ "$region" == "CN" ]]; then echo "A5P_BLOAT"; else echo ""; fi
+    ;;
+    "15")
+      case "$region" in
+        CN) echo "CN_BLOAT" ;;
+        EU) echo "EU_BLOAT" ;;
+        GLO) echo "GLO_BLOAT" ;;
+        IN) echo "IN_BLOAT" ;;
+        *) echo "" ;;
+      esac
     ;;
     *)
       case "$region" in
@@ -544,4 +553,3 @@ fi
 
 # Expose for next steps
 echo "WORK_DIR=$work_dir" >> "$GITHUB_ENV"
-
