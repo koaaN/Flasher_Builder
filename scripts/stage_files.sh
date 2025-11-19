@@ -459,6 +459,17 @@ if [[ "$ftype" =~ Super ]]; then
         oos_here="$work_dir/OOS_FILES_HERE"
         mkdir -p "$oos_here"
         copy_bloat_from_folder "$bloat_base" "EUGLO_BLOAT" "$oos_here"
+
+      elif [[ "$dev" == "15" && "$ftype" == "SuperHybrid Flasher" ]]; then
+        # OnePlus 15 SuperHybrid CN:
+        # OOS_FILES_HERE/my_preload.img kommt aus bloat/15/CN_BLOAT/OOS_FILES_HERE/my_preload (Stub mit Link)
+        oos_here="$work_dir/OOS_FILES_HERE"
+        mkdir -p "$oos_here"
+
+        special_dir="$bloat_base/CN_BLOAT/OOS_FILES_HERE"
+        # nimmt entweder my_preload.img oder den Stub "my_preload" und lädt per Link
+        copy_or_download "$special_dir" "my_preload" "$oos_here/my_preload.img"
+
       elif [[ "$dev" != "Ace5" && "$dev" != "Ace5Pro" ]]; then
         # Other CN 13-series behavior
         oos_here="$work_dir/OOS_FILES_HERE"
@@ -470,6 +481,7 @@ if [[ "$ftype" =~ Super ]]; then
         fi
       fi
     fi
+
 
     # Ace5 CN: put A5_DEBLOAT pair into OOS_FILES_HERE
     if [[ "$dev" == "Ace5" && "$region" == "CN" ]]; then
@@ -557,5 +569,6 @@ fi
 
 # Expose for next steps
 echo "WORK_DIR=$work_dir" >> "$GITHUB_ENV"
+
 
 
