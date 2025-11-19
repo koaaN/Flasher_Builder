@@ -12,6 +12,7 @@ on:
           - Oneplus 13R
           - Oneplus 13S
           - Oneplus 13T
+          - Oneplus 15
           - Oneplus Ace 5
           - Oneplus Ace 5 Pro
         default: Oneplus 13
@@ -197,6 +198,7 @@ jobs:
         run: |
           set -euo pipefail
           dev_disp="${{ inputs.device }}"
+                dev_disp="${{ inputs.device }}"
           case "$dev_disp" in
             "Oneplus 13") dev="13" ;;
             "Oneplus 13R") dev="13R" ;;
@@ -204,11 +206,15 @@ jobs:
             "Oneplus 13T") dev="13T" ;;
             "Oneplus Ace 5") dev="Ace5" ;;
             "Oneplus Ace 5 Pro") dev="Ace5Pro" ;;
+            "Oneplus 15") dev="15" ;;
             *) echo "Unknown device: $dev_disp"; exit 1 ;;
           esac
 
+
           ftype="${{ inputs.flasher_type }}"
           region="${{ inputs.region }}"
+
+
 
           pick_bat() {
             case "$ftype" in
@@ -257,6 +263,28 @@ jobs:
             echo "Ace 5 Pro supports Regional Flasher only." >&2
             exit 1
           fi
+
+                    # Override builder selection for Oneplus 15
+          if [[ "$dev" == "15" ]]; then
+            case "$ftype" in
+              "RegionalHybrid Flasher")
+                case "$region" in
+                  EU)  base_name="REGIONALHYBRID_EU_FULL_BUILD" ;;
+                  GLO) base_name="REGIONALHYBRID_GLO_FULL_BUILD" ;;
+                  IN)  base_name="REGIONALHYBRID_IN_FULL_BUILD" ;;
+                esac
+                ;;
+              "SuperHybrid Flasher")
+                case "$region" in
+                  CN)  base_name="SUPERHYBRID_CN_FULL_SUPERBUILD" ;;
+                  EU)  base_name="SUPERHYBRID_EU_FULL_SUPERBUILD" ;;
+                  GLO) base_name="SUPERHYBRID_GLO_FULL_SUPERBUILD" ;;
+                  IN)  base_name="SUPERHYBRID_IN_FULL_SUPERBUILD" ;;
+                esac
+                ;;
+            esac
+          fi
+
 
           builder_sh="${base_name}.sh"
 
