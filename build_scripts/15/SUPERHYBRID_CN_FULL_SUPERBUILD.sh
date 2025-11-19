@@ -42,8 +42,8 @@ if [[ ! -x "$lpmake_src" ]]; then
 fi
 
 # Flasher-Template & Ziel
-super_src="$script_dir/SuperHybrid Flasher CN"
-super_dest="$input_dir/SuperHybrid Flasher CN"
+super_src="$script_dir/SuperHybrid Flasher"
+super_dest="$input_dir/SuperHybrid Flasher"
 super_work="$super_dest/Super"
 cos_here="$super_dest/COS_FILES_HERE"
 oos_here="$super_dest/OOS_FILES_HERE"
