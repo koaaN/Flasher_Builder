@@ -532,7 +532,7 @@ jobs:
           echo "REL_UPLOAD_DIR=$rel" >> "$GITHUB_ENV"
 
           ftp_base="$(printf "%s" "${{ secrets.DS_FTP_PATH }}" | sed 's#^/*##; s#/*$##;')"
-          if [ -n "$ftp_base" ]; then ftp_abs="$ftp_base/Bloat/$rel"; else ftp_abs="Bloat/$rel"; fi
+          if [ -n "$ftp_base" ]; then ftp_abs="$ftp_base/$rel"; else ftp_abs="$rel"; fi
           echo "FTP_UPLOAD_DIR=$ftp_abs" >> "$GITHUB_ENV"
 
 
