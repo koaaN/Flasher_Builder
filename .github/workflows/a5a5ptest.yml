@@ -417,6 +417,25 @@ jobs:
               *)   region_disp="$region_code" ;;
             esac
 
+              # 🔥 Sonderfall: Oneplus 15 + SuperHybrid Flasher + EU/GLO/IN
+            if [[ "$DEV" == "15" && "$FTYPE" == "SuperHybrid Flasher" ]]; then
+              case "$region_code" in
+                EU)
+                  artifact_base="${ftype_name} OP15 CN2EU ${ver}"
+                  ;;
+                GLO)
+                  artifact_base="${ftype_name} OP15 CN2GLO ${ver}"
+                  ;;
+                IN)
+                  artifact_base="${ftype_name} OP15 CN2IN ${ver}"
+                  ;;
+                *)
+                  # alle anderen Regionen (z.B. CN) -> Standard-Fallback
+                  artifact_base="${ftype_name} ${region_disp} ${ver}"
+                  ;;
+              esac
+            else
+
             case "$DEV" in
               "13T")
                 if [[ "$REGION" == "CN" ]]; then os_tag="COS"; else os_tag="OOS"; fi
