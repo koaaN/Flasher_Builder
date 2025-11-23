@@ -322,6 +322,7 @@ jobs:
           echo "Calling builder: \"$GITHUB_WORKSPACE/$OUT_DIR/$BUILDER_SH\" \"$OTA_PATH\""
           bash "$GITHUB_WORKSPACE/$OUT_DIR/$BUILDER_SH" "$OTA_PATH"
 
+
       - name: Package final output
         shell: bash
         run: |
@@ -388,7 +389,10 @@ jobs:
           result_dir=""
           for name in "${candidates[@]}"; do
             p="$ota_dir/$name"
-            if [ -d "$p" ]; then result_dir="$p"; break; fi
+            if [ -d "$p" ]; then
+              result_dir="$p"
+              break
+            fi
           done
           [ -n "$result_dir" ] || {
             echo "Could not find builder output folder next to OTA in '$ota_dir'."
@@ -417,7 +421,7 @@ jobs:
               *)   region_disp="$region_code" ;;
             esac
 
-              # 🔥 Sonderfall: Oneplus 15 + SuperHybrid Flasher + EU/GLO/IN
+            # 🔥 Sonderfall: Oneplus 15 + SuperHybrid Flasher + EU/GLO/IN
             if [[ "$DEV" == "15" && "$FTYPE" == "SuperHybrid Flasher" ]]; then
               case "$region_code" in
                 EU)
@@ -435,32 +439,36 @@ jobs:
                   ;;
               esac
             else
-
-            case "$DEV" in
-              "13T")
-                if [[ "$REGION" == "CN" ]]; then os_tag="COS"; else os_tag="OOS"; fi
-                artifact_base="${ftype_name} 13T ${os_tag} ${ver}"
-              ;;
-              "13S")
-                artifact_base="${ftype_name} 13S ${ver}"
-              ;;
-              "13R")
-                artifact_base="${ftype_name} 13R ${region_disp} ${ver}"
-              ;;
-              "Ace5")
-                if [[ "$region_code" == "CN" ]]; then
-                  artifact_base="${ftype_name} A5 COS ${ver}"
-                else
-                  artifact_base="${ftype_name} A5 ${region_code} OOS+COS ODM ${ver}"
-                fi
-              ;;
-              "Ace5Pro")
-                artifact_base="${ftype_name} A5P ${region_disp} ${ver}"
-              ;;
-              *)
-                artifact_base="${ftype_name} ${region_disp} ${ver}"
-              ;;
-            esac
+              case "$DEV" in
+                "13T")
+                  if [[ "$REGION" == "CN" ]]; then
+                    os_tag="COS"
+                  else
+                    os_tag="OOS"
+                  fi
+                  artifact_base="${ftype_name} 13T ${os_tag} ${ver}"
+                  ;;
+                "13S")
+                  artifact_base="${ftype_name} 13S ${ver}"
+                  ;;
+                "13R")
+                  artifact_base="${ftype_name} 13R ${region_disp} ${ver}"
+                  ;;
+                "Ace5")
+                  if [[ "$region_code" == "CN" ]]; then
+                    artifact_base="${ftype_name} A5 COS ${ver}"
+                  else
+                    artifact_base="${ftype_name} A5 ${region_code} OOS+COS ODM ${ver}"
+                  fi
+                  ;;
+                "Ace5Pro")
+                  artifact_base="${ftype_name} A5P ${region_disp} ${ver}"
+                  ;;
+                *)
+                  artifact_base="${ftype_name} ${region_disp} ${ver}"
+                  ;;
+              esac
+            fi
           fi
 
           zip_path="$zip_root/${artifact_base}.zip"
@@ -488,6 +496,9 @@ jobs:
             echo "ARTIFACT_NAME=$artifact_base"
             echo "ZIP_FILE=$zip_path"
           } >> "$GITHUB_ENV"
+
+
+
 
       - name: Upload artifact
         if: ${{ inputs.upload_to == 'Artifact Only' }}
