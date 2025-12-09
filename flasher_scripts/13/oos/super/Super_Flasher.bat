@@ -15,15 +15,24 @@ echo.************************      START FLASH     ************************
 %fastboot% --set-active=a
 
 :: Flash the fastboot images first
-%fastboot% flash boot OOS_FILES_HERE\boot.img
-%fastboot% flash dtbo OOS_FILES_HERE\dtbo.img
-%fastboot% flash init_boot OOS_FILES_HERE\init_boot.img
-%fastboot% flash modem OOS_FILES_HERE\modem.img
-%fastboot% flash recovery OOS_FILES_HERE\recovery.img
-%fastboot% flash vbmeta OOS_FILES_HERE\vbmeta.img
-%fastboot% flash vbmeta_system OOS_FILES_HERE\vbmeta_system.img
-%fastboot% flash vbmeta_vendor OOS_FILES_HERE\vbmeta_vendor.img
-%fastboot% flash vendor_boot OOS_FILES_HERE\vendor_boot.img
+%fastboot% flash boot_a OOS_FILES_HERE\boot.img
+%fastboot% flash boot_b OOS_FILES_HERE\boot.img
+%fastboot% flash dtbo_a OOS_FILES_HERE\dtbo.img
+%fastboot% flash dtbo_b OOS_FILES_HERE\dtbo.img
+%fastboot% flash init_boot_a OOS_FILES_HERE\init_boot.img
+%fastboot% flash init_boot_b OOS_FILES_HERE\init_boot.img
+%fastboot% flash modem_a OOS_FILES_HERE\modem.img
+%fastboot% flash modem_b OOS_FILES_HERE\modem.img
+%fastboot% flash recovery_a OOS_FILES_HERE\recovery.img
+%fastboot% flash recovery_b OOS_FILES_HERE\recovery.img
+%fastboot% flash vbmeta_a OOS_FILES_HERE\vbmeta.img
+%fastboot% flash vbmeta_b OOS_FILES_HERE\vbmeta.img
+%fastboot% flash vbmeta_system_a OOS_FILES_HERE\vbmeta_system.img
+%fastboot% flash vbmeta_system_b OOS_FILES_HERE\vbmeta_system.img
+%fastboot% flash vbmeta_vendor_a OOS_FILES_HERE\vbmeta_vendor.img
+%fastboot% flash vbmeta_vendor_b OOS_FILES_HERE\vbmeta_vendor.img
+%fastboot% flash vendor_boot_a OOS_FILES_HERE\vendor_boot.img
+%fastboot% flash vendor_boot_b OOS_FILES_HERE\vendor_boot.img
 
 :: Check if super.img exists
 if exist "super.img" (
@@ -126,6 +135,7 @@ if errorlevel 2 (
 )
 
 pause
+
 
 
 
