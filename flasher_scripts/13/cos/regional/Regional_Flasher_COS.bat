@@ -16,15 +16,24 @@ echo.************************      START FLASH     ************************
 %fastboot% --set-active=a
 
 :: Flash the fastboot images first
-%fastboot% flash boot COS_FILES_HERE\boot.img
-%fastboot% flash dtbo COS_FILES_HERE\dtbo.img
-%fastboot% flash init_boot COS_FILES_HERE\init_boot.img
-%fastboot% flash modem COS_FILES_HERE\modem.img
-%fastboot% flash recovery COS_FILES_HERE\recovery.img
-%fastboot% flash vbmeta COS_FILES_HERE\vbmeta.img
-%fastboot% flash vbmeta_system COS_FILES_HERE\vbmeta_system.img
-%fastboot% flash vbmeta_vendor COS_FILES_HERE\vbmeta_vendor.img
-%fastboot% flash vendor_boot COS_FILES_HERE\vendor_boot.img
+%fastboot% flash boot_a COS_FILES_HERE\boot.img
+%fastboot% flash boot_b COS_FILES_HERE\boot.img
+%fastboot% flash dtbo_a COS_FILES_HERE\dtbo.img
+%fastboot% flash dtbo_b COS_FILES_HERE\dtbo.img
+%fastboot% flash init_boot_a COS_FILES_HERE\init_boot.img
+%fastboot% flash init_boot_b COS_FILES_HERE\init_boot.img
+%fastboot% flash modem_a COS_FILES_HERE\modem.img
+%fastboot% flash modem_b COS_FILES_HERE\modem.img
+%fastboot% flash recovery_a COS_FILES_HERE\recovery.img
+%fastboot% flash recovery_b COS_FILES_HERE\recovery.img
+%fastboot% flash vbmeta_a COS_FILES_HERE\vbmeta.img
+%fastboot% flash vbmeta_b COS_FILES_HERE\vbmeta.img
+%fastboot% flash vbmeta_system_a COS_FILES_HERE\vbmeta_system.img
+%fastboot% flash vbmeta_system_b COS_FILES_HERE\vbmeta_system.img
+%fastboot% flash vbmeta_vendor_a COS_FILES_HERE\vbmeta_vendor.img
+%fastboot% flash vbmeta_vendor_b COS_FILES_HERE\vbmeta_vendor.img
+%fastboot% flash vendor_boot_a COS_FILES_HERE\vendor_boot.img
+%fastboot% flash vendor_boot_b COS_FILES_HERE\vendor_boot.img
 
 :: Check if super.img exists
 if exist "super.img" (
