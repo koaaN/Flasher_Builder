@@ -546,7 +546,7 @@ jobs:
             rel="$device/$category"
           fi
 
-          no_region_devices=("Oneplus 13S" "Oneplus 13T" "Oneplus Ace 5" "Oneplus Ace 5 Pro")
+          no_region_devices=("Oneplus 13S" "Oneplus 13T" "Oneplus Ace 5" "Oneplus Ace 5 Pro" "Oneplus Ace 6")
           needs_region=1
           for n in "${no_region_devices[@]}"; do
             [[ "$n" == "$device" ]] && needs_region=0
