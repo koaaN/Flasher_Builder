@@ -13,7 +13,7 @@ copy_bloat_from_folder () {
   local src="${base}/${folder}"
   [ -d "$src" ] || return 0
   mkdir -p "$dest"
-  local needed=( "my_preload.img" "my_company.img" "odm.img" "oplusstanvbk.img" "my_region.img" "system_dlkm_oki.img" )
+  local needed=( "my_preload.img" "my_company.img" "odm.img" "oplusstanvbk.img" "my_region.img" "system_dlkm_oki.img" "system_dlkm_gki.img" )
   for f in "${needed[@]}"; do
     local skip=0
     for s in "${skip_list[@]}"; do
@@ -578,6 +578,7 @@ fi
 
 # Expose for next steps
 echo "WORK_DIR=$work_dir" >> "$GITHUB_ENV"
+
 
 
 
