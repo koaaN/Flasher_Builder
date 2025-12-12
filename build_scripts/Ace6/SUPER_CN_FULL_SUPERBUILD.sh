@@ -42,8 +42,8 @@ if [[ ! -x "$lpmake_src" ]]; then
 fi
 
 # Flasher-Template & Ziel
-super_src="$script_dir/Super Flasher"
-super_dest="$input_dir/Super Flasher"
+super_src="$script_dir/Super Flasher CN"
+super_dest="$input_dir/Super Flasher CN"
 super_work="$super_dest/Super"
 cos_here="$super_dest/COS_FILES_HERE"
 oos_here="$super_dest/OOS_FILES_HERE"
@@ -187,4 +187,5 @@ echo "BUILD DONE!!!"
 echo "Final CN Super flasher folder:"
 
 echo "  $super_dest"
+
 
