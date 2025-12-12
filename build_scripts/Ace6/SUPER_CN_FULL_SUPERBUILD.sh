@@ -29,7 +29,7 @@ if [[ ! -x "$otaripper_bin" ]]; then
   exit 1
 fi
 
-packer_src="$root_dir/super_packers/15/super_cos.sh"
+packer_src="$root_dir/super_packers/Ace6/super_cos.sh"
 if [[ ! -f "$packer_src" ]]; then
   echo "ERROR: Packer super_cos.sh nicht gefunden: $packer_src"
   exit 1
@@ -187,3 +187,4 @@ echo "BUILD DONE!!!"
 echo "Final CN Super flasher folder:"
 
 echo "  $super_dest"
+
