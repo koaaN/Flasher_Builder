@@ -112,7 +112,7 @@ get_os_subtree () {
     return
   fi
   if [[ "$ftype" == "Super Flasher" ]]; then
-    if { [[ "$dev" == "13T" || "$dev" == "Ace5" ]] && [[ "$region" == "CN" ]]; }; then
+    if { [[ "$dev" == "13T" || "$dev" == "Ace5" || "$dev" == "Ace6" ]] && [[ "$region" == "CN" ]]; }; then
       echo "cos"
     else
       echo "oos"
@@ -143,7 +143,7 @@ copy_or_download () {
 # -----------------------------
 dev_raw="$DEV"
 # normalize device like Jonas: first matching token
-if [[ "$dev_raw" =~ (Ace5Pro|Ace5|13T|13S|13R|13) ]]; then
+if [[ "$dev_raw" =~ (Ace6|Ace5Pro|Ace5|13T|13S|13R|13) ]]; then
   dev="${BASH_REMATCH[1]}"
 else
   dev="${dev_raw%% *}"
@@ -194,7 +194,7 @@ case "$ftype" in
     if [[ "$region" == "CN" ]]; then work_name="SuperHybrid SunOS Flasher CN"; else work_name="SuperHybrid SunOS Flasher"; fi
   ;;
   "Super Flasher")
-    if { [[ "$dev" == "13R" || "$dev" == "13T" || "$dev" == "Ace5" ]] && [[ "$region" == "CN" ]]; }; then
+    if { [[ "$dev" == "13R" || "$dev" == "13T" || "$dev" == "Ace5" || "$dev" == "Ace6" ]] && [[ "$region" == "CN" ]]; }; then
       work_name="Super Flasher CN"
     else
       work_name="Super Flasher"
@@ -468,6 +468,16 @@ if [[ "$ftype" =~ Super ]]; then
         special_dir="$bloat_base/CN_BLOAT/OOS_FILES_HERE"
         # nimmt entweder my_preload.img oder den Stub "my_preload" und lädt per Link
         copy_or_download "$special_dir" "my_preload" "$oos_here/my_preload.img"
+
+
+elif [[ "$dev" == "Ace6" && "$ftype" == "Super Flasher" ]]; then
+  # OnePlus Ace 6 • Super Flasher CN:
+  # OOS_FILES_HERE/my_preload.img kommt aus bloat/Ace6/CN_BLOAT/OOS_FILES_HERE/my_preload (Stub mit Link)
+  oos_here="$work_dir/OOS_FILES_HERE"
+  mkdir -p "$oos_here"
+  special_dir="$bloat_base/CN_BLOAT/OOS_FILES_HERE"
+  # nimmt entweder my_preload.img oder den Stub "my_preload" und lädt per Link
+  copy_or_download "$special_dir" "my_preload" "$oos_here/my_preload.img"
 
       elif [[ "$dev" != "Ace5" && "$dev" != "Ace5Pro" ]]; then
         # Other CN 13-series behavior
