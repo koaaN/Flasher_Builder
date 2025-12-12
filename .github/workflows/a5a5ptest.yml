@@ -68,7 +68,7 @@ env:
 jobs:
   build:
     name: Build • ${{ inputs.device }} • ${{ inputs.flasher_type }} • ${{ inputs.region }}
-    runs-on: [self-hosted, Linux, X64, github]
+    runs-on: [self-hosted, Linux, X64]
 
     steps:
       - name: Checkout repo
@@ -626,7 +626,7 @@ jobs:
                --fail --show-error --silent
 
       - name: Notify Telegram (Oneplus 13 Group -1001902568181)
-        if: ${{ inputs.upload_to == 'DS_FTP' && inputs.flasher_type != 'SuperHybrid SunOS Flasher' && inputs.flasher_type != 'SuperHybrid Matrixx Flasher' && inputs.notify_telegram && inputs.device != 'Oneplus 15' }}
+        if: ${{ inputs.upload_to == 'DS_FTP' && inputs.flasher_type != 'SuperHybrid SunOS Flasher' && inputs.flasher_type != 'SuperHybrid Matrixx Flasher' && inputs.notify_telegram && inputs.device != 'Oneplus 15' && inputs.device != 'Oneplus Ace 6' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -705,7 +705,7 @@ jobs:
 
 
       - name: Notify Telegram (Oneplus 15 Group -1001903485514)
-        if: ${{ inputs.upload_to == 'DS_FTP' && inputs.notify_telegram && inputs.device == 'Oneplus 15' }}
+        if: ${{ inputs.upload_to == 'DS_FTP' && inputs.notify_telegram && inputs.device == 'Oneplus 15'}}
         shell: bash
         run: |
           set -euo pipefail
