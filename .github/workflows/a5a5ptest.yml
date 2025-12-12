@@ -473,6 +473,9 @@ jobs:
                 "Ace5Pro")
                   artifact_base="${ftype_name} A5P ${region_disp} ${ver}"
                   ;;
+                  "Ace6")
+                   artifact_base="${ftype_name} A6 ${region_disp} ${ver}"
+                   ;;
                 *)
                   artifact_base="${ftype_name} ${region_disp} ${ver}"
                   ;;
