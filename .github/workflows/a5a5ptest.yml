@@ -15,6 +15,7 @@ on:
           - Oneplus 15
           - Oneplus Ace 5
           - Oneplus Ace 5 Pro
+          - Oneplus Ace 6
         default: Oneplus 13
       flasher_type:
         description: "Flasher type"
@@ -206,6 +207,7 @@ jobs:
             "Oneplus 13T") dev="13T" ;;
             "Oneplus Ace 5") dev="Ace5" ;;
             "Oneplus Ace 5 Pro") dev="Ace5Pro" ;;
+            "Oneplus Ace 6") dev="Ace6" ;;
             "Oneplus 15") dev="15" ;;
             *) echo "Unknown device: $dev_disp"; exit 1 ;;
           esac
@@ -243,6 +245,8 @@ jobs:
                 elif [[ "$dev" == "Ace5" && "$region" == "CN" ]]; then echo "SUPER_CN_FULL_SUPERBUILD"
                 elif [[ "$dev" == "Ace5" ]]; then echo "SUPER_OOS_FULL_SUPERBUILD"
                 elif [[ "$dev" == "Ace5Pro" ]]; then echo "ERROR_ACE5PRO_REGIONAL_ONLY"
+                elif [[ "$dev" == "Ace6" && "$region" == "CN" ]]; then echo "SUPER_CN_FULL_SUPERBUILD"
+                elif [[ "$dev" == "Ace6" ]]; then echo "ERROR_ACE6_CN_ONLY"
                 else echo "SUPERHYBRID_FULL_SUPERBUILD"; fi
               ;;
               "Regional Flasher")
@@ -261,6 +265,11 @@ jobs:
           base_name="$(pick_bat)"
           if [[ "$base_name" == "ERROR_ACE5PRO_REGIONAL_ONLY" ]]; then
             echo "Ace 5 Pro supports Regional Flasher only." >&2
+            exit 1
+          fi
+
+          if [[ "$base_name" == "ERROR_ACE6_CN_ONLY" ]]; then
+            echo "Ace 6 supports Super Flasher CN only." >&2
             exit 1
           fi
 
@@ -352,7 +361,7 @@ jobs:
               by_ftype=("SuperHybrid Matrixx Flasher")
             ;;
             "Super Flasher")
-              if [[ "$REGION" == "CN" && ( "$DEV" == "13R" || "$DEV" == "13T" || "$DEV" == "Ace5" ) ]]; then
+              if [[ "$REGION" == "CN" && ( "$DEV" == "13R" || "$DEV" == "13T" || "$DEV" == "Ace5" || "$DEV" == "Ace6" ) ]]; then
                 by_ftype=("Super Flasher CN")
               else
                 by_ftype=("Super Flasher")
