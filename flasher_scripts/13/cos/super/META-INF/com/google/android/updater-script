@@ -90,8 +90,8 @@ package_extract_file("COS_FILES_HERE/soccp_dcd.img", "/dev/block/by-name/soccp_d
 package_extract_file("COS_FILES_HERE/soccp_dcd.img", "/dev/block/by-name/soccp_dcd_b");
 package_extract_file("COS_FILES_HERE/soccp_debug.img", "/dev/block/by-name/soccp_debug_a");
 package_extract_file("COS_FILES_HERE/soccp_debug.img", "/dev/block/by-name/soccp_debug_b");
-package_extract_file("COS_FILES_HERE/spuservice.img", "/dev/block/by-name/spuervice_a");
-package_extract_file("COS_FILES_HERE/spuservice.img", "/dev/block/by-name/spuervice_b");
+package_extract_file("COS_FILES_HERE/spuservice.img", "/dev/block/by-name/spuservice_a");
+package_extract_file("COS_FILES_HERE/spuservice.img", "/dev/block/by-name/spuservice_b");
 package_extract_file("COS_FILES_HERE/splash.img", "/dev/block/by-name/splash_a");
 package_extract_file("COS_FILES_HERE/splash.img", "/dev/block/by-name/splash_b");
 package_extract_file("COS_FILES_HERE/tz.img", "/dev/block/by-name/tz_a");
