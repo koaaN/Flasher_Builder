@@ -20,7 +20,7 @@ fi
 echo "**********************************************************************"
 echo
 echo "                Oneplus 15 - OOS Super Flasher"
-echo "              Packaged by docnok63 and Jonas Salo"
+echo "              Packaged by docnok63, Jonas Salo and Daniel"
 echo "         script inspired by FTH PHONE 1902 and Venkayy"
 echo
 echo "************************      START FLASH     ************************"
