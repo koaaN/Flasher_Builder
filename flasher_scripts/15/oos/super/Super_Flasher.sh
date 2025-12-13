@@ -100,6 +100,7 @@ EXCLUDED_IMAGES=(
   product.img
   system.img
   system_dlkm.img
+  system_dlkm_oki.img
   system_ext.img
   vendor.img
   vendor_dlkm.img
@@ -144,6 +145,7 @@ PARTITIONS=(
   product
   system
   system_dlkm
+  system_dlkm_oki
   system_ext
   vendor
   vendor_dlkm
