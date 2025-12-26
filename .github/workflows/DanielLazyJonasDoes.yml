@@ -485,8 +485,9 @@ jobs:
                    artifact_base="${ftype_name} A6 ${region_disp} ${ver}"
                    ;;
                    "Ace6T")
-		    artifact_base="${ftype_name} A6T ${region_disp} ${ver}"
-		    ;;
+                    artifact_base="${ftype_name} A6T COS ${ver}"
+                    ;;
+
                 *)
                   artifact_base="${ftype_name} ${region_disp} ${ver}"
                   ;;
