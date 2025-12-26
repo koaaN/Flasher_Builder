@@ -143,7 +143,7 @@ copy_or_download () {
 # -----------------------------
 dev_raw="$DEV"
 # normalize device like Jonas: first matching token
-if [[ "$dev_raw" =~ (Ace6T|Ace6|Ace5Pro|Ace5|13T|13S|13R|13) ]]; then
+if [[ "$dev_raw" =~ (Ace6T|Ace6|Ace5Pro|Ace5|13T|13S|13R|13|15R) ]]; then
   dev="${BASH_REMATCH[1]}"
 else
   dev="${dev_raw%% *}"
@@ -194,7 +194,7 @@ case "$ftype" in
     if [[ "$region" == "CN" ]]; then work_name="SuperHybrid SunOS Flasher CN"; else work_name="SuperHybrid SunOS Flasher"; fi
   ;;
   "Super Flasher")
-    if { [[ "$dev" == "13R" || "$dev" == "13T" || "$dev" == "Ace5" || "$dev" == "Ace6" || "$dev" == "Ace6T" ]] && [[ "$region" == "CN" ]]; }; then
+    if { [[ "$dev" == "13R" || "$dev" == "13T" || "$dev" == "Ace5" || "$dev" == "Ace6" || "$dev" == "Ace6T" || "$dev" == "15R" ]] && [[ "$region" == "CN" ]]; }; then
       work_name="Super Flasher CN"
     else
       work_name="Super Flasher"
