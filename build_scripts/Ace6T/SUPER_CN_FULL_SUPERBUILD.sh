@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Usage: ./SUPERHYBRID_CN_FULL_SUPERBUILD.sh /path/to/OTA.zip
-# Linux-Port des OnePlus-15-CN-Buildscripts (SUPERHYBRID_CN_FULL_SUPERBUILD.bat)
+# Usage: ./Super_CN_FULL_SUPERBUILD.sh /path/to/OTA.zip
+# Linux-Port des OnePlus-15-CN-Buildscripts (Super_CN_FULL_SUPERBUILD.bat)
 
 if [[ $# -lt 1 ]]; then
   echo "Usage: $0 /path/to/OTA.zip"
@@ -29,7 +29,7 @@ if [[ ! -x "$otaripper_bin" ]]; then
   exit 1
 fi
 
-packer_src="$root_dir/super_packers/15/super_cos.sh"
+packer_src="$root_dir/super_packers/Ace6T/super_cos.sh"
 if [[ ! -f "$packer_src" ]]; then
   echo "ERROR: Packer super_cos.sh nicht gefunden: $packer_src"
   exit 1
@@ -42,20 +42,20 @@ if [[ ! -x "$lpmake_src" ]]; then
 fi
 
 # Flasher-Template & Ziel
-super_src="$script_dir/SuperHybrid Flasher"
-super_dest="$input_dir/SuperHybrid Flasher"
+super_src="$script_dir/Super Flasher CN"
+super_dest="$input_dir/Super Flasher CN"
 super_work="$super_dest/Super"
 cos_here="$super_dest/COS_FILES_HERE"
 oos_here="$super_dest/OOS_FILES_HERE"
 
 if [[ ! -d "$super_src" ]]; then
-  echo "ERROR: Template-Ordner 'SuperHybrid Flasher CN' nicht gefunden: $super_src"
+  echo "ERROR: Template-Ordner 'Super Flasher CN' nicht gefunden: $super_src"
   exit 1
 fi
 
 # CN/EU-GLO-Bloat
 cn_bloat="$script_dir/CN_BLOAT"
-euglo_bloat="$script_dir/EUGLO_BLOAT"
+euglo_bloat="$script_dir/CN_BLOAT/OOS_FILES_HERE"
 
 if [[ ! -d "$cn_bloat" ]]; then
   echo "WARN: CN_BLOAT nicht gefunden: $cn_bloat"
@@ -65,7 +65,7 @@ if [[ ! -d "$euglo_bloat" ]]; then
 fi
 
 # 1) Super Flasher CN-Template neben die ZIP spiegeln
-echo "Copying SuperHybrid Flasher CN template to build folder..."
+echo "Copying Super Flasher CN template to build folder..."
 rm -rf "$super_dest"
 mkdir -p "$super_dest"
 rsync -a "$super_src/" "$super_dest/"
@@ -129,8 +129,8 @@ if [[ -d "$cn_bloat" ]]; then
   done
 fi
 
-# 7) Bloat aus EUGLO_BLOAT nach OOS_FILES_HERE/
-echo "Copying my_preload.img & my_company.img from EUGLO_BLOAT into OOS_FILES_HERE/ ..."
+# 7) Bloat aus Bloat/OOS_FILES_HERE nach OOS_FILES_HERE/
+echo "Copying my_preload.img Bloat/OOS_FILES_HERE into OOS_FILES_HERE/ ..."
 mkdir -p "$oos_here"
 if [[ -d "$euglo_bloat" ]]; then
   for f in my_preload.img my_company.img; do
@@ -153,7 +153,7 @@ shopt -u dotglob
 
 # 9) temporären Extraktordner löschen
 rm -rf "$new_folder"
-echo "Done moving files into SuperHybrid Flasher CN."
+echo "Done moving files into Super Flasher CN."
 
 # 🔟 super.img packen mit super_cos.sh aus super_packers/15
 echo "Preparing COS super packer ..."
@@ -172,7 +172,7 @@ echo "Packing super.img ..."
 
 # 11) super.img ins Flasher-Root verschieben
 if [[ -f "$super_work/super.img" ]]; then
-  echo "Moving super.img into SuperHybrid Flasher CN ..."
+  echo "Moving super.img into Super Flasher CN ..."
   mv -f "$super_work/super.img" "$super_dest/"
 else
   echo "ERROR: super.img wurde nicht erzeugt."
@@ -184,5 +184,6 @@ echo "Removing Super/ workspace ..."
 rm -rf "$super_work"
 
 echo "BUILD DONE!!!"
-echo "Final CN SuperHybrid flasher folder:"
+echo "Final CN Super flasher folder:"
+
 echo "  $super_dest"
