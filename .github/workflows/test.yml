@@ -191,7 +191,7 @@ jobs:
           echo "Parsed OTA version: $numeric"
           echo "OTA_VERSION=$numeric" >> "$GITHUB_ENV"
 
-      - name: Map device → pick builder (MODULAR)
+      - name: Map device → pick builder (LIST ONLY)
         shell: bash
         run: |
           set -euo pipefail
@@ -200,8 +200,10 @@ jobs:
           ftype="${{ inputs.flasher_type }}"
           region="${{ inputs.region }}"
 
-          # Device map (single source of truth)
-          declare -A DEVICE_MAP=(
+          # ----------------------------
+          # Device display → internal ID
+          # ----------------------------
+          declare -A DEV_MAP=(
             ["Oneplus 13"]="13"
             ["Oneplus 13R"]="13R"
             ["Oneplus 13S"]="13S"
@@ -214,106 +216,75 @@ jobs:
             ["Oneplus Ace 6T"]="Ace6T"
           )
 
-          dev="${DEVICE_MAP[$dev_disp]:-}"
-          [ -n "$dev" ] || { echo "Unknown device: $dev_disp"; exit 1; }
+          dev="${DEV_MAP[$dev_disp]}"
+          [[ -z "$dev" ]] && { echo "Unknown device: $dev_disp"; exit 1; }
 
-          # Builder tables (keyed by: FTYPE|DEV|REGION)
-          # Use empty REGION for "any region" matches where desired.
-          declare -A BUILDER=()
+          # ------------------------------------------------
+          # LIST-ONLY BUILDER TABLE (NO WILDCARDS)
+          # Key format: Flasher|Device|Region
+          # ------------------------------------------------
+          declare -A BUILDER_MAP
 
-          # SuperHybrid Flasher (general)
-          BUILDER["SuperHybrid Flasher|*|CN"]="SUPERHYBRID_CN_FULL_SUPERBUILD"
-          BUILDER["SuperHybrid Flasher|*|*"]="SUPERHYBRID_FULL_SUPERBUILD"
+          # ===== SuperHybrid Flasher =====
+          BUILDER_MAP["SuperHybrid Flasher|13|GLO"]="SUPERHYBRID_FULL_SUPERBUILD"
+          BUILDER_MAP["SuperHybrid Flasher|13|EU"]="SUPERHYBRID_FULL_SUPERBUILD"
+          BUILDER_MAP["SuperHybrid Flasher|13|IN"]="SUPERHYBRID_FULL_SUPERBUILD"
+          BUILDER_MAP["SuperHybrid Flasher|13|CN"]="SUPERHYBRID_CN_FULL_SUPERBUILD"
 
-          # Oneplus 15 override for SuperHybrid Flasher
-          BUILDER["SuperHybrid Flasher|15|CN"]="SUPERHYBRID_CN_FULL_SUPERBUILD"
-          BUILDER["SuperHybrid Flasher|15|EU"]="SUPERHYBRID_EU_FULL_SUPERBUILD"
-          BUILDER["SuperHybrid Flasher|15|GLO"]="SUPERHYBRID_GLO_FULL_SUPERBUILD"
-          BUILDER["SuperHybrid Flasher|15|IN"]="SUPERHYBRID_IN_FULL_SUPERBUILD"
+          BUILDER_MAP["SuperHybrid Flasher|15|CN"]="SUPERHYBRID_CN_FULL_SUPERBUILD"
+          BUILDER_MAP["SuperHybrid Flasher|15|EU"]="SUPERHYBRID_EU_FULL_SUPERBUILD"
+          BUILDER_MAP["SuperHybrid Flasher|15|GLO"]="SUPERHYBRID_GLO_FULL_SUPERBUILD"
+          BUILDER_MAP["SuperHybrid Flasher|15|IN"]="SUPERHYBRID_IN_FULL_SUPERBUILD"
 
-          # RegionalHybrid Flasher
-          BUILDER["RegionalHybrid Flasher|*|CN"]="REGIONALHYBRID_CN_FULL_BUILD"
-          BUILDER["RegionalHybrid Flasher|*|*"]="REGIONALHYBRID_FULL_BUILD"
+          # ===== Super Flasher =====
+          BUILDER_MAP["Super Flasher|13R|CN"]="SUPER_CN_FULL_SUPERBUILD"
+          BUILDER_MAP["Super Flasher|13R|GLO"]="SUPER_EUGLO_FULL_SUPERBUILD"
 
-          # SunOS / Matrixx
-          BUILDER["SuperHybrid SunOS Flasher|*|*"]="SUPERHYBRID_SUNOS_FULL_SUPERBUILD"
-          BUILDER["SuperHybrid Matrixx Flasher|13|*"]="SUPERHYBRID_MATRIXX_FULL_SUPERBUILD"
+          BUILDER_MAP["Super Flasher|13S|IN"]="SUPER_IN_FULL_SUPERBUILD"
 
-          # Super Flasher (explicit combos)
-          BUILDER["Super Flasher|13R|CN"]="SUPER_CN_FULL_SUPERBUILD"
-          BUILDER["Super Flasher|13R|*"]="SUPER_EUGLO_FULL_SUPERBUILD"
-          BUILDER["Super Flasher|13S|*"]="SUPER_IN_FULL_SUPERBUILD"
-          BUILDER["Super Flasher|13T|CN"]="SUPER_CN_FULL_SUPERBUILD"
-          BUILDER["Super Flasher|13T|*"]="SUPER_IN_FULL_SUPERBUILD"
-          BUILDER["Super Flasher|Ace5|CN"]="SUPER_CN_FULL_SUPERBUILD"
-          BUILDER["Super Flasher|Ace5|*"]="SUPER_OOS_FULL_SUPERBUILD"
-          BUILDER["Super Flasher|Ace6|CN"]="SUPER_CN_FULL_SUPERBUILD"
-          BUILDER["Super Flasher|Ace6T|CN"]="SUPER_CN_FULL_SUPERBUILD"
+          BUILDER_MAP["Super Flasher|13T|IN"]="SUPER_IN_FULL_SUPERBUILD"
+          BUILDER_MAP["Super Flasher|13T|CN"]="SUPER_CN_FULL_SUPERBUILD"
+          
+          BUILDER_MAP["Super Flasher|15R|CN"]="SUPER_CN_FULL_SUPERBUILD"
+          BUILDER_MAP["Super Flasher|15R|EU"]="SUPER_EU_FULL_SUPERBUILD"
+          BUILDER_MAP["Super Flasher|15R|GLO"]="SUPER_GLO_FULL_SUPERBUILD"
+          BUILDER_MAP["Super Flasher|15R|IN"]="SUPER_IN_FULL_SUPERBUILD"
+          
+          BUILDER_MAP["Super Flasher|Ace5|CN"]="SUPER_CN_FULL_SUPERBUILD"
+          BUILDER_MAP["Super Flasher|Ace5|GLO"]="SUPER_OOS_FULL_SUPERBUILD"
 
-          # Oneplus 15R: use your region-specific SUPER_* builders
-          BUILDER["Super Flasher|15R|CN"]="SUPER_CN_FULL_SUPERBUILD"
-          BUILDER["Super Flasher|15R|IN"]="SUPER_IN_FULL_SUPERBUILD"
-          BUILDER["Super Flasher|15R|EU"]="SUPER_EU_FULL_SUPERBUILD"
-          BUILDER["Super Flasher|15R|GLO"]="SUPER_GLO_FULL_SUPERBUILD"
+          BUILDER_MAP["Super Flasher|Ace6|CN"]="SUPER_CN_FULL_SUPERBUILD"
+          BUILDER_MAP["Super Flasher|Ace6T|CN"]="SUPER_CN_FULL_SUPERBUILD"
 
-          # Regional Flasher
-          BUILDER["Regional Flasher|13R|CN"]="REGIONAL_CN_FULL_BUILD"
-          BUILDER["Regional Flasher|13R|*"]="REGIONAL_EUGLO_FULL_BUILD"
-          BUILDER["Regional Flasher|13S|*"]="REGIONAL_IN_FULL_BUILD"
-          BUILDER["Regional Flasher|Ace5Pro|*"]="REGIONAL_ACE5PRO_CN_FULL_BUILD"
-          BUILDER["Regional Flasher|Ace5|*"]="REGIONAL_CN_FULL_BUILD"
-          BUILDER["Regional Flasher|*|*"]="REGIONALHYBRID_FULL_BUILD"
+          # ===== Regional Hybrid Flasher =====
+          BUILDER_MAP["RegionalHybrid Flasher|13|GLO"]="REGIONALHYBRID_FULL_BUILD"
+          BUILDER_MAP["RegionalHybrid Flasher|13|EU"]="REGIONALHYBRID_FULL_BUILD"
+          BUILDER_MAP["RegionalHybrid Flasher|13|CN"]="REGIONALHYBRID_CN_FULL_BUILD"
 
-          # Helper: resolve with fallback order: exact -> dev+* -> *+region -> *+*
-          resolve_builder() {
-            local f="$1" d="$2" r="$3"
-            local k=""
-            k="${f}|${d}|${r}"; [[ -n "${BUILDER[$k]:-}" ]] && { echo "${BUILDER[$k]}"; return 0; }
-            k="${f}|${d}|*"; [[ -n "${BUILDER[$k]:-}" ]] && { echo "${BUILDER[$k]}"; return 0; }
-            k="${f}|*|${r}"; [[ -n "${BUILDER[$k]:-}" ]] && { echo "${BUILDER[$k]}"; return 0; }
-            k="${f}|*|*"; [[ -n "${BUILDER[$k]:-}" ]] && { echo "${BUILDER[$k]}"; return 0; }
-            return 1
-          }
+          # ===== Regional Flasher =====
+          BUILDER_MAP["Regional Flasher|Ace5|CN"]="REGIONAL_CN_FULL_BUILD"
+          BUILDER_MAP["Regional Flasher|Ace5Pro|CN"]="REGIONAL_ACE5PRO_CN_FULL_BUILD"
+          BUILDER_MAP["Regional Flasher|13R|GLO"]="REGIONAL_EUGLO_FULL_BUILD"
+          BUILDER_MAP["Regional Flasher|13R|CN"]="REGIONAL_CN_FULL_BUILD"
+          BUILDER_MAP["Regional Flasher|13S|IN"]="REGIONAL_IN_FULL_BUILD"
 
-          # Validation rules (centralized)
-          if [[ "$ftype" == "SuperHybrid Flasher" || "$ftype" == "RegionalHybrid Flasher" || "$ftype" == "SuperHybrid SunOS Flasher" ]]; then
-            if [[ "$dev" == "Ace5" || "$dev" == "Ace5Pro" ]]; then
-              echo "Hybrid flashers are not supported for $dev_disp." >&2
-              exit 1
-            fi
-          fi
+          # ------------------------------------------------
+          key="$ftype|$dev|$region"
+          base_name="${BUILDER_MAP[$key]}"
 
-          if [[ "$ftype" == "SuperHybrid Matrixx Flasher" && "$dev" != "13" ]]; then
-            echo "Matrixx flasher is available for Oneplus 13 only." >&2
+          if [[ -z "$base_name" ]]; then
+            echo "❌ Unsupported combination:"
+            echo "   Device:  $dev_disp"
+            echo "   Flasher: $ftype"
+            echo "   Region:  $region"
             exit 1
           fi
 
-          if [[ "$ftype" == "Super Flasher" ]]; then
-            if [[ "$dev" == "Ace5Pro" ]]; then
-              echo "Ace 5 Pro supports Regional Flasher only." >&2
-              exit 1
-            fi
-            if [[ "$dev" == "Ace6" || "$dev" == "Ace6T" ]]; then
-              if [[ "$region" != "CN" ]]; then
-                echo "Ace 6 / Ace 6T support Super Flasher CN only." >&2
-                exit 1
-              fi
-            fi
-          fi
+          echo "DEV=$dev" >> "$GITHUB_ENV"
+          echo "FTYPE=$ftype" >> "$GITHUB_ENV"
+          echo "REGION=$region" >> "$GITHUB_ENV"
+          echo "BUILDER_SH=${base_name}.sh" >> "$GITHUB_ENV"
 
-          base_name="$(resolve_builder "$ftype" "$dev" "$region")" || {
-            echo "No builder mapping for: ftype='$ftype' dev='$dev' region='$region'" >&2
-            exit 1
-          }
-
-          builder_sh="${base_name}.sh"
-
-          {
-            echo "DEV=$dev"
-            echo "FTYPE=$ftype"
-            echo "REGION=$region"
-            echo "BUILDER_SH=$builder_sh"
-          } >> "$GITHUB_ENV"
 
       - name: Stage files
         shell: bash
