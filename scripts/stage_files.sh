@@ -88,6 +88,14 @@ get_bloat_folder () {
         *) echo "" ;;
       esac
     ;;
+    "Pad3")
+      case "$region" in
+        EU) echo "EU_BLOAT" ;;
+        GLO) echo "GLO_BLOAT" ;;
+        IN) echo "IN_BLOAT" ;;
+        *) echo "" ;;
+      esac
+    ;;
     *)
       case "$region" in
         CN) echo "CN_BLOAT" ;;
