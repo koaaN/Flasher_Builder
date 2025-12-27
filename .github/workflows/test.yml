@@ -453,7 +453,7 @@ jobs:
                   if [[ "$REGION" == "CN" ]]; then
                     os_tag="COS"
                   else
-                    os_tag="OOS+COS ODM"
+                    os_tag="${region_disp} OOS+COS ODM"
                   fi
                   artifact_base="${ftype_name} A6T ${os_tag} ${ver}"
                   ;;
