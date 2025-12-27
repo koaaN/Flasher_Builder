@@ -244,16 +244,16 @@ if [[ "$ftype" =~ Super ]]; then
 # CN DEBLOAT (my_preload ONLY)
 # -----------------------------
   if [[ "$region" == "CN" ]]; then
-  oos_here="$work_dir/OOS_FILES_HERE"
-  mkdir -p "$oos_here"
+   oos_here="$work_dir/OOS_FILES_HERE"
+   mkdir -p "$oos_here"
 
-  case "$dev" in
-    13|13T|15|Ace5|Ace5Pro|Ace6|Ace6T)
-      # Use CN_BLOAT/OOS_FILES_HERE/my_preload(.img or stub)
-      preload_dir="$bloat_base/GLO_BLOAT"
-      copy_or_download "$preload_dir" "my_preload" "$oos_here/my_preload.img"
-      ;;
-  esac
+   case "$dev" in
+     13|13T|15|Ace5|Ace5Pro|Ace6|Ace6T)
+       # Use CN_BLOAT/OOS_FILES_HERE/my_preload(.img or stub)
+       preload_dir="$bloat_base/GLO_BLOAT"
+       copy_or_download "$preload_dir" "my_preload" "$oos_here/my_preload.img"
+       ;;
+   esac
 fi
 
 # -----------------------------
