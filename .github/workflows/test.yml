@@ -127,32 +127,6 @@ jobs:
           url="${{ inputs.ota_url }}"
           ftype="${{ inputs.flasher_type }}"
 
-          # Nur für SunOS & Matrixx: Original-Dateinamen ermitteln
-          if [[ "$ftype" == "SuperHybrid SunOS Flasher" || "$ftype" == "SuperHybrid Matrixx Flasher" ]]; then
-            fname="$(curl -sIL "$url" \
-              | tr -d '\r' \
-              | grep -i 'content-disposition' \
-              | sed -n 's/.*filename[^=]*=[ \"]*//p' \
-              | sed 's/[\";].*//')"
-
-            if [ -n "$fname" ]; then
-              fname_decoded="$(printf '%b' "${fname//%/\\x}")" || true
-              [ -n "$fname_decoded" ] && fname="$fname_decoded"
-            fi
-
-            if [ -z "$fname" ]; then
-              current_date="$(date +%Y%m%d)"
-              if [[ "$ftype" == "SuperHybrid SunOS Flasher" ]]; then
-                fname="Sun-varuna-${current_date}-dodge-Official.zip"
-              elif [[ "$ftype" == "SuperHybrid Matrixx Flasher" ]]; then
-                fname="Matrixx-v11.7.0-Unofficial-dodge-Gapps-${current_date}.zip"
-              fi
-            fi
-
-            echo "Using OTA artifact filename: ${fname}"
-            echo "OTA_ORIG_NAME=${fname}" >> "$GITHUB_ENV"
-          fi
-
           # Download: Datei MUSS OTA.zip heißen (immer)
           if command -v aria2c >/dev/null 2>&1; then
             aria2c -x 8 -s 8 -c --file-allocation=none --retry-wait=5 --max-tries=10 --timeout=30 \
