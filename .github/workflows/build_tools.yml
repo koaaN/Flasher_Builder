@@ -451,7 +451,7 @@ jobs:
                   else
                     os_tag="OOS"
                   fi
-                  artifact_base="${ftype_name} 13T ${os_tag} ${region_disp} ${ver}"
+                  artifact_base="${ftype_name} 13T ${region_disp} ${ver}"
                   ;;
                 "Ace5")
                   if [[ "$region_code" == "CN" ]]; then
