@@ -493,7 +493,6 @@ jobs:
                   ;;
               esac
             fi
-          fi
 
           zip_path="$zip_root/${artifact_base}.zip"
           rm -f "$zip_path"
