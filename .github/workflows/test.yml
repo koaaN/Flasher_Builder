@@ -18,6 +18,7 @@ on:
           - Oneplus Ace 5 Pro
           - Oneplus Ace 6
           - Oneplus Ace 6T
+          - Oneplus Pad 3
         default: Oneplus 13
       flasher_type:
         description: "Flasher type"
@@ -227,6 +228,7 @@ jobs:
             ["Oneplus Ace 5 Pro"]="Ace5Pro"
             ["Oneplus Ace 6"]="Ace6"
             ["Oneplus Ace 6T"]="Ace6T"
+            ["Oneplus Pad 3"]="Pad3"
           )
 
           dev="${DEV_MAP[$dev_disp]}"
@@ -275,6 +277,8 @@ jobs:
           
           BUILDER_MAP["Super Flasher|Ace6T|CN"]="SUPER_CN_FULL_SUPERBUILD"
           BUILDER_MAP["Super Flasher|Ace6T|IN"]="SUPER_IN_FULL_SUPERBUILD"
+          
+          BUILDER_MAP["Super Flasher|Pad3|GLO"]="SUPER_GLO_FULL_SUPERBUILD"
 
           # ===== Regional Hybrid Flasher =====
           BUILDER_MAP["RegionalHybrid Flasher|13|GLO"]="REGIONALHYBRID_FULL_BUILD"
@@ -374,7 +378,7 @@ jobs:
               fi
               ;;
             "Super Flasher")
-              if [[ "$REGION" == "CN" && ( "$DEV" == "13R" || "$DEV" == "13T" || "$DEV" == "Ace5" || "$DEV" == "Ace6" || "$DEV" == "Ace6T" || "$DEV" == "15R" ) ]]; then
+              if [[ "$REGION" == "CN" && ( "$DEV" == "13R" || "$DEV" == "13T" || "$DEV" == "Ace5" || "$DEV" == "Ace6" || "$DEV" == "Ace6T" || "$DEV" == "15R" || "$DEV" == "Pad3" ) ]]; then
                 by_ftype=("Super Flasher CN")
               else
                 by_ftype=("Super Flasher")
@@ -426,11 +430,6 @@ jobs:
           region_code="$REGION"
           ver="${OTA_VERSION:-UNKNOWN}"
 
-          if [[ "$FTYPE" == "SuperHybrid SunOS Flasher" || "$FTYPE" == "SuperHybrid Matrixx Flasher" ]]; then
-            ota_file="${OTA_ORIG_NAME:-OTA.zip}"
-            ota_name="${ota_file%.zip}"
-            artifact_base="SuperHybrid ${ota_name}"
-          else
             case "$region_code" in
               CN)  region_disp="COS" ;;
               GLO) region_disp="Global" ;;
@@ -440,7 +439,7 @@ jobs:
               *)   region_disp="$region_code" ;;
             esac
 
-            # 🔥 Sonderfall: Oneplus 15 + SuperHybrid Flasher + EU/GLO/IN
+            # 🔥 Oneplus 15 + SuperHybrid Flasher + EU/GLO/IN
             if [[ "$DEV" == "15" && "$FTYPE" == "SuperHybrid Flasher" ]]; then
               case "$region_code" in
                 EU)  artifact_base="${ftype_name} OP15 CN2EU ${ver}" ;;
