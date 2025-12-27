@@ -489,7 +489,7 @@ jobs:
                   artifact_base="${ftype_name} 15R ${region_disp} ${ver}"
                   ;;
                 *)
-                  artifact_base="${ftype_name} ${region_disp} ${ver}"
+                  artifact_base="${ftype_name} ${dev_disp} ${region_disp} ${ver}"
                   ;;
               esac
             fi
@@ -541,6 +541,7 @@ jobs:
           device="${{ inputs.device }}"
           ftype="${{ inputs.flasher_type }}"
           region="${{ inputs.region }}"
+          dev_disp="${{ inputs.device }}"
 
           # -----------------------------
           # Base category & relative path
