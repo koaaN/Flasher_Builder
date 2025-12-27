@@ -677,9 +677,7 @@ jobs:
           zip_param="${zip_param//%20/+}"
 
           # Image folder in ZIP
-          if [[ "$ftype" == "SuperHybrid Matrixx Flasher" ]]; then
-            img_folder="COS_FILES_HERE"
-          elif [[ "$region" == "CN" ]]; then
+          if [[ "$region" == "CN" ]]; then
             img_folder="COS_FILES_HERE"
           else
             img_folder="OOS_FILES_HERE"
@@ -736,9 +734,8 @@ jobs:
           zip_param="$(python3 -c 'import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$zip_plain")"
           zip_param="${zip_param//%20/+}"
 
-          if [[ "$ftype" == "SuperHybrid Matrixx Flasher" ]]; then
-            img_folder="COS_FILES_HERE"
-          elif [[ "$region" == "CN" ]]; then
+
+          if [[ "$region" == "CN" ]]; then
             img_folder="COS_FILES_HERE"
           else
             img_folder="OOS_FILES_HERE"
