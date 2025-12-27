@@ -442,17 +442,17 @@ jobs:
             esac
             
             case "$dev_disp" in
-              Oneplus 13)  device_model="13" ;;
-              Oneplus 13R) device_model="13R" ;;
-              Oneplus 13S)  device_model="13S" ;;
-              Oneplus 13T)  device_model="13T" ;;
-              Oneplus 15)  device_model="15" ;;
-              Oneplus 15R)  device_model="15R" ;;
-              Oneplus Ace 5)  device_model="A5" ;;
-              Oneplus Ace 5 Pro)  device_model="A5P" ;;
-              Oneplus Ace 6)  device_model="A6" ;;
-              Oneplus Ace 6T)  device_model="A6T" ;;
-              Oneplus Pad 3)  device_model="Pad3" ;;
+              "Oneplus 13")  device_model="13" ;;
+              "Oneplus 13R") device_model="13R" ;;
+              "Oneplus 13S")  device_model="13S" ;;
+              "Oneplus 13T")  device_model="13T" ;;
+              "Oneplus 15")  device_model="15" ;;
+              "Oneplus 15R")  device_model="15R" ;;
+              "Oneplus Ace 5")  device_model="A5" ;;
+              "Oneplus Ace 5 Pro")  device_model="A5P" ;;
+              "Oneplus Ace 6")  device_model="A6" ;;
+              "Oneplus Ace 6T")  device_model="A6T" ;;
+              "Oneplus Pad 3")  device_model="Pad3" ;;
               *)   device_model="$dev_disp" ;;
             esac
 
