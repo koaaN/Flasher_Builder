@@ -58,8 +58,7 @@ done < <(find "$input_dir" -mindepth 1 -maxdepth 1 -type d -print0)
 mkdir -p "$super_work"
 part_list=(
   my_bigball.img my_carrier.img my_engineering.img my_heytap.img
-  my_manifest.img my_product.img my_region.img my_stock.img
-  odm.img product.img system.img system_dlkm.img system_ext.img
+  my_manifest.img my_product.img my_region.img my_stock.img product.img system.img system_dlkm.img system_ext.img
   vendor.img vendor_dlkm.img
 )
 for f in "${part_list[@]}"; do
@@ -67,6 +66,11 @@ for f in "${part_list[@]}"; do
 done
 
 # 6) (entfällt) IN_BLOAT -> Super/  (wie in der .bat: keine zusätzlichen Bloat-Images)
+
+# 7) odm.img in OOS_FILES_HERE löschen (falls vorhanden)
+if [[ -f "$oos_here/odm.img" ]]; then
+  rm -f "$oos_here/odm.img"
+fi
 
 # 7) Rest nach OOS_FILES_HERE/
 mkdir -p "$oos_here"
