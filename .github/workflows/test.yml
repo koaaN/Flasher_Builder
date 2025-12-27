@@ -303,6 +303,8 @@ jobs:
           BUILDER_MAP["Regional Flasher|13R|CN"]="REGIONAL_CN_FULL_BUILD"
           
           BUILDER_MAP["Regional Flasher|13S|IN"]="REGIONAL_IN_FULL_BUILD"
+          
+          BUILDER_MAP["Regional Flasher|15R|IN"]="REGIONAL_IN_FULL_BUILD"
 
           # ------------------------------------------------
           key="$ftype|$dev|$region"
@@ -391,7 +393,7 @@ jobs:
               fi
               ;;
             "Regional Flasher")
-              if [[ "$REGION" == "CN" && ( "$DEV" == "Ace5" || "$DEV" == "Ace5Pro" ) ]]; then
+              if [[ "$REGION" == "CN" && ( "$DEV" == "Ace5" || "$DEV" == "Ace5Pro" || "$DEV" == "15R" ) ]]; then
                 by_ftype=("Regional Flasher CN")
               else
                 by_ftype=("Regional Flasher")
