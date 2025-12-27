@@ -254,9 +254,7 @@ jobs:
           BUILDER_MAP["Super Flasher|Ace5|GLO"]="SUPER_OOS_FULL_SUPERBUILD"
 
           BUILDER_MAP["Super Flasher|Ace6|CN"]="SUPER_CN_FULL_SUPERBUILD"
-          
           BUILDER_MAP["Super Flasher|Ace6T|CN"]="SUPER_CN_FULL_SUPERBUILD"
-          BUILDER_MAP["Super Flasher|Ace6T|IN"]="SUPER_IN_FULL_SUPERBUILD"
 
           # ===== Regional Hybrid Flasher =====
           BUILDER_MAP["RegionalHybrid Flasher|13|GLO"]="REGIONALHYBRID_FULL_BUILD"
@@ -450,7 +448,12 @@ jobs:
                   artifact_base="${ftype_name} A6 ${region_disp} ${ver}"
                   ;;
                 "Ace6T")
-                  artifact_base="${ftype_name} A6T COS ${ver}"
+                  if [[ "$REGION" == "CN" ]]; then
+                    os_tag="COS"
+                  else
+                    os_tag="OOS+COS ODM"
+                  fi
+                  artifact_base="${ftype_name} A6T ${os_tag} ${ver}"
                   ;;
                 "15R")
                   artifact_base="${ftype_name} 15R ${region_disp} ${ver}"
