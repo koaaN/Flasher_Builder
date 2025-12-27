@@ -361,6 +361,7 @@ jobs:
         run: |
           set -euo pipefail
           ota_dir="$OTA_DIR"
+          dev_disp="${{ inputs.device }}"
 
           declare -a by_ftype
           case "$FTYPE" in
