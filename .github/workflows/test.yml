@@ -459,9 +459,9 @@ jobs:
             # 🔥 Oneplus 15 + SuperHybrid Flasher + EU/GLO/IN
             if [[ "$DEV" == "15" && "$FTYPE" == "SuperHybrid Flasher" ]]; then
               case "$region_code" in
-                EU)  artifact_base="${ftype_name} OP15 CN2EU ${ver}" ;;
-                GLO) artifact_base="${ftype_name} OP15 CN2GLO ${ver}" ;;
-                IN)  artifact_base="${ftype_name} OP15 CN2IN ${ver}" ;;
+                EU)  artifact_base="${ftype_name} 15 CN2EU ${ver}" ;;
+                GLO) artifact_base="${ftype_name} 15 CN2GLO ${ver}" ;;
+                IN)  artifact_base="${ftype_name} 15 CN2IN ${ver}" ;;
                 *)   artifact_base="${ftype_name} ${region_disp} ${ver}" ;;
               esac
             else
@@ -472,13 +472,7 @@ jobs:
                   else
                     os_tag="OOS"
                   fi
-                  artifact_base="${ftype_name} 13T ${os_tag} ${ver}"
-                  ;;
-                "13S")
-                  artifact_base="${ftype_name} 13S ${ver}"
-                  ;;
-                "13R")
-                  artifact_base="${ftype_name} 13R ${region_disp} ${ver}"
+                  artifact_base="${ftype_name} 13T ${os_tag} ${region_disp} ${ver}"
                   ;;
                 "Ace5")
                   if [[ "$region_code" == "CN" ]]; then
@@ -487,12 +481,6 @@ jobs:
                     artifact_base="${ftype_name} A5 ${region_code} OOS+COS ODM ${ver}"
                   fi
                   ;;
-                "Ace5Pro")
-                  artifact_base="${ftype_name} A5P ${region_disp} ${ver}"
-                  ;;
-                "Ace6")
-                  artifact_base="${ftype_name} A6 ${region_disp} ${ver}"
-                  ;;
                 "Ace6T")
                   if [[ "$REGION" == "CN" ]]; then
                     os_tag="COS"
@@ -500,9 +488,6 @@ jobs:
                     os_tag="${region_disp} OOS+COS ODM"
                   fi
                   artifact_base="${ftype_name} A6T ${os_tag} ${ver}"
-                  ;;
-                "15R")
-                  artifact_base="${ftype_name} 15R ${region_disp} ${ver}"
                   ;;
                 *)
                   artifact_base="${ftype_name} ${device_model} ${region_disp} ${ver}"
