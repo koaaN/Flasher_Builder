@@ -527,7 +527,7 @@ jobs:
           elif [[ "$ftype" == "SuperHybrid Matrixx Flasher" ]]; then
             category="Project Matrixx Super Flashers"
             rel="Oneplus 13/Custom Roms/$category"
-          elif [[ "$device" == "Oneplus 13T" && "$ftype" == "Super Flasher" && "$region" == "IN" ]]; then
+          elif [[ "$ftype" == "Super Flasher" && "$region" != "CN" && ( "$device" == "Oneplus 13T" || "$device" == "Oneplus Ace 6T" ) ]]; then
             category="OxygenOS Flashers"
             rel="$device/$category"
           elif [[ "$device" == "Oneplus Ace 5 Pro" ]]; then
