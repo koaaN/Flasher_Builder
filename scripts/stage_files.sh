@@ -210,7 +210,7 @@ if [[ "$ftype" =~ Super ]]; then
   elif [[ "$dev" == "Ace5" ]]; then pdir="$root/super_packers/Ace5"
   else p="$root/super_packers/$dev/super_oos.sh"; [ -f "$p" ] && cp -f "$p" "$super_dir/super_oos.sh" && chmod +x "$super_dir/super_oos.sh"; fi
 
-  [[ -d "$pdir" ]] && { [[ "$region" == "CN" && "$ftype" == "SuperHybrid Flasher" && -f "$pdir/super_cos.sh" ]] && cp -f "$pdir/super_cos.sh" "$super_dir/super_cos.sh" && chmod +x "$super_dir/super_cos.sh"; [[ -f "$pdir/super_oos.sh" ]] && cp -f "$pdir/super_oos.sh" "$super_dir/super_oos.sh" && chmod +x "$super_dir/super_oos.sh"; } }
+  [[ -d "$pdir" ]] && { [[ "$region" == "CN" && "$ftype" == "SuperHybrid Flasher" && -f "$pdir/super_cos.sh" ]] && cp -f "$pdir/super_cos.sh" "$super_dir/super_cos.sh" && chmod +x "$super_dir/super_cos.sh"; [[ -f "$pdir/super_oos.sh" ]] && cp -f "$pdir/super_oos.sh" "$super_dir/super_oos.sh" && chmod +x "$super_dir/super_oos.sh"; }
 
   bloat_folder="$(get_bloat_folder "$dev" "$region")"
 
@@ -289,3 +289,4 @@ fi
 
 # Expose for next steps
 echo "WORK_DIR=$work_dir" >> "$GITHUB_ENV"
+
