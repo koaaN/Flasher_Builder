@@ -243,7 +243,7 @@ if [[ "$ftype" =~ Super ]]; then
 # -----------------------------
 # CN DEBLOAT (my_preload ONLY)
 # -----------------------------
-if [[ "$region" == "CN" ]]; then
+  if [[ "$region" == "CN" ]]; then
   oos_here="$work_dir/OOS_FILES_HERE"
   mkdir -p "$oos_here"
 
@@ -293,5 +293,3 @@ fi
 
 # Expose for next steps
 echo "WORK_DIR=$work_dir" >> "$GITHUB_ENV"
-
-
