@@ -647,8 +647,7 @@ jobs:
       # ===============================================================================
 
       - name: Notify Telegram (Oneplus 13 Group -1001902568181)
-        if: ${{ inputs.upload_to == 'DS_FTP' && inputs.notify_telegram && (inputs.device == 'Oneplus 13' || inputs.device == 'Oneplus 13R' || inputs.device == 'Oneplus 13S' || inputs.device == 'Oneplus 13T') }}
-
+        if: ${{ inputs.upload_to == 'DS_FTP' && inputs.notify_telegram && (inputs.device == 'Oneplus 13' || inputs.device == 'Oneplus 13R' || inputs.device == 'Oneplus 13S' || inputs.device == 'Oneplus 13T' || inputs.device == 'Oneplus Ace 5' || inputs.device == 'Oneplus Ace 5 Pro') }}
         shell: bash
         run: |
           set -euo pipefail
