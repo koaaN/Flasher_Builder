@@ -218,7 +218,7 @@ if [[ "$ftype" =~ Super ]]; then
   fi
 
   [[ -n "$pdir" && -d "$pdir" ]] && {
-    [[ "$region" == "CN" && "$ftype" == "SuperHybrid Flasher" && -f "$pdir/super_cos.sh" ]] && cp -f "$pdir/super_cos.sh" "$super_dir/super_cos.sh" && chmod +x "$super_dir/super_cos.sh"
+    [[ "$region" == "CN" && -f "$pdir/super_cos.sh" ]] && cp -f "$pdir/super_cos.sh" "$super_dir/super_cos.sh" && chmod +x "$super_dir/super_cos.sh"
     [[ -f "$pdir/super_oos.sh" ]] && cp -f "$pdir/super_oos.sh" "$super_dir/super_oos.sh" && chmod +x "$super_dir/super_oos.sh"
   }
 
@@ -299,3 +299,4 @@ fi
 
 # Expose for next steps
 echo "WORK_DIR=$work_dir" >> "$GITHUB_ENV"
+
