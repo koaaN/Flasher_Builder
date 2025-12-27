@@ -434,11 +434,26 @@ jobs:
 
             case "$region_code" in
               CN)  region_disp="COS" ;;
-              GLO) region_disp="Global" ;;
+              GLO) region_disp="GLO" ;;
               EU)  region_disp="EU" ;;
               IN)  region_disp="IN" ;;
               NA)  region_disp="NA" ;;
               *)   region_disp="$region_code" ;;
+            esac
+            
+            case "$dev_disp" in
+              Oneplus 13)  device_model="13" ;;
+              Oneplus 13R) device_model="13R" ;;
+              Oneplus 13S)  device_model="13S" ;;
+              Oneplus 13T)  device_model="13T" ;;
+              Oneplus 15)  device_model="15" ;;
+              Oneplus 15R)  device_model="15R" ;;
+              Oneplus Ace 5)  device_model="A5" ;;
+              Oneplus Ace 5 Pro)  device_model="A5P" ;;
+              Oneplus Ace 6)  device_model="A6" ;;
+              Oneplus Ace 6T)  device_model="A6T" ;;
+              Oneplus Pad 3)  device_model="Pad3" ;;
+              *)   device_model="$dev_disp" ;;
             esac
 
             # 🔥 Oneplus 15 + SuperHybrid Flasher + EU/GLO/IN
@@ -490,7 +505,7 @@ jobs:
                   artifact_base="${ftype_name} 15R ${region_disp} ${ver}"
                   ;;
                 *)
-                  artifact_base="${ftype_name} ${dev_disp} ${region_disp} ${ver}"
+                  artifact_base="${ftype_name} ${device_model} ${region_disp} ${ver}"
                   ;;
               esac
             fi
