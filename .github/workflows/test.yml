@@ -229,6 +229,7 @@ jobs:
           BUILDER_MAP["SuperHybrid Flasher|13|GLO"]="SUPERHYBRID_FULL_SUPERBUILD"
           BUILDER_MAP["SuperHybrid Flasher|13|EU"]="SUPERHYBRID_FULL_SUPERBUILD"
           BUILDER_MAP["SuperHybrid Flasher|13|IN"]="SUPERHYBRID_FULL_SUPERBUILD"
+          BUILDER_MAP["SuperHybrid Flasher|13|NA"]="SUPERHYBRID_FULL_SUPERBUILD"
           BUILDER_MAP["SuperHybrid Flasher|13|CN"]="SUPERHYBRID_CN_FULL_SUPERBUILD"
 
           BUILDER_MAP["SuperHybrid Flasher|15|CN"]="SUPERHYBRID_CN_FULL_SUPERBUILD"
@@ -239,6 +240,8 @@ jobs:
           # ===== Super Flasher =====
           BUILDER_MAP["Super Flasher|13R|CN"]="SUPER_CN_FULL_SUPERBUILD"
           BUILDER_MAP["Super Flasher|13R|GLO"]="SUPER_EUGLO_FULL_SUPERBUILD"
+          BUILDER_MAP["Super Flasher|13R|EU"]="SUPER_EUGLO_FULL_SUPERBUILD"
+          BUILDER_MAP["Super Flasher|13R|IN"]="SUPER_EUGLO_FULL_SUPERBUILD"
 
           BUILDER_MAP["Super Flasher|13S|IN"]="SUPER_IN_FULL_SUPERBUILD"
 
@@ -252,6 +255,8 @@ jobs:
           
           BUILDER_MAP["Super Flasher|Ace5|CN"]="SUPER_CN_FULL_SUPERBUILD"
           BUILDER_MAP["Super Flasher|Ace5|GLO"]="SUPER_OOS_FULL_SUPERBUILD"
+          BUILDER_MAP["Super Flasher|Ace5|EU"]="SUPER_OOS_FULL_SUPERBUILD"
+          BUILDER_MAP["Super Flasher|Ace5|IN"]="SUPER_OOS_FULL_SUPERBUILD"
 
           BUILDER_MAP["Super Flasher|Ace6|CN"]="SUPER_CN_FULL_SUPERBUILD"
           
@@ -261,13 +266,20 @@ jobs:
           # ===== Regional Hybrid Flasher =====
           BUILDER_MAP["RegionalHybrid Flasher|13|GLO"]="REGIONALHYBRID_FULL_BUILD"
           BUILDER_MAP["RegionalHybrid Flasher|13|EU"]="REGIONALHYBRID_FULL_BUILD"
+          BUILDER_MAP["RegionalHybrid Flasher|13|IN"]="REGIONALHYBRID_FULL_BUILD"
+          BUILDER_MAP["RegionalHybrid Flasher|13|NA"]="REGIONALHYBRID_FULL_BUILD"
           BUILDER_MAP["RegionalHybrid Flasher|13|CN"]="REGIONALHYBRID_CN_FULL_BUILD"
 
           # ===== Regional Flasher =====
           BUILDER_MAP["Regional Flasher|Ace5|CN"]="REGIONAL_CN_FULL_BUILD"
+          
           BUILDER_MAP["Regional Flasher|Ace5Pro|CN"]="REGIONAL_ACE5PRO_CN_FULL_BUILD"
+          
           BUILDER_MAP["Regional Flasher|13R|GLO"]="REGIONAL_EUGLO_FULL_BUILD"
+          BUILDER_MAP["Regional Flasher|13R|EU"]="REGIONAL_EUGLO_FULL_BUILD"
+          BUILDER_MAP["Regional Flasher|13R|IN"]="REGIONAL_EUGLO_FULL_BUILD"
           BUILDER_MAP["Regional Flasher|13R|CN"]="REGIONAL_CN_FULL_BUILD"
+          
           BUILDER_MAP["Regional Flasher|13S|IN"]="REGIONAL_IN_FULL_BUILD"
 
           # ------------------------------------------------
