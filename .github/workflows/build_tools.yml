@@ -692,9 +692,6 @@ jobs:
 
           payload_path="$RUNNER_TEMP/tg_payload.json"
 
-          python3 -c 'import os,json; dev=os.environ.get("DEV",""); art=os.environ.get("ART",""); p={"chat_id":-1001902568181,"text":f"✨ <b>New Build released</b> ✨\n{os.environ.get(\"DEVICE\",\"\") or \"\"} <b>{os.environ.get(\"ARTIFACT\",\"\") or \"\"}</b>","parse_mode":"HTML","disable_web_page_preview":True,"reply_markup":{"inline_keyboard":[[{"text":"⬇️ Download ZIP","url":os.environ["ZIP"]}],[{"text":"📦 boot.img","url":os.environ["BOOT"]},{"text":"📦 init_boot.img","url":os.environ["INIT"]}]]}}; open(os.environ["OUT"],"w",encoding="utf-8").write(json.dumps(p, ensure_ascii=False, separators=(",",":")))' \
-            || true
-
           DEVICE="$device_disp" ARTIFACT="$artifact" ZIP="$zip_link" BOOT="$boot_link" INIT="$init_boot_link" OUT="$payload_path" \
           python3 -c 'import os,json; p={"chat_id":-1001902568181,"text":f"✨ <b>New Build released</b> ✨\n{os.environ[\"DEVICE\"]} <b>{os.environ[\"ARTIFACT\"]}</b>","parse_mode":"HTML","disable_web_page_preview":True,"reply_markup":{"inline_keyboard":[[{"text":"⬇️ Download ZIP","url":os.environ["ZIP"]}],[{"text":"📦 boot.img","url":os.environ["BOOT"]},{"text":"📦 init_boot.img","url":os.environ["INIT"]}]]}}; open(os.environ["OUT"],"w",encoding="utf-8").write(json.dumps(p, ensure_ascii=False, separators=(",",":")))'
 
