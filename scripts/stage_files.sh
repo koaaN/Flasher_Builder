@@ -293,6 +293,10 @@ if [[ "$ftype" =~ Super ]]; then
     copy_bloat_from_folder "$bloat_base" "$bloat_folder" "$super_dir"
   fi
 
+# -----------------------------
+# OP13 Signal-Fix (SuperHybrid)
+# -----------------------------
+
   if [[ "$dev" == "13" && "$ftype" == "SuperHybrid Flasher" && "$region" != "CN" ]]; then
     repo_cos="$root/bloat/13/COS_FILES_HERE"
     echo "Adding OP13 Signal-fix files: $repo_cos → $cos_here"
