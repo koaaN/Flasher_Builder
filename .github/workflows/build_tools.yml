@@ -732,8 +732,8 @@ jobs:
           fi
 
           payload_path="$RUNNER_TEMP/tg_payload.json"
-          CHAT_ID="$chat_id" DEVICE="$device_disp" ARTIFACT="$artifact" ZIP="$zip_link" BOOT="$boot_link" INIT="$init_boot_link" OUT="$payload_path" \
-          python3 -c 'import os,json; p={"chat_id":int(os.environ["CHAT_ID"]),"text":f"✨ <b>New Build released</b> ✨\n{os.environ[\"DEVICE\"]} <b>{os.environ[\"ARTIFACT\"]}</b>","parse_mode":"HTML","disable_web_page_preview":True,"reply_markup":{"inline_keyboard":[[{"text":"⬇️ Download ZIP","url":os.environ["ZIP"]}],[{"text":"📦 boot.img","url":os.environ["BOOT"]},{"text":"📦 init_boot.img","url":os.environ["INIT"]}]]}}; open(os.environ["OUT"],"w",encoding="utf-8").write(json.dumps(p, ensure_ascii=False, separators=(",",":")))'
+          DEVICE="$device_disp" ARTIFACT="$artifact" ZIP="$zip_link" BOOT="$boot_link" INIT="$init_boot_link" OUT="$payload_path" \
+          python3 -c 'import os,json; p={"chat_id":int(os.environ["CHAT_ID"]),"text":"✨ <b>New Build released</b> ✨\n"+os.environ["DEVICE"]+" <b>"+os.environ["ARTIFACT"]+"</b>","parse_mode":"HTML","disable_web_page_preview":True,"reply_markup":{"inline_keyboard":[[{"text":"⬇️ Download ZIP","url":os.environ["ZIP"]}],[{"text":"📦 boot.img","url":os.environ["BOOT"]},{"text":"📦 init_boot.img","url":os.environ["INIT"]}]]}}; open(os.environ["OUT"],"w",encoding="utf-8").write(json.dumps(p, ensure_ascii=False, separators=(",",":")))'
 
           test -s "$payload_path" || { echo "Telegram payload not created"; exit 1; }
 
