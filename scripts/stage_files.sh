@@ -136,7 +136,7 @@ ftype="$FTYPE"
 region="$REGION"
 root="$GITHUB_WORKSPACE"
 
-echo "DEV(raw)='$dev_raw' → DEV(norm)='$dev' • FTYPE='$ftype' • REGION='$region'"
+echo "DEVICE='$dev' • FLASHER TYPE='$ftype' • REGION='$region'"
 
 script_dev="$dev"
 [[ "$dev" == "Ace5Pro" || "$dev" == "Ace5" ]] && script_dev="Ace5"
@@ -182,7 +182,7 @@ tpl_base="$root/flasher_scripts/$tpl_dev/$os_sub/$kind"
 
 [[ "$dev" == "Ace5Pro" && "$ftype" == "Regional Flasher" && "$region" == "CN" ]] && tpl_base="$root/flasher_scripts/Ace5/cos/regional"
 
-echo "Using flasher template: $tpl_base"
+echo "Using flasher_script: $tpl_base"
 [ ! -d "$tpl_base" ] && echo "ERROR: Flasher template not found: $tpl_base (dev=$dev, ftype=$ftype, region=$region)" >&2 && exit 1
 
 rsync -a "$tpl_base/" "$work_dir/"
@@ -224,7 +224,7 @@ if [[ "$ftype" =~ Super ]]; then
   if [[ -f "$script" ]]; then
     cp -f "$script" "$super_dir/$packer"
     chmod +x "$super_dir/$packer"
-    echo "Using packer: $script"
+    echo "Using super_packer: $script"
   else
     echo "ERROR: Missing $packer for $dev at $script" >&2
     exit 1
@@ -259,7 +259,7 @@ if [[ "$ftype" =~ Super ]]; then
     case "$dev" in
       13|13T|15|Ace5|Ace5Pro|Ace6|Ace6T)
         preload_dir="$bloat_base/GLO_BLOAT"
-        echo "CN debloat: copying my_preload from $preload_dir → $oos_here"
+        echo "CN debloat: Copying my_preload from $preload_dir → $oos_here"
         copy_or_download "$preload_dir" "my_preload" "$oos_here/my_preload.img"
         ;;
     esac
