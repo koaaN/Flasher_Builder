@@ -334,7 +334,7 @@ fi
 if [[ "$ftype" == "Regional Flasher" || "$ftype" == "RegionalHybrid Flasher" ]]; then
 
   # -----------------------------
-  # NON-CN → OOS_FILES_HERE
+  #       OxygenOS BLOAT
   # -----------------------------
   if [[ "$region" != "CN" ]]; then
     oos_here="$work_dir/OOS_FILES_HERE"
@@ -350,12 +350,12 @@ if [[ "$ftype" == "Regional Flasher" || "$ftype" == "RegionalHybrid Flasher" ]];
     [[ "$ftype" == "RegionalHybrid Flasher" ]] \
       && skip_oos=("odm.img" "oplusstanvbk.img" "my_region.img")
 
-    echo "Adding regional bloat to OOS_FILES_HERE: $bloat_folder_oos → $oos_here"
+    echo "Adding bloat: $bloat_base → $oos_here"
     copy_bloat_from_folder "$bloat_base" "$bloat_folder_oos" "$oos_here" "${skip_oos[@]}"
   fi
 
   # -----------------------------
-  # CN → COS_FILES_HERE ONLY
+  #         ColorOS BLOAT
   # -----------------------------
   if [[ "$region" == "CN" ]]; then
     cos_here="$work_dir/COS_FILES_HERE"
@@ -380,7 +380,7 @@ if [[ "$ftype" == "Regional Flasher" || "$ftype" == "RegionalHybrid Flasher" ]];
         ;;
     esac
 
-    echo "Adding regional bloat to COS_FILES_HERE: $bloat_folder_cos → $cos_here"
+    echo "Adding bloat: $bloat_base → $cos_here"
     copy_bloat_from_folder "$bloat_base" "$bloat_folder_cos" "$cos_here" "${skip_cos[@]:-}"
   fi
 fi
