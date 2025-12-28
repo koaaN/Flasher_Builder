@@ -172,14 +172,14 @@ mkdir -p "$OUT_DIR"
 # -----------------------------
 #        Add otaripper
 # -----------------------------
-
+echo "Adding Otaripper"
 [ -f "$root/otaripper/otaripper" ] && cp -f "$root/otaripper/otaripper" "$OUT_DIR/" && chmod +x "$OUT_DIR/otaripper"
 [ -n "${BUILDER_SH:-}" ] && [ -f "$builder_dir/$BUILDER_SH" ] && cp -f "$builder_dir/$BUILDER_SH" "$OUT_DIR/" && chmod +x "$OUT_DIR/$BUILDER_SH"
 
 # -----------------------------
 #        Working folder
 # -----------------------------
-
+echo "Calculating Working Folder"
 case "$ftype" in
   "SuperHybrid Flasher")
     [[ "$dev" == "13" && "$region" == "CN" ]] && work_name="SuperHybrid Flasher CN" || work_name="SuperHybrid Flasher"
@@ -221,6 +221,7 @@ rsync -a "$tpl_base/" "$work_dir/"
 # -----------------------------
 
 if [[ "$ftype" == *Hybrid* ]]; then
+ echo "Adding META-INF for Hybrid build"
   mi="$tpl_base/META-INF"
   [ -d "$mi" ] && { mkdir -p "$work_dir/META-INF"; rsync -a "$mi/" "$work_dir/META-INF/"; normalize_updater_script_lf "$work_dir/META-INF"; }
 fi
@@ -229,6 +230,7 @@ fi
 #      Add Platform-Tools
 # -----------------------------
 
+echo "Adding Platform-Tools"
 pt_src="$root/Platform-Tools"
 [ -d "$pt_src" ] && { mkdir -p "$work_dir/Platform-Tools"; rsync -a "$pt_src/" "$work_dir/Platform-Tools/"; } || echo "WARN: Platform-Tools not found at repo root: $pt_src"
 
@@ -237,6 +239,7 @@ pt_src="$root/Platform-Tools"
 # -----------------------------
 
 if [[ "$ftype" =~ Super ]]; then
+  echo "Creating super dir"
   super_dir="$work_dir/Super"
   mkdir -p "$super_dir"
 
@@ -245,6 +248,7 @@ if [[ "$ftype" =~ Super ]]; then
 # -----------------------------
 
   if [ -f "$root/lpmake/lpmake" ]; then
+    echo "Adding lpmake to super dir"
     cp -f "$root/lpmake/lpmake" "$super_dir/"
     chmod +x "$super_dir/lpmake"
   fi
@@ -281,6 +285,7 @@ if [[ "$ftype" =~ Super ]]; then
 # -----------------------------
 
   bloat_folder="$(get_bloat_folder "$dev" "$region")"
+  echo "Adding bloat"
 
   if [[ "$dev" == "13T" && "$ftype" == "Super Flasher" && "$region" == "IN" ]]; then
     copy_bloat_from_folder "$bloat_base" "$bloat_folder" "$super_dir" "my_region.img" "oplusstanvbk.img" "odm.img"
