@@ -13,6 +13,7 @@ copy_bloat_from_folder () {
   local src="${base}/${folder}"
   [ -d "$src" ] || return 0
   mkdir -p "$dest"
+  echo "Copying bloat from $src → $dest"
   local needed=( "my_preload.img" "my_company.img" "odm.img" "oplusstanvbk.img" "my_region.img" "system_dlkm_oki.img" "system_dlkm_gki.img" )
   for f in "${needed[@]}"; do
     local skip=0
@@ -244,6 +245,7 @@ if [[ "$ftype" =~ Super ]]; then
 
   if [[ "$dev" == "13" && "$ftype" == "SuperHybrid Flasher" && "$region" != "CN" ]]; then
     repo_cos="$root/bloat/13/COS_FILES_HERE"
+    echo "Adding OP13 Signal-fix files: $repo_cos → $cos_here"
     [[ -d "$repo_cos" ]] && { cos_here="$work_dir/COS_FILES_HERE"; mkdir -p "$cos_here"; for f in my_region.img oplusstanvbk.img; do [ -f "$repo_cos/$f" ] && cp -f "$repo_cos/$f" "$cos_here/"; done; }
   fi
 
@@ -257,6 +259,7 @@ if [[ "$ftype" =~ Super ]]; then
     case "$dev" in
       13|13T|15|Ace5|Ace5Pro|Ace6|Ace6T)
         preload_dir="$bloat_base/GLO_BLOAT"
+        echo "CN debloat: copying my_preload from $preload_dir → $oos_here"
         copy_or_download "$preload_dir" "my_preload" "$oos_here/my_preload.img"
         ;;
     esac
