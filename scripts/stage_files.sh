@@ -284,11 +284,10 @@ if [[ "$ftype" =~ Super ]]; then
   # OP13 Signal-Fix (SuperHybrid)
   # -----------------------------
 
-    if [[ "$dev" == "13" && "$ftype" == "SuperHybrid Flasher" && "$region" != "CN" ]]; then
-      repo_cos="$root/bloat/13/COS_FILES_HERE"
-      echo "Adding OP13 Signal-fix files: $repo_cos → $cos_here"
-      [[ -d "$repo_cos" ]] && { cos_here="$work_dir/COS_FILES_HERE"; mkdir -p "$cos_here"; for f in my_region.img oplusstanvbk.img; do [ -f "$repo_cos/$f" ] && cp -f     "$repo_cos/$f" "$cos_here/"; done; }
-    fi
+  if [[ "$dev" == "13" && "$ftype" == "SuperHybrid Flasher" && "$region" != "CN" ]]; then
+    repo_cos="$root/bloat/13/COS_FILES_HERE"
+    echo "Adding OP13 Signal-fix files: $repo_cos → $cos_here"
+    [[ -d "$repo_cos" ]] && { cos_here="$work_dir/COS_FILES_HERE"; mkdir -p "$cos_here"; for f in my_region.img oplusstanvbk.img; do [ -f "$repo_cos/$f" ] && cp -f     "$repo_cos/$f" "$cos_here/"; done; }
   fi
 
 # -----------------------------
