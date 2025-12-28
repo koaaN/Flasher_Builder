@@ -646,8 +646,8 @@ jobs:
       # ===============================================================================
       # ===============================================================================
 
-      - name: Notify Telegram (Oneplus 13 Group -1001902568181)
-        if: ${{ inputs.upload_to == 'DS_FTP' && inputs.notify_telegram && (inputs.device == 'Oneplus 13' || inputs.device == 'Oneplus 13R' || inputs.device == 'Oneplus 13S' || inputs.device == 'Oneplus 13T' || inputs.device == 'Oneplus Ace 5' || inputs.device == 'Oneplus Ace 5 Pro') }}
+      - name: Notify Telegram (auto group)
+        if: ${{ inputs.upload_to == 'DS_FTP' && inputs.notify_telegram }}
         shell: bash
         run: |
           set -euo pipefail
@@ -656,17 +656,37 @@ jobs:
 
           device_disp="${{ inputs.device }}"
           region="$REGION"
-          ftype="$FTYPE"
           artifact="$ARTIFACT_NAME"
           ftp_rel_dir="$FTP_UPLOAD_DIR"
 
-          # Main download link
+          # -----------------------------
+          # Device -> Chat ID mapping
+          # -----------------------------
+          chat_id=""
+          case "$device_disp" in
+            "Oneplus 13"|"Oneplus 13R"|"Oneplus 13S"|"Oneplus 13T"|"Oneplus Ace 5"|"Oneplus Ace 5 Pro")
+              chat_id="-1001902568181"
+              ;;
+            "Oneplus 15"|"Oneplus 15R"|"Oneplus Ace 6"|"Oneplus Ace 6T")
+              chat_id="-1001903485514"
+              ;;
+            *)
+              echo "No Telegram group mapping for device: $device_disp (skipping notify)"
+              exit 0
+              ;;
+          esac
+
+          # -----------------------------
+          # Build main download link
+          # -----------------------------
           raw_path="Files/${ftp_rel_dir}${artifact}.zip"
           enc_raw="$(python3 -c 'import sys,urllib.parse;print(urllib.parse.quote(sys.argv[1],safe=""))' "$raw_path")"
           enc_raw="${enc_raw//%20/+}"
           zip_link="https://roms.danielspringer.at/download.php?file=${enc_raw}&download=true"
 
-          # Path for download_from_zip.php (without "Files/")
+          # -----------------------------
+          # download_from_zip.php params
+          # -----------------------------
           zip_dir="$ftp_rel_dir"
           zip_dir="${zip_dir#Files/}"
           zip_dir="${zip_dir#/}"
@@ -690,68 +710,19 @@ jobs:
           boot_link="https://roms.danielspringer.at/download_from_zip.php?zip=${zip_param}&file=${boot_param}"
           init_boot_link="https://roms.danielspringer.at/download_from_zip.php?zip=${zip_param}&file=${init_boot_param}"
 
+          # -----------------------------
+          # Build payload JSON
+          # -----------------------------
           payload_path="$RUNNER_TEMP/tg_payload.json"
 
-          DEVICE="$device_disp" ARTIFACT="$artifact" ZIP="$zip_link" BOOT="$boot_link" INIT="$init_boot_link" OUT="$payload_path" \
-          python3 -c 'import os,json; p={"chat_id":-1001902568181,"text":f"✨ <b>New Build released</b> ✨\n{os.environ[\"DEVICE\"]} <b>{os.environ[\"ARTIFACT\"]}</b>","parse_mode":"HTML","disable_web_page_preview":True,"reply_markup":{"inline_keyboard":[[{"text":"⬇️ Download ZIP","url":os.environ["ZIP"]}],[{"text":"📦 boot.img","url":os.environ["BOOT"]},{"text":"📦 init_boot.img","url":os.environ["INIT"]}]]}}; open(os.environ["OUT"],"w",encoding="utf-8").write(json.dumps(p, ensure_ascii=False, separators=(",",":")))'
+          CHAT_ID="$chat_id" DEVICE="$device_disp" ARTIFACT="$artifact" ZIP="$zip_link" BOOT="$boot_link" INIT="$init_boot_link" OUT="$payload_path" \
+          python3 -c 'import os,json; p={"chat_id":int(os.environ["CHAT_ID"]),"text":f"✨ <b>New Build released</b> ✨\n{os.environ[\"DEVICE\"]} <b>{os.environ[\"ARTIFACT\"]}</b>","parse_mode":"HTML","disable_web_page_preview":True,"reply_markup":{"inline_keyboard":[[{"text":"⬇️ Download ZIP","url":os.environ["ZIP"]}],[{"text":"📦 boot.img","url":os.environ["BOOT"]},{"text":"📦 init_boot.img","url":os.environ["INIT"]}]]}}; open(os.environ["OUT"],"w",encoding="utf-8").write(json.dumps(p, ensure_ascii=False, separators=(",",":")))'
 
+          test -s "$payload_path" || { echo "Telegram payload not created"; exit 1; }
 
-          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
+          # -----------------------------
+          # Send to Telegram
+          # -----------------------------
+          curl -fsS -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
                -H "Content-Type: application/json; charset=utf-8" \
                --data-binary "@${payload_path}"
-               
-      # ===============================================================================
-      # ===============================================================================
-
-      - name: Notify Telegram (Oneplus 15 Group -1001903485514)
-        if: ${{ inputs.upload_to == 'DS_FTP' && inputs.notify_telegram && (inputs.device == 'Oneplus 15' || inputs.device == 'Oneplus 15R' || inputs.device == 'Oneplus Ace 6' || inputs.device == 'Oneplus Ace 6T') }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          export LC_ALL=C.UTF-8
-          export LANG=C.UTF-8
-
-          device_disp="${{ inputs.device }}"
-          region="$REGION"
-          ftype="$FTYPE"
-          artifact="$ARTIFACT_NAME"
-          ftp_rel_dir="$FTP_UPLOAD_DIR"
-
-          raw_path="Files/${ftp_rel_dir}${artifact}.zip"
-          enc_raw="$(python3 -c 'import sys,urllib.parse;print(urllib.parse.quote(sys.argv[1],safe=""))' "$raw_path")"
-          enc_raw="${enc_raw//%20/+}"
-          zip_link="https://roms.danielspringer.at/download.php?file=${enc_raw}&download=true"
-
-          zip_dir="$ftp_rel_dir"
-          zip_dir="${zip_dir#Files/}"
-          zip_dir="${zip_dir#/}"
-          zip_plain="${zip_dir}${artifact}.zip"
-
-          zip_param="$(python3 -c 'import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$zip_plain")"
-          zip_param="${zip_param//%20/+}"
-
-
-          if [[ "$region" == "CN" ]]; then
-            img_folder="COS_FILES_HERE"
-          else
-            img_folder="OOS_FILES_HERE"
-          fi
-
-          boot_param="$(python3 -c 'import sys,urllib.parse;print(urllib.parse.quote(sys.argv[1],safe=""))' "${img_folder}/boot.img")"
-          boot_param="${boot_param//%20/+}"
-          init_boot_param="$(python3 -c 'import sys,urllib.parse;print(urllib.parse.quote(sys.argv[1],safe=""))' "${img_folder}/init_boot.img")"
-          init_boot_param="${init_boot_param//%20/+}"
-
-          boot_link="https://roms.danielspringer.at/download_from_zip.php?zip=${zip_param}&file=${boot_param}"
-          init_boot_link="https://roms.danielspringer.at/download_from_zip.php?zip=${zip_param}&file=${init_boot_param}"
-
-          payload_path="$RUNNER_TEMP/tg_payload.json"
-
-          DEVICE="$device_disp" ARTIFACT="$artifact" ZIP="$zip_link" BOOT="$boot_link" INIT="$init_boot_link" OUT="$payload_path" \
-          python3 -c 'import os,json; p={"chat_id":-1001903485514,"text":f"✨ <b>New Build released</b> ✨\n{os.environ[\"DEVICE\"]} <b>{os.environ[\"ARTIFACT\"]}</b>","parse_mode":"HTML","disable_web_page_preview":True,"reply_markup":{"inline_keyboard":[[{"text":"⬇️ Download ZIP","url":os.environ["ZIP"]}],[{"text":"📦 boot.img","url":os.environ["BOOT"]},{"text":"📦 init_boot.img","url":os.environ["INIT"]}]]}}; open(os.environ["OUT"],"w",encoding="utf-8").write(json.dumps(p, ensure_ascii=False, separators=(",",":")))'
-
-
-          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
-               -H "Content-Type: application/json; charset=utf-8" \
-               --data-binary "@${payload_path}"
-
