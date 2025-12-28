@@ -646,8 +646,8 @@ jobs:
       # ===============================================================================
       # ===============================================================================
 
-      - name: Notify Telegram (auto group)
-        if: ${{ inputs.upload_to == 'DS_FTP' && inputs.notify_telegram }}
+      - name: Telegram notify
+        if: ${{ inputs.upload_to == 'DS_FTP' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -663,30 +663,30 @@ jobs:
           # Device -> Chat ID mapping
           # -----------------------------
           chat_id=""
+          chat_name=""
           case "$device_disp" in
             "Oneplus 13"|"Oneplus 13R"|"Oneplus 13S"|"Oneplus 13T"|"Oneplus Ace 5"|"Oneplus Ace 5 Pro")
               chat_id="-1001902568181"
+              chat_name="Oneplus 13 Group"
               ;;
             "Oneplus 15"|"Oneplus 15R"|"Oneplus Ace 6"|"Oneplus Ace 6T")
               chat_id="-1001903485514"
+              chat_name="Oneplus 15 Group"
               ;;
             *)
-              echo "No Telegram group mapping for device: $device_disp (skipping notify)"
+              echo "ℹ️ Telegram: No group mapping for device '$device_disp' -> skipping notify."
               exit 0
               ;;
           esac
 
           # -----------------------------
-          # Build main download link
+          # Build links (same logic as before)
           # -----------------------------
           raw_path="Files/${ftp_rel_dir}${artifact}.zip"
           enc_raw="$(python3 -c 'import sys,urllib.parse;print(urllib.parse.quote(sys.argv[1],safe=""))' "$raw_path")"
           enc_raw="${enc_raw//%20/+}"
           zip_link="https://roms.danielspringer.at/download.php?file=${enc_raw}&download=true"
 
-          # -----------------------------
-          # download_from_zip.php params
-          # -----------------------------
           zip_dir="$ftp_rel_dir"
           zip_dir="${zip_dir#Files/}"
           zip_dir="${zip_dir#/}"
@@ -695,7 +695,6 @@ jobs:
           zip_param="$(python3 -c 'import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$zip_plain")"
           zip_param="${zip_param//%20/+}"
 
-          # Image folder in ZIP
           if [[ "$region" == "CN" ]]; then
             img_folder="COS_FILES_HERE"
           else
@@ -711,18 +710,36 @@ jobs:
           init_boot_link="https://roms.danielspringer.at/download_from_zip.php?zip=${zip_param}&file=${init_boot_param}"
 
           # -----------------------------
-          # Build payload JSON
+          # Always log what would happen
           # -----------------------------
-          payload_path="$RUNNER_TEMP/tg_payload.json"
+          echo "================ Telegram notify (dry info) ================"
+          echo "Device:   $device_disp"
+          echo "Region:   $region  -> img_folder=$img_folder"
+          echo "Artifact: $artifact"
+          echo "Target:   $chat_name ($chat_id)"
+          echo "ZIP:      $zip_link"
+          echo "boot.img: $boot_link"
+          echo "init_boot.img: $init_boot_link"
+          echo "notify_telegram input: ${{ inputs.notify_telegram }}"
+          echo "============================================================"
 
+          # -----------------------------
+          # Send only if enabled
+          # -----------------------------
+          if [[ "${{ inputs.notify_telegram }}" != "true" ]]; then
+            echo "ℹ️ Telegram: notify_telegram=false -> not sending (log-only)."
+            exit 0
+          fi
+
+          payload_path="$RUNNER_TEMP/tg_payload.json"
           CHAT_ID="$chat_id" DEVICE="$device_disp" ARTIFACT="$artifact" ZIP="$zip_link" BOOT="$boot_link" INIT="$init_boot_link" OUT="$payload_path" \
           python3 -c 'import os,json; p={"chat_id":int(os.environ["CHAT_ID"]),"text":f"✨ <b>New Build released</b> ✨\n{os.environ[\"DEVICE\"]} <b>{os.environ[\"ARTIFACT\"]}</b>","parse_mode":"HTML","disable_web_page_preview":True,"reply_markup":{"inline_keyboard":[[{"text":"⬇️ Download ZIP","url":os.environ["ZIP"]}],[{"text":"📦 boot.img","url":os.environ["BOOT"]},{"text":"📦 init_boot.img","url":os.environ["INIT"]}]]}}; open(os.environ["OUT"],"w",encoding="utf-8").write(json.dumps(p, ensure_ascii=False, separators=(",",":")))'
 
           test -s "$payload_path" || { echo "Telegram payload not created"; exit 1; }
 
-          # -----------------------------
-          # Send to Telegram
-          # -----------------------------
           curl -fsS -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
                -H "Content-Type: application/json; charset=utf-8" \
                --data-binary "@${payload_path}"
+
+          echo "✅ Telegram: sent to $chat_name ($chat_id)."
+
