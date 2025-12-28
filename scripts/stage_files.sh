@@ -264,7 +264,7 @@ if [[ "$ftype" =~ Super ]]; then
   fi
 
 # -----------------------------
-#          Packer path
+#      Super: Packer path
 # -----------------------------
 
 
@@ -279,9 +279,20 @@ if [[ "$ftype" =~ Super ]]; then
     echo "ERROR: Missing $packer for $dev at $script" >&2
     exit 1
   fi
+  
+  # -----------------------------
+  # OP13 Signal-Fix (SuperHybrid)
+  # -----------------------------
+
+    if [[ "$dev" == "13" && "$ftype" == "SuperHybrid Flasher" && "$region" != "CN" ]]; then
+      repo_cos="$root/bloat/13/COS_FILES_HERE"
+      echo "Adding OP13 Signal-fix files: $repo_cos → $cos_here"
+      [[ -d "$repo_cos" ]] && { cos_here="$work_dir/COS_FILES_HERE"; mkdir -p "$cos_here"; for f in my_region.img oplusstanvbk.img; do [ -f "$repo_cos/$f" ] && cp -f     "$repo_cos/$f" "$cos_here/"; done; }
+    fi
+  fi
 
 # -----------------------------
-#             BLOAT
+#          Super: BLOAT
 # -----------------------------
 
   bloat_folder="$(get_bloat_folder "$dev" "$region")"
@@ -297,60 +308,82 @@ if [[ "$ftype" =~ Super ]]; then
   else
     copy_bloat_from_folder "$bloat_base" "$bloat_folder" "$super_dir"
   fi
+fi
 
-# -----------------------------
-# OP13 Signal-Fix (SuperHybrid)
-# -----------------------------
-
-  if [[ "$dev" == "13" && "$ftype" == "SuperHybrid Flasher" && "$region" != "CN" ]]; then
-    repo_cos="$root/bloat/13/COS_FILES_HERE"
-    echo "Adding OP13 Signal-fix files: $repo_cos → $cos_here"
-    [[ -d "$repo_cos" ]] && { cos_here="$work_dir/COS_FILES_HERE"; mkdir -p "$cos_here"; for f in my_region.img oplusstanvbk.img; do [ -f "$repo_cos/$f" ] && cp -f "$repo_cos/$f" "$cos_here/"; done; }
-  fi
 
 # -----------------------------
 # CN DEBLOAT (my_preload ONLY)
 # -----------------------------
 
-  if [[ "$region" == "CN" ]]; then
-    oos_here="$work_dir/OOS_FILES_HERE"
-    mkdir -p "$oos_here"
+if [[ "$region" == "CN" ]]; then
+  oos_here="$work_dir/OOS_FILES_HERE"
+  mkdir -p "$oos_here"
 
-    case "$dev" in
-      13|13T|15|Ace5|Ace5Pro|Ace6|Ace6T)
-        preload_dir="$bloat_base/GLO_BLOAT"
-        echo "CN debloat: Copying my_preload from $preload_dir → $oos_here"
-        copy_or_download "$preload_dir" "my_preload" "$oos_here/my_preload.img"
-        ;;
-    esac
-  fi
+  case "$dev" in
+    13|13T|15|Ace5|Ace5Pro|Ace6|Ace6T)
+      preload_dir="$bloat_base/GLO_BLOAT"
+      echo "CN debloat: Copying my_preload from $preload_dir → $oos_here"
+      copy_or_download "$preload_dir" "my_preload" "$oos_here/my_preload.img"
+      ;;
+  esac
 fi
 
 # --------------------------------
-# Regional / RegionalHybrid builds
+#        Regional: BLOAT
 # --------------------------------
 
 if [[ "$ftype" == "Regional Flasher" || "$ftype" == "RegionalHybrid Flasher" ]]; then
-  oos_here="$work_dir/OOS_FILES_HERE"
-  mkdir -p "$oos_here"
-  bloat_folder_oos="$([[ "$dev" == "13" && "$ftype" == "RegionalHybrid Flasher" && "$region" == "CN" ]] && echo "EUGLO_BLOAT" || get_bloat_folder "$dev" "$region")"
 
-  skip_oos=()
-  [[ "$ftype" == "RegionalHybrid Flasher" && "$region" =~ ^(GLO|EU|IN|NA)$ ]] && skip_oos=("odm.img" "oplusstanvbk.img" "my_region.img")
-  copy_bloat_from_folder "$bloat_base" "$bloat_folder_oos" "$oos_here" "${skip_oos[@]:-}"
+  # -----------------------------
+  # NON-CN → OOS_FILES_HERE
+  # -----------------------------
+  if [[ "$region" != "CN" ]]; then
+    oos_here="$work_dir/OOS_FILES_HERE"
+    mkdir -p "$oos_here"
 
-  [[ "$region" == "CN" ]] && {
-    cos_here="$work_dir/COS_FILES_HERE"; mkdir -p "$cos_here"
-    if [[ "$dev" == "Ace5Pro" ]]; then
-      copy_bloat_from_folder "$bloat_base" "A5P_BLOAT" "$cos_here"
-    elif [[ "$dev" == "13" && "$ftype" == "RegionalHybrid Flasher" ]]; then
-      copy_bloat_from_folder "$bloat_base" "CN_BLOAT" "$cos_here" "odm.img" "oplusstanvbk.img" "my_region.img"
-    else
-      copy_bloat_from_folder "$bloat_base" "CN_BLOAT" "$cos_here"
-    fi
-  }
+    bloat_folder_oos="$(
+      [[ "$dev" == "13" && "$ftype" == "RegionalHybrid Flasher" ]] \
+        && echo "EUGLO_BLOAT" \
+        || get_bloat_folder "$dev" "$region"
+    )"
 
-  [[ "$dev" == "13S" && "$region" == "IN" ]] && for f in my_preload.img my_company.img; do [ -f "$bloat_base/IN_BLOAT/$f" ] && cp -f "$bloat_base/IN_BLOAT/$f" "$oos_here/"; done
+    skip_oos=()
+    [[ "$ftype" == "RegionalHybrid Flasher" ]] \
+      && skip_oos=("odm.img" "oplusstanvbk.img" "my_region.img")
+
+    echo "Adding regional bloat to OOS_FILES_HERE: $bloat_folder_oos → $oos_here"
+    copy_bloat_from_folder "$bloat_base" "$bloat_folder_oos" "$oos_here" "${skip_oos[@]}"
+  fi
+
+  # -----------------------------
+  # CN → COS_FILES_HERE ONLY
+  # -----------------------------
+  if [[ "$region" == "CN" ]]; then
+    cos_here="$work_dir/COS_FILES_HERE"
+    mkdir -p "$cos_here"
+
+    case "$dev" in
+      Ace5Pro)
+        bloat_folder_cos="A5P_BLOAT"
+        ;;
+      13)
+        if [[ "$ftype" == "RegionalHybrid Flasher" ]]; then
+          bloat_folder_cos="CN_BLOAT"
+          skip_cos=("odm.img" "oplusstanvbk.img" "my_region.img")
+        else
+          bloat_folder_cos="CN_BLOAT"
+          skip_cos=()
+        fi
+        ;;
+      *)
+        bloat_folder_cos="CN_BLOAT"
+        skip_cos=()
+        ;;
+    esac
+
+    echo "Adding regional bloat to COS_FILES_HERE: $bloat_folder_cos → $cos_here"
+    copy_bloat_from_folder "$bloat_base" "$bloat_folder_cos" "$cos_here" "${skip_cos[@]:-}"
+  fi
 fi
 
 # ----------------------------
