@@ -670,7 +670,7 @@ jobs:
               chat_name="Oneplus 13 Group"
               ;;
             "Oneplus 15"|"Oneplus 15R"|"Oneplus Ace 6"|"Oneplus Ace 6T")
-              chat_id="193732076"
+              chat_id="-1001903485514"
               chat_name="Oneplus 15 Group"
               ;;
             *)
