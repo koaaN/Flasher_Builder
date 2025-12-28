@@ -350,7 +350,6 @@ if [[ "$ftype" == "Regional Flasher" || "$ftype" == "RegionalHybrid Flasher" ]];
     [[ "$ftype" == "RegionalHybrid Flasher" ]] \
       && skip_oos=("odm.img" "oplusstanvbk.img" "my_region.img")
 
-    echo "Adding bloat: $bloat_base → $oos_here"
     copy_bloat_from_folder "$bloat_base" "$bloat_folder_oos" "$oos_here" "${skip_oos[@]}"
   fi
 
@@ -380,7 +379,6 @@ if [[ "$ftype" == "Regional Flasher" || "$ftype" == "RegionalHybrid Flasher" ]];
         ;;
     esac
 
-    echo "Adding bloat: $bloat_base → $cos_here"
     copy_bloat_from_folder "$bloat_base" "$bloat_folder_cos" "$cos_here" "${skip_cos[@]:-}"
   fi
 fi
