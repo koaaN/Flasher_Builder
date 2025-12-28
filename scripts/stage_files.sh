@@ -3,9 +3,10 @@ set -euo pipefail
 
 # Erwartet via Env: DEV, FTYPE, REGION, BUILDER_SH, OUT_DIR, GITHUB_WORKSPACE, OTA_PATH, OTA_DIR
 
-# -----------------------------
-# Helpers
-# -----------------------------
+# ------------------------------
+# Helper: Copy bloat from folder
+# ------------------------------
+
 copy_bloat_from_folder () {
   local base="$1" folder="$2" dest="$3"; shift 3 || true
   local skip_list=("$@")
@@ -32,6 +33,10 @@ copy_bloat_from_folder () {
   done
 }
 
+# ------------------------------
+#     Helper: Copy debloat
+# ------------------------------
+
 copy_debloat_pair () {
   local debloat_dir="$1" dest="$2"
   [ -d "$debloat_dir" ] || return 0
@@ -48,12 +53,20 @@ copy_debloat_pair () {
   done
 }
 
+# --------------------------------
+# Helper: Normalize updater-script
+# --------------------------------
+
 normalize_updater_script_lf () {
   local meta_root="$1"
   local up="$meta_root/com/google/android/updater-script"
   [ -f "$up" ] || return 0
   awk '{ sub(/\r$/,""); print }' "$up" > "$up.tmp" && mv "$up.tmp" "$up"
 }
+
+# ------------------------------
+#  Helper: Decide bloat folder
+# ------------------------------
 
 get_bloat_folder () {
   local dev="$1" region="$2"
@@ -94,6 +107,10 @@ get_bloat_folder () {
   esac
 }
 
+# ------------------------------
+#     Helper: Get OS subtree
+# ------------------------------
+
 get_os_subtree () {
   local dev="$1" ftype="$2" region="$3"
   if [[ "$ftype" == *Hybrid* || "$ftype" == "Regional Flasher" ]]; then
@@ -111,6 +128,10 @@ get_os_subtree () {
   echo "oos"
 }
 
+# ------------------------------
+#   Helper: Copy/Download .img
+# ------------------------------
+
 copy_or_download () {
   local dir="$1" base="$2" dest="$3"
   if [ -f "$dir/${base}.img" ]; then
@@ -124,8 +145,9 @@ copy_or_download () {
 }
 
 # -----------------------------
-# Inputs / paths
+#       Inputs / Paths
 # -----------------------------
+
 dev_raw="$DEV"
 if [[ "$dev_raw" =~ (Ace6T|Ace6|Ace5Pro|Ace5|13T|13S|13R|13|15R|Pad3) ]]; then
   dev="${BASH_REMATCH[1]}"
@@ -147,10 +169,17 @@ bloat_base="$root/bloat/$script_dev"
 rm -rf "$OUT_DIR" || true
 mkdir -p "$OUT_DIR"
 
+# -----------------------------
+#        Add otaripper
+# -----------------------------
+
 [ -f "$root/otaripper/otaripper" ] && cp -f "$root/otaripper/otaripper" "$OUT_DIR/" && chmod +x "$OUT_DIR/otaripper"
 [ -n "${BUILDER_SH:-}" ] && [ -f "$builder_dir/$BUILDER_SH" ] && cp -f "$builder_dir/$BUILDER_SH" "$OUT_DIR/" && chmod +x "$OUT_DIR/$BUILDER_SH"
 
-# Working folder
+# -----------------------------
+#        Working folder
+# -----------------------------
+
 case "$ftype" in
   "SuperHybrid Flasher")
     [[ "$dev" == "13" && "$region" == "CN" ]] && work_name="SuperHybrid Flasher CN" || work_name="SuperHybrid Flasher"
@@ -187,37 +216,54 @@ echo "Using flasher_script: $tpl_base"
 
 rsync -a "$tpl_base/" "$work_dir/"
 
-# HYBRID: META-INF normalize
+# -----------------------------
+#      HYBRID: Add META-INF
+# -----------------------------
+
 if [[ "$ftype" == *Hybrid* ]]; then
   mi="$tpl_base/META-INF"
   [ -d "$mi" ] && { mkdir -p "$work_dir/META-INF"; rsync -a "$mi/" "$work_dir/META-INF/"; normalize_updater_script_lf "$work_dir/META-INF"; }
 fi
 
-# Platform-Tools
+# -----------------------------
+#      Add Platform-Tools
+# -----------------------------
+
 pt_src="$root/Platform-Tools"
 [ -d "$pt_src" ] && { mkdir -p "$work_dir/Platform-Tools"; rsync -a "$pt_src/" "$work_dir/Platform-Tools/"; } || echo "WARN: Platform-Tools not found at repo root: $pt_src"
 
 # -----------------------------
-# Super builds
+#   Super: Create super dir
 # -----------------------------
+
 if [[ "$ftype" =~ Super ]]; then
   super_dir="$work_dir/Super"
   mkdir -p "$super_dir"
 
-  # lpmake
+# -----------------------------
+#      Super: Add lpmake
+# -----------------------------
+
   if [ -f "$root/lpmake/lpmake" ]; then
     cp -f "$root/lpmake/lpmake" "$super_dir/"
     chmod +x "$super_dir/lpmake"
   fi
 
-  # Decide COS vs OOS
+# -----------------------------
+#   Super: Decide Super_Packer
+# -----------------------------
+
   if [[ "$region" == "CN" ]]; then
     packer="super_cos.sh"
   else
     packer="super_oos.sh"
   fi
 
-  # Packer path
+# -----------------------------
+#          Packer path
+# -----------------------------
+
+
   pdir="$root/super_packers/$dev"
   script="$pdir/$packer"
 
@@ -229,6 +275,10 @@ if [[ "$ftype" =~ Super ]]; then
     echo "ERROR: Missing $packer for $dev at $script" >&2
     exit 1
   fi
+
+# -----------------------------
+#             BLOAT
+# -----------------------------
 
   bloat_folder="$(get_bloat_folder "$dev" "$region")"
 
@@ -252,6 +302,7 @@ if [[ "$ftype" =~ Super ]]; then
 # -----------------------------
 # CN DEBLOAT (my_preload ONLY)
 # -----------------------------
+
   if [[ "$region" == "CN" ]]; then
     oos_here="$work_dir/OOS_FILES_HERE"
     mkdir -p "$oos_here"
@@ -266,9 +317,10 @@ if [[ "$ftype" =~ Super ]]; then
   fi
 fi
 
-# -----------------------------
+# --------------------------------
 # Regional / RegionalHybrid builds
-# -----------------------------
+# --------------------------------
+
 if [[ "$ftype" == "Regional Flasher" || "$ftype" == "RegionalHybrid Flasher" ]]; then
   oos_here="$work_dir/OOS_FILES_HERE"
   mkdir -p "$oos_here"
@@ -292,9 +344,10 @@ if [[ "$ftype" == "Regional Flasher" || "$ftype" == "RegionalHybrid Flasher" ]];
   [[ "$dev" == "13S" && "$region" == "IN" ]] && for f in my_preload.img my_company.img; do [ -f "$bloat_base/IN_BLOAT/$f" ] && cp -f "$bloat_base/IN_BLOAT/$f" "$oos_here/"; done
 fi
 
-# -----------------------------
-# OnePlus 13 + Hybrid extras
-# -----------------------------
+# ----------------------------
+#  OnePlus 13 + Hybrid extras
+# ----------------------------
+
 if [[ "$dev" == "13" && ( "$ftype" == "SuperHybrid Flasher" || "$ftype" == "RegionalHybrid Flasher" ) ]]; then
   work16="$work_dir/16DTBO"
   [ -d "$work16" ] && { rm -rf "$main16"; mv "$work16" "$main16"; echo "Moved stray 16DTBO from working folder to MAIN."; }
