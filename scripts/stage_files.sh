@@ -187,24 +187,8 @@ echo "Adding Otaripper to: $OUT_DIR"
 # -----------------------------
 
 echo "Calculating Working Folder"
-case "$ftype" in
-  "SuperHybrid Flasher")
-    [[ "$dev" == "13" && "$region" == "CN" ]] && work_name="SuperHybrid Flasher CN" || work_name="SuperHybrid Flasher"
-    ;;
-  "SuperHybrid Flasher")
-    [[ "$dev" == "15" && "$region" == "CN" ]] && work_name="SuperHybrid Flasher CN" || work_name="SuperHybrid Flasher"
-    ;;
-  "RegionalHybrid Flasher")
-    [[ "$region" == "CN" ]] && work_name="RegionalHybrid Flasher CN" || work_name="RegionalHybrid Flasher"
-    ;;
-  "Super Flasher")
-    { [[ "$dev" == "13R" || "$dev" == "13T" || "$dev" == "Ace5" || "$dev" == "Ace6" || "$dev" == "Ace6T" || "$dev" == "15R" || "$dev" == "Pad3" ]] && [[ "$region" == "CN" ]]; } && work_name="Super Flasher CN" || work_name="Super Flasher"
-    ;;
-  "Regional Flasher")
-    { [[ "$dev" == "13R" || "$dev" == "Ace5" || "$dev" == "Ace5Pro" ]] && [[ "$region" == "CN" ]]; } && work_name="Regional Flasher CN" || work_name="Regional Flasher"
-    ;;
-  *) work_name="$ftype" ;;
-esac
+work_name="$ftype"
+[[ "$region" == "CN" ]] && work_name="$ftype CN"
 echo "Calculated Working Folder: $work_name"
 
 # -----------------------------
