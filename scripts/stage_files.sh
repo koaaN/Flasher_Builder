@@ -49,14 +49,14 @@ normalize_updater_script_lf () {
 # ------------------------------
 
 get_bloat_folder () {
-  local region="$1"
+  local dev="$1" region="$2"
 
   case "$region" in
     CN|EU|GLO|IN|NA)
       echo "${region}_BLOAT"
       ;;
     *)
-      echo "ERROR: Unknown region '$region'" >&2
+      echo "ERROR: Unknown region '$region' (dev=$dev)" >&2
       return 1
       ;;
   esac
