@@ -200,6 +200,7 @@ case "$ftype" in
     ;;
   *) work_name="$ftype" ;;
 esac
+echo "Calculated Working Folder: $work_name"
 
 # -----------------------------
 #     Create Working folder
