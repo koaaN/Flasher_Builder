@@ -343,6 +343,16 @@ jobs:
           ota_dir="$OTA_DIR"
           dev_disp="${{ inputs.device }}"
 
+          echo "::group::Package context"
+          echo "Device display: $dev_disp"
+          echo "DEV:            ${DEV:-unset}"
+          echo "FTYPE:          ${FTYPE:-unset}"
+          echo "REGION:         ${REGION:-unset}"
+          echo "OTA_VERSION:    ${OTA_VERSION:-UNKNOWN}"
+          echo "OTA_DIR:        $ota_dir"
+          echo "OUT_DIR:        ${OUT_DIR:-unset}"
+          echo "::endgroup::"
+
           declare -a by_ftype
           case "$FTYPE" in
             "SuperHybrid Flasher")
@@ -389,21 +399,48 @@ jobs:
 
           mapfile -t candidates < <(printf "%s\n" "${by_ftype[@]}" "${fallback[@]}" | awk '!seen[$0]++')
 
-          echo "Folders in OTA_DIR:"
-          ls -la "$ota_dir" || true
+          echo "::group::Candidate output folders"
+          printf ' - %s\n' "${candidates[@]}"
+          echo "::endgroup::"
+
+          echo "::group::OTA_DIR top-level listing"
+          ls -lah "$ota_dir" || true
+          echo "::endgroup::"
 
           result_dir=""
+          echo "::group::Probe candidates"
           for name in "${candidates[@]}"; do
             p="$ota_dir/$name"
             if [ -d "$p" ]; then
+              echo "✅ FOUND: $name -> $p"
               result_dir="$p"
               break
+            else
+              echo "❌ MISS : $name"
             fi
           done
+          echo "::endgroup::"
+
           [ -n "$result_dir" ] || {
             echo "Could not find builder output folder next to OTA in '$ota_dir'."
             echo "Looked for:"; printf ' - %s\n' "${candidates[@]}"; exit 1;
           }
+
+          echo "::group::Selected result_dir summary"
+          echo "result_dir: $result_dir"
+          echo "Top-level contents:"
+          ls -lah "$result_dir" || true
+          echo
+          echo "Subfolders (depth 2):"
+          find "$result_dir" -maxdepth 2 -type d -print | sed 's/^/ - /' || true
+          echo "::endgroup::"
+
+          echo "::group::Largest files (top 30)"
+          find "$result_dir" -type f -printf "%s\t%p\n" 2>/dev/null \
+            | sort -nr \
+            | head -n 30 \
+            | awk '{ printf(" - %.2f MB  %s\n", $1/1024/1024, $2) }'
+          echo "::endgroup::"
 
           zip_root="$GITHUB_WORKSPACE/$OUT_DIR"
           mkdir -p "$zip_root"
@@ -412,71 +449,77 @@ jobs:
           region_code="$REGION"
           ver="${OTA_VERSION:-UNKNOWN}"
 
-            case "$region_code" in
-              CN)  region_disp="COS" ;;
-              GLO) region_disp="GLO" ;;
-              EU)  region_disp="EU" ;;
-              IN)  region_disp="IN" ;;
-              NA)  region_disp="NA" ;;
-              *)   region_disp="$region_code" ;;
-            esac
-            
-            case "$dev_disp" in
-              "Oneplus 13")  device_model="13" ;;
-              "Oneplus 13R") device_model="13R" ;;
-              "Oneplus 13S")  device_model="13S" ;;
-              "Oneplus 13T")  device_model="13T" ;;
-              "Oneplus 15")  device_model="15" ;;
-              "Oneplus 15R")  device_model="15R" ;;
-              "Oneplus Ace 5")  device_model="A5" ;;
-              "Oneplus Ace 5 Pro")  device_model="A5P" ;;
-              "Oneplus Ace 6")  device_model="A6" ;;
-              "Oneplus Ace 6T")  device_model="A6T" ;;
-              "Oneplus Pad 3")  device_model="Pad3" ;;
-              *)   device_model="$dev_disp" ;;
-            esac
+          case "$region_code" in
+            CN)  region_disp="COS" ;;
+            GLO) region_disp="GLO" ;;
+            EU)  region_disp="EU" ;;
+            IN)  region_disp="IN" ;;
+            NA)  region_disp="NA" ;;
+            *)   region_disp="$region_code" ;;
+          esac
 
-            # 🔥 Oneplus 15 + SuperHybrid Flasher + EU/GLO/IN
-            if [[ "$DEV" == "15" && "$FTYPE" == "SuperHybrid Flasher" ]]; then
-              case "$region_code" in
-                EU)  artifact_base="${ftype_name} 15 CN2EU ${ver}" ;;
-                GLO) artifact_base="${ftype_name} 15 CN2GLO ${ver}" ;;
-                IN)  artifact_base="${ftype_name} 15 CN2IN ${ver}" ;;
-                *)   artifact_base="${ftype_name} ${region_disp} ${ver}" ;;
-              esac
-            else
-              case "$DEV" in
-                "13T")
-                  if [[ "$REGION" == "CN" ]]; then
-                    os_tag="COS"
-                  else
-                    os_tag="OOS"
-                  fi
-                  artifact_base="${ftype_name} 13T ${region_disp} ${ver}"
-                  ;;
-                "Ace5")
-                  if [[ "$region_code" == "CN" ]]; then
-                    artifact_base="${ftype_name} A5 COS ${ver}"
-                  else
-                    artifact_base="${ftype_name} A5 ${region_code} OOS+COS ODM ${ver}"
-                  fi
-                  ;;
-                "Ace6T")
-                  if [[ "$REGION" == "CN" ]]; then
-                    os_tag="COS"
-                  else
-                    os_tag="${region_disp} OOS+COS ODM"
-                  fi
-                  artifact_base="${ftype_name} A6T ${os_tag} ${ver}"
-                  ;;
-                *)
-                  artifact_base="${ftype_name} ${device_model} ${region_disp} ${ver}"
-                  ;;
-              esac
-            fi
+          case "$dev_disp" in
+            "Oneplus 13")        device_model="13" ;;
+            "Oneplus 13R")       device_model="13R" ;;
+            "Oneplus 13S")       device_model="13S" ;;
+            "Oneplus 13T")       device_model="13T" ;;
+            "Oneplus 15")        device_model="15" ;;
+            "Oneplus 15R")       device_model="15R" ;;
+            "Oneplus Ace 5")     device_model="A5" ;;
+            "Oneplus Ace 5 Pro") device_model="A5P" ;;
+            "Oneplus Ace 6")     device_model="A6" ;;
+            "Oneplus Ace 6T")    device_model="A6T" ;;
+            "Oneplus Pad 3")     device_model="Pad3" ;;
+            *)                   device_model="$dev_disp" ;;
+          esac
+
+          # 🔥 Oneplus 15 + SuperHybrid Flasher + EU/GLO/IN
+          if [[ "$DEV" == "15" && "$FTYPE" == "SuperHybrid Flasher" ]]; then
+            case "$region_code" in
+              EU)  artifact_base="${ftype_name} 15 CN2EU ${ver}" ;;
+              GLO) artifact_base="${ftype_name} 15 CN2GLO ${ver}" ;;
+              IN)  artifact_base="${ftype_name} 15 CN2IN ${ver}" ;;
+              *)   artifact_base="${ftype_name} ${region_disp} ${ver}" ;;
+            esac
+          else
+            case "$DEV" in
+              "13T")
+                if [[ "$REGION" == "CN" ]]; then
+                  os_tag="COS"
+                else
+                  os_tag="OOS"
+                fi
+                artifact_base="${ftype_name} 13T ${region_disp} ${ver}"
+                ;;
+              "Ace5")
+                if [[ "$region_code" == "CN" ]]; then
+                  artifact_base="${ftype_name} A5 COS ${ver}"
+                else
+                  artifact_base="${ftype_name} A5 ${region_code} OOS+COS ODM ${ver}"
+                fi
+                ;;
+              "Ace6T")
+                if [[ "$REGION" == "CN" ]]; then
+                  os_tag="COS"
+                else
+                  os_tag="${region_disp} OOS+COS ODM"
+                fi
+                artifact_base="${ftype_name} A6T ${os_tag} ${ver}"
+                ;;
+              *)
+                artifact_base="${ftype_name} ${device_model} ${region_disp} ${ver}"
+                ;;
+            esac
+          fi
 
           zip_path="$zip_root/${artifact_base}.zip"
           rm -f "$zip_path"
+
+          echo "::group::Artifact naming"
+          echo "artifact_base: $artifact_base"
+          echo "zip_root:      $zip_root"
+          echo "zip_path:      $zip_path"
+          echo "::endgroup::"
 
           cd "$result_dir"
 
@@ -488,18 +531,42 @@ jobs:
             seven=""
           fi
 
+          echo "::group::Packaging"
           if [ -n "$seven" ]; then
-            "$seven" a -tzip -mm=Deflate -mx=3 -mfb=32 -mmt=on -bso0 -bsp0 "$zip_path" .
+            echo "Packaging tool: $seven"
+            echo "Command: $seven a -tzip -mm=Deflate -mx=3 -mfb=32 -mmt=on -bso1 -bsp1 \"$zip_path\" ."
+            start=$(date +%s)
+            "$seven" a -tzip -mm=Deflate -mx=3 -mfb=32 -mmt=on -bso1 -bsp1 "$zip_path" .
+            end=$(date +%s)
+            echo "Packaging duration: $((end-start))s"
           else
+            echo "Packaging tool: zip"
+            echo "Command: zip -qr -3 \"$zip_path\" ."
+            start=$(date +%s)
             zip -qr -3 "$zip_path" .
+            end=$(date +%s)
+            echo "Packaging duration: $((end-start))s"
           fi
+          echo "::endgroup::"
 
           [ -f "$zip_path" ] || { echo "Packaging failed: ZIP not created at $zip_path"; exit 1; }
+
+          echo "::group::ZIP result"
+          ls -lah "$zip_path" || true
+          echo
+          echo "ZIP content (top ~60 lines):"
+          if command -v 7zz >/dev/null 2>&1; then
+            7zz l "$zip_path" | head -n 60 || true
+          else
+            unzip -l "$zip_path" | head -n 60 || true
+          fi
+          echo "::endgroup::"
 
           {
             echo "ARTIFACT_NAME=$artifact_base"
             echo "ZIP_FILE=$zip_path"
           } >> "$GITHUB_ENV"
+
           
       # ===============================================================================
       # ===============================================================================
