@@ -95,7 +95,7 @@ copy_or_download () {
 # -----------------------------
 #      Device Configuration
 # -----------------------------
-
+dev="$DEV"
 ftype="$FTYPE"
 region="$REGION"
 root="$GITHUB_WORKSPACE"
