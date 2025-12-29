@@ -166,6 +166,11 @@ script_dev="$dev"
 builder_dir="$root/build_scripts/$script_dev"
 bloat_base="$root/bloat/$script_dev"
 
+# -----------------------------
+#        Create out dir
+# -----------------------------
+
+echo "Creating $OUT_DIR dir"
 rm -rf "$OUT_DIR" || true
 mkdir -p "$OUT_DIR"
 
@@ -173,7 +178,7 @@ mkdir -p "$OUT_DIR"
 #        Add otaripper
 # -----------------------------
 
-echo "Adding Otaripper"
+echo "Adding Otaripper to $OUT_DIR"
 [ -f "$root/otaripper/otaripper" ] && cp -f "$root/otaripper/otaripper" "$OUT_DIR/" && chmod +x "$OUT_DIR/otaripper"
 [ -n "${BUILDER_SH:-}" ] && [ -f "$builder_dir/$BUILDER_SH" ] && cp -f "$builder_dir/$BUILDER_SH" "$OUT_DIR/" && chmod +x "$OUT_DIR/$BUILDER_SH"
 
