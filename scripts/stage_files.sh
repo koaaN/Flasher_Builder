@@ -221,9 +221,9 @@ if [[ "$ftype" =~ Super ]]; then
     exit 1
   fi
   
-  # -----------------------------
-  #    Super: OP13 Signal-Fix
-  # -----------------------------
+  # ------------------------------
+  #  Super: Device Specific Fixes 
+  # ------------------------------
 
   if [[ "$dev" == "13" && "$ftype" == "SuperHybrid Flasher" && "$region" != "CN" ]]; then
     repo_cos="$root/bloat/13/COS_FILES_HERE"
@@ -246,24 +246,27 @@ if [[ "$ftype" =~ Super ]]; then
       echo "WARN: Signal-fix folder not found: $repo_cos"
     fi
   fi
+  
+  
+  if [[ "$dev" == "13T" && "$ftype" == "Super Flasher" && "$region" == "IN" ]]; then
+    echo "Applying OP13T IN fixes"
 
-# -----------------------------
-#          Super: BLOAT
-# -----------------------------
+    fixes_dir="$bloat_base/FIXES"
+    cos_here="$work_dir/COS_FILES_HERE"
+    mkdir -p "$cos_here"
+
+    for f in my_region oplusstanvbk odm; do
+      copy_or_download "$fixes_dir" "$f" "$cos_here/$f.img"
+    done
+  fi
+
+  # -----------------------------
+  #          Super: BLOAT
+  # -----------------------------
 
   bloat_folder="$(get_bloat_folder "$dev" "$region")"
   echo "Adding bloat"
-
-  if [[ "$dev" == "13T" && "$ftype" == "Super Flasher" && "$region" == "IN" ]]; then
-    copy_bloat_from_folder "$bloat_base" "$bloat_folder" "$super_dir" "my_region.img" "oplusstanvbk.img" "odm.img"
-    cos_here="$work_dir/COS_FILES_HERE"
-    mkdir -p "$cos_here"
-    in_bloat="$bloat_base/IN_BLOAT"
-    for f in my_region oplusstanvbk odm; do copy_or_download "$in_bloat" "$f" "$cos_here/$f.img"; done
-    for f in my_region.img oplusstanvbk.img odm.img; do [ -f "$super_dir/$f" ] && rm -f "$super_dir/$f"; done
-  else
-    copy_bloat_from_folder "$bloat_base" "$bloat_folder" "$super_dir"
-  fi
+  copy_bloat_from_folder "$bloat_base" "$bloat_folder" "$super_dir"
 fi
 
 
