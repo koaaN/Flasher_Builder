@@ -308,7 +308,7 @@ if [[ "$ftype" == "Regional Flasher" || "$ftype" == "RegionalHybrid Flasher" ]];
   # -----------------------------
   #         ColorOS BLOAT
   # -----------------------------
-  if [[ "$region" != "CN" ]]; then
+  if [[ "$region" = "CN" ]]; then
     cos_here="$work_dir/COS_FILES_HERE"
     mkdir -p "$oos_here"
 
