@@ -269,7 +269,7 @@ jobs:
           # ===== Regional Flasher =====
           BUILDER_MAP["Regional Flasher|Ace5|CN"]="REGIONAL_CN_FULL_BUILD"
           
-          BUILDER_MAP["Regional Flasher|Ace5Pro|CN"]="REGIONAL_ACE5PRO_CN_FULL_BUILD"
+          BUILDER_MAP["Regional Flasher|Ace5Pro|CN"]="REGIONAL_CN_FULL_BUILD"
           
           BUILDER_MAP["Regional Flasher|13R|GLO"]="REGIONAL_EUGLO_FULL_BUILD"
           BUILDER_MAP["Regional Flasher|13R|EU"]="REGIONAL_EUGLO_FULL_BUILD"
