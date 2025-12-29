@@ -178,7 +178,7 @@ mkdir -p "$OUT_DIR"
 #        Add otaripper
 # -----------------------------
 
-echo "Adding Otaripper to $OUT_DIR"
+echo "Adding Otaripper to: $OUT_DIR"
 [ -f "$root/otaripper/otaripper" ] && cp -f "$root/otaripper/otaripper" "$OUT_DIR/" && chmod +x "$OUT_DIR/otaripper"
 [ -n "${BUILDER_SH:-}" ] && [ -f "$builder_dir/$BUILDER_SH" ] && cp -f "$builder_dir/$BUILDER_SH" "$OUT_DIR/" && chmod +x "$OUT_DIR/$BUILDER_SH"
 
