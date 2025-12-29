@@ -479,6 +479,10 @@ jobs:
           rm -f "$zip_path"
 
           cd "$result_dir"
+          
+          echo "================ Folder tree (max depth 4) ================"
+          tree -L 4 . || echo "tree not available"
+          echo "==========================================================="
 
           if command -v 7zz >/dev/null 2>&1; then
             seven=7zz
