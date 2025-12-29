@@ -130,7 +130,7 @@ jobs:
           # Download: Datei MUSS OTA.zip heißen (immer)
           if command -v aria2c >/dev/null 2>&1; then
             aria2c -x 8 -s 8 -c --file-allocation=none --retry-wait=5 --max-tries=10 --timeout=30 \
-              --summary-interval=5 --console-log-level=notice \
+              --summary-interval=0 --console-log-level=notice --show-console-readout=true \
               --header="User-Agent: Dalvik/2.1.0 (Linux; U; Android 16; CPH2653 Build/AP3A.240617.008)" \
               --header="userId: oplus-ota|15002017" \
               --header="language: en-US" \
