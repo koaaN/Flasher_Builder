@@ -178,7 +178,7 @@ echo "Adding Otaripper"
 [ -n "${BUILDER_SH:-}" ] && [ -f "$builder_dir/$BUILDER_SH" ] && cp -f "$builder_dir/$BUILDER_SH" "$OUT_DIR/" && chmod +x "$OUT_DIR/$BUILDER_SH"
 
 # -----------------------------
-#        Working folder
+#    Calculate Working folder
 # -----------------------------
 
 echo "Calculating Working Folder"
@@ -201,8 +201,17 @@ case "$ftype" in
   *) work_name="$ftype" ;;
 esac
 
+# -----------------------------
+#     Create Working folder
+# -----------------------------
+
+echo "Creating Working Folder: $OUT_DIR/$work_name"
 work_dir="$OUT_DIR/$work_name"
 mkdir -p "$work_dir"
+
+# -----------------------------
+#      Add Flasher-Script
+# -----------------------------
 
 tpl_dev="$dev"
 [[ "$dev" == "Ace5" || "$dev" == "Ace5Pro" ]] && tpl_dev="Ace5"
@@ -213,7 +222,7 @@ tpl_base="$root/flasher_scripts/$tpl_dev/$os_sub/$kind"
 
 [[ "$dev" == "Ace5Pro" && "$ftype" == "Regional Flasher" && "$region" == "CN" ]] && tpl_base="$root/flasher_scripts/Ace5/cos/regional"
 
-echo "Using flasher_script: $tpl_base"
+echo "Adding flasher_script: $tpl_base"
 [ ! -d "$tpl_base" ] && echo "ERROR: Flasher template not found: $tpl_base (dev=$dev, ftype=$ftype, region=$region)" >&2 && exit 1
 
 rsync -a "$tpl_base/" "$work_dir/"
