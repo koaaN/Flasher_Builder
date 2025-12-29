@@ -68,19 +68,12 @@ get_bloat_folder () {
 
 get_os_subtree () {
   local dev="$1" ftype="$2" region="$3"
-  if [[ "$ftype" == *Hybrid* || "$ftype" == "Regional Flasher" ]]; then
-    [[ "$region" == "CN" ]] && echo "cos" || echo "oos"
-    return
+
+  if [[ "$region" == "CN" ]]; then
+    echo "cos"
+  else
+    echo "oos"
   fi
-  if [[ "$ftype" == "Super Flasher" ]]; then
-    if { [[ "$dev" == "13T" || "$dev" == "Ace5" || "$dev" == "Ace6" || "$dev" == "Ace6T" ]] && [[ "$region" == "CN" ]]; }; then
-      echo "cos"
-    else
-      echo "oos"
-    fi
-    return
-  fi
-  echo "oos"
 }
 
 # ------------------------------
