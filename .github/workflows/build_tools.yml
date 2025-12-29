@@ -481,7 +481,7 @@ jobs:
           cd "$result_dir"
           
           echo "================ Folder tree (max depth 8) ================"
-          tree -L 8 . || echo "tree not available"
+          tree -L 8 -h --du . || echo "tree not available"
           echo "==========================================================="
 
           if command -v 7zz >/dev/null 2>&1; then
