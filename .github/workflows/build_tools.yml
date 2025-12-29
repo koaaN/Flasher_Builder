@@ -489,7 +489,7 @@ jobs:
           fi
 
           if [ -n "$seven" ]; then
-            "$seven" a -tzip -mm=Deflate -mx=3 -mfb=32 -mmt=on -bsp1 "$zip_path" .
+            "$seven" a -tzip -mm=Deflate -mx=3 -mfb=32 -mmt=on -bso0 -bsp0 "$zip_path" .
           else
             zip -qr -3 "$zip_path" .
           fi
