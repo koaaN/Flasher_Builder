@@ -248,11 +248,11 @@ if [[ "$ftype" =~ Super ]]; then
   fi
   
   
-  if [[ "$dev" == "13T" && "$ftype" == "Super Flasher" && "$region" == "IN" ]]; then
-    echo "Applying OP13T IN fixes"
+  if [[ "$dev" == "13T" && "$ftype" == "Super Flasher" && "$region" == "IN" ]]; then    
 
     fixes_dir="$bloat_base/FIXES"
     cos_here="$work_dir/COS_FILES_HERE"
+    echo "Adding OP13T Fixes to: $cos_here"
     mkdir -p "$cos_here"
 
     for f in my_region oplusstanvbk odm; do
@@ -300,57 +300,28 @@ if [[ "$ftype" == "Regional Flasher" || "$ftype" == "RegionalHybrid Flasher" ]];
     oos_here="$work_dir/OOS_FILES_HERE"
     mkdir -p "$oos_here"
 
-    bloat_folder_oos="$(
-      [[ "$dev" == "13" && "$ftype" == "RegionalHybrid Flasher" ]] \
-        && echo "EUGLO_BLOAT" \
-        || get_bloat_folder "$dev" "$region"
-    )"
+    bloat_folder_oos="$(get_bloat_folder "$dev" "$region")"
 
-    skip_oos=()
-    [[ "$ftype" == "RegionalHybrid Flasher" ]] \
-      && skip_oos=("odm.img" "oplusstanvbk.img" "my_region.img")
-
-    copy_bloat_from_folder "$bloat_base" "$bloat_folder_oos" "$oos_here" "${skip_oos[@]}"
+    copy_bloat_from_folder "$bloat_base" "$bloat_folder_oos" "$oos_here"
   fi
 
   # -----------------------------
   #         ColorOS BLOAT
   # -----------------------------
-  if [[ "$region" == "CN" ]]; then
+  if [[ "$region" != "CN" ]]; then
     cos_here="$work_dir/COS_FILES_HERE"
-    mkdir -p "$cos_here"
+    mkdir -p "$oos_here"
 
-    case "$dev" in
-      13)
-        if [[ "$ftype" == "RegionalHybrid Flasher" ]]; then
-          bloat_folder_cos="CN_BLOAT"
-          skip_cos=("odm.img" "oplusstanvbk.img" "my_region.img")
-        else
-          bloat_folder_cos="CN_BLOAT"
-          skip_cos=()
-        fi
-        ;;
-      *)
-        bloat_folder_cos="CN_BLOAT"
-        skip_cos=()
-        ;;
-    esac
+    bloat_folder_oos="$(get_bloat_folder "$dev" "$region")"
 
-    copy_bloat_from_folder "$bloat_base" "$bloat_folder_cos" "$cos_here" "${skip_cos[@]:-}"
+    copy_bloat_from_folder "$bloat_base" "$bloat_folder_oos" "$cos_here"
   fi
 fi
 
 # ----------------------------
-#  OnePlus 13 + Hybrid extras
+#    Expose for next steps
 # ----------------------------
 
-if [[ "$dev" == "13" && ( "$ftype" == "SuperHybrid Flasher" || "$ftype" == "RegionalHybrid Flasher" ) ]]; then
-  work16="$work_dir/16DTBO"
-  [ -d "$work16" ] && { rm -rf "$main16"; mv "$work16" "$main16"; echo "Moved stray 16DTBO from working folder to MAIN."; }
-  [[ "$region" == "CN" && "$ftype" == "SuperHybrid Flasher" ]] && [ -d "$work_dir/COS_FILES_HERE" ] && echo "Removing stray COS_FILES_HERE for 13 SuperHybrid CN..." && rm -rf "$work_dir/COS_FILES_HERE"
-fi
-
-# Expose for next steps
 echo "WORK_DIR=$work_dir" >> "$GITHUB_ENV"
 
 
