@@ -63,7 +63,7 @@ get_bloat_folder () {
 }
 
 # ------------------------------
-#     Helper: Get OS subtree
+#  Helper: Calculate oos or cos
 # ------------------------------
 
 get_os_subtree () {
@@ -93,16 +93,8 @@ copy_or_download () {
 }
 
 # -----------------------------
-#       Inputs / Paths
+#      Device Configuration
 # -----------------------------
-
-dev_raw="$DEV"
-
-if [[ "$dev_raw" =~ (Ace6T|Ace6|Ace5Pro|Ace5|13T|13S|13R|13|15R|Pad3) ]]; then
-  dev="${BASH_REMATCH[1]}"
-else
-  dev="${dev_raw%% *}"
-fi
 
 ftype="$FTYPE"
 region="$REGION"
