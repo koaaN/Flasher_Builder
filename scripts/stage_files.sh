@@ -172,6 +172,7 @@ mkdir -p "$OUT_DIR"
 # -----------------------------
 #        Add otaripper
 # -----------------------------
+
 echo "Adding Otaripper"
 [ -f "$root/otaripper/otaripper" ] && cp -f "$root/otaripper/otaripper" "$OUT_DIR/" && chmod +x "$OUT_DIR/otaripper"
 [ -n "${BUILDER_SH:-}" ] && [ -f "$builder_dir/$BUILDER_SH" ] && cp -f "$builder_dir/$BUILDER_SH" "$OUT_DIR/" && chmod +x "$OUT_DIR/$BUILDER_SH"
@@ -179,6 +180,7 @@ echo "Adding Otaripper"
 # -----------------------------
 #        Working folder
 # -----------------------------
+
 echo "Calculating Working Folder"
 case "$ftype" in
   "SuperHybrid Flasher")
@@ -281,14 +283,30 @@ if [[ "$ftype" =~ Super ]]; then
   fi
   
   # -----------------------------
-  # OP13 Signal-Fix (SuperHybrid)
+  #    Super: OP13 Signal-Fix
   # -----------------------------
 
   if [[ "$dev" == "13" && "$ftype" == "SuperHybrid Flasher" && "$region" != "CN" ]]; then
     repo_cos="$root/bloat/13/COS_FILES_HERE"
-    [[ -d "$repo_cos" ]] && { cos_here="$work_dir/COS_FILES_HERE"; mkdir -p "$cos_here"; for f in my_region.img oplusstanvbk.img; do [ -f "$repo_cos/$f" ] && cp -f     "$repo_cos/$f" "$cos_here/"; done; }
-  fi
+    cos_here="$work_dir/COS_FILES_HERE"
 
+    echo "Adding OP13 Signal-fix files: $repo_cos → $cos_here"
+
+    if [[ -d "$repo_cos" ]]; then
+      mkdir -p "$cos_here"
+
+      for f in my_region.img oplusstanvbk.img; do
+        if [[ -f "$repo_cos/$f" ]]; then
+          cp -f "$repo_cos/$f" "$cos_here/"
+        else
+          echo "WARN: Missing signal-fix file: $repo_cos/$f"
+        fi
+      done
+
+    else
+      echo "WARN: Signal-fix folder not found: $repo_cos"
+    fi
+  fi
 
 # -----------------------------
 #          Super: BLOAT
@@ -395,5 +413,6 @@ fi
 
 # Expose for next steps
 echo "WORK_DIR=$work_dir" >> "$GITHUB_ENV"
+
 
 
