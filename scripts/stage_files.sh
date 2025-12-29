@@ -243,9 +243,9 @@ if [[ "$ftype" =~ Super ]]; then
   super_dir="$work_dir/Super"
   mkdir -p "$super_dir"
 
-# -----------------------------
-#      Super: Add lpmake
-# -----------------------------
+  # -----------------------------
+  #      Super: Add lpmake
+  # -----------------------------
 
   if [ -f "$root/lpmake/lpmake" ]; then
     echo "Adding lpmake to super dir"
@@ -253,9 +253,9 @@ if [[ "$ftype" =~ Super ]]; then
     chmod +x "$super_dir/lpmake"
   fi
 
-# -----------------------------
-#   Super: Decide Super_Packer
-# -----------------------------
+  # -----------------------------
+  #   Super: Decide Super_Packer
+  # -----------------------------
 
   if [[ "$region" == "CN" ]]; then
     packer="super_cos.sh"
@@ -263,10 +263,9 @@ if [[ "$ftype" =~ Super ]]; then
     packer="super_oos.sh"
   fi
 
-# -----------------------------
-#      Super: Packer path
-# -----------------------------
-
+  # -----------------------------
+  #      Super: Packer path
+  # -----------------------------
 
   pdir="$root/super_packers/$dev"
   script="$pdir/$packer"
@@ -279,31 +278,10 @@ if [[ "$ftype" =~ Super ]]; then
     echo "ERROR: Missing $packer for $dev at $script" >&2
     exit 1
   fi
-  
+
   # -----------------------------
-  # OP13 Signal-Fix (SuperHybrid)
+  #          Super: BLOAT
   # -----------------------------
-
-if [[ "$dev" == "13" && "$ftype" == "SuperHybrid Flasher" && "$region" != "CN" ]]; then
-  repo_cos="$root/bloat/13/COS_FILES_HERE"
-  cos_here="$work_dir/COS_FILES_HERE"
-
-  echo "Adding OP13 Signal-fix files: $repo_cos → $cos_here"
-
-  if [[ -d "$repo_cos" ]]; then
-    mkdir -p "$cos_here"
-    for f in my_region.img oplusstanvbk.img; do
-      [[ -f "$repo_cos/$f" ]] && cp -f "$repo_cos/$f" "$cos_here/"
-    done
-  else
-    echo "WARN: Signal-fix folder not found: $repo_cos"
-  fi
-fi
-
-
-# -----------------------------
-#          Super: BLOAT
-# -----------------------------
 
   bloat_folder="$(get_bloat_folder "$dev" "$region")"
   echo "Adding bloat"
@@ -318,7 +296,28 @@ fi
   else
     copy_bloat_from_folder "$bloat_base" "$bloat_folder" "$super_dir"
   fi
+
+  # -----------------------------
+  # OP13 Signal-Fix (SuperHybrid)
+  # -----------------------------
+
+  if [[ "$dev" == "13" && "$ftype" == "SuperHybrid Flasher" && "$region" != "CN" ]]; then
+    repo_cos="$root/bloat/13/COS_FILES_HERE"
+    cos_here="$work_dir/COS_FILES_HERE"
+
+    echo "Adding OP13 Signal-fix files: $repo_cos → $cos_here"
+
+    if [[ -d "$repo_cos" ]]; then
+      mkdir -p "$cos_here"
+      for f in my_region.img oplusstanvbk.img; do
+        [[ -f "$repo_cos/$f" ]] && cp -f "$repo_cos/$f" "$cos_here/"
+      done
+    else
+      echo "WARN: Signal-fix folder not found: $repo_cos"
+    fi
+  fi
 fi
+
 
 
 # -----------------------------
@@ -406,4 +405,5 @@ fi
 
 # Expose for next steps
 echo "WORK_DIR=$work_dir" >> "$GITHUB_ENV"
+
 
