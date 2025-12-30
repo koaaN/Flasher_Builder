@@ -173,6 +173,8 @@ jobs:
           val="${version_line#version_name=}"
           numeric="$(printf "%s" "$val" | grep -oE '[0-9]+(\.[0-9]+){1,4}' | awk '{ print length, $0 }' | sort -nr | head -n1 | cut -d" " -f2-)"
           [ -n "$numeric" ] || { echo "Could not parse numeric version from '$val'"; exit 1; }
+          echo "version_name=$val"
+          echo "$(printf "%s" "$content" | grep -E '^ota_version=')"
           echo "Parsed OTA version: $numeric"
           echo "OTA_VERSION=$numeric" >> "$GITHUB_ENV"
           
