@@ -432,6 +432,12 @@ jobs:
           zip_path="$zip_root/${artifact_base}.zip"
           rm -f "$zip_path"
 
+          echo "================ Packaging info ================"
+          echo "Source folder : $result_dir"
+          echo "Artifact name : $artifact_base"
+          echo "ZIP output    : $zip_path"
+          echo "================================================"
+
           cd "$result_dir"
           
           echo "================ Folder tree (max depth 8) ================"
