@@ -241,6 +241,8 @@ jobs:
             fi
 
             echo "SUPER_SIZE=$SUPER_SIZE" >> "$GITHUB_ENV"
+            
+            echo "Using SUPER_SIZE: $SUPER_SIZE"
           fi
 
           # ------------------------------------------------
