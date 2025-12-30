@@ -102,11 +102,7 @@ root="$GITHUB_WORKSPACE"
 
 echo "DEVICE='$dev' • FLASHER TYPE='$ftype' • REGION='$region'"
 
-if [[ "$FTYPE" == *Super* ]]; then
-  builder_dir="$root/build_scripts"
-else
-  builder_dir="$root/build_scripts/$dev"
-fi
+builder_dir="$root/build_scripts"
 bloat_base="$root/bloat/$dev"
 
 # -----------------------------
@@ -319,6 +315,7 @@ fi
 # ----------------------------
 
 echo "WORK_DIR=$work_dir" >> "$GITHUB_ENV"
+
 
 
 
