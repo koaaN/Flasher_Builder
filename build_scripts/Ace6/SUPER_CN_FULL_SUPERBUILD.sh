@@ -57,13 +57,6 @@ fi
 cn_bloat="$script_dir/CN_BLOAT"
 euglo_bloat="$script_dir/CN_BLOAT/OOS_FILES_HERE"
 
-if [[ ! -d "$cn_bloat" ]]; then
-  echo "WARN: CN_BLOAT nicht gefunden: $cn_bloat"
-fi
-if [[ ! -d "$euglo_bloat" ]]; then
-  echo "WARN: EUGLO_BLOAT nicht gefunden: $euglo_bloat"
-fi
-
 # 1) Super Flasher CN-Template neben die ZIP spiegeln
 echo "Copying Super Flasher CN template to build folder..."
 rm -rf "$super_dest"
@@ -155,9 +148,9 @@ shopt -u dotglob
 rm -rf "$new_folder"
 echo "Done moving files into Super Flasher CN."
 
-# 🔟 super.img packen mit super_cos.sh aus super_packers/15
-echo "Preparing COS super packer ..."
-# Packer + lpmake ins Super-Arbeitsverzeichnis legen, damit super_cos.sh LPM="$script_dir/lpmake" benutzen kann
+# 🔟 super.img packen mit super.sh aus super_packers/15
+echo "Preparing super packer ..."
+# Packer + lpmake ins Super-Arbeitsverzeichnis legen, damit super.sh LPM="$script_dir/lpmake" benutzen kann
 cp -f "$packer_src" "$super_work/super.sh"
 chmod +x "$super_work/super.sh"
 
@@ -187,6 +180,7 @@ echo "BUILD DONE!!!"
 echo "Final CN Super flasher folder:"
 
 echo "  $super_dest"
+
 
 
 
