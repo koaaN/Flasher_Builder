@@ -198,14 +198,14 @@ if [[ "$ftype" =~ Super ]]; then
 #   Super: Decide Super_Packer
 # -----------------------------
 
-  packer="super.sh"
+  packer="super_packer.sh"
 
 # -----------------------------
 #      Super: Packer path
 # -----------------------------
 
 
-  pdir="$root/super_packers"
+  pdir="$root/build_scripts"
   script="$pdir/$packer"
 
   if [[ -f "$script" ]]; then
@@ -315,6 +315,7 @@ fi
 # ----------------------------
 
 echo "WORK_DIR=$work_dir" >> "$GITHUB_ENV"
+
 
 
 
