@@ -240,8 +240,7 @@ jobs:
               SUPER_SIZE="$NON_CN_SIZE"
             fi
 
-            export SUPER_SIZE
-            echo "Using SUPER_SIZE: $SUPER_SIZE"
+            echo "SUPER_SIZE=$SUPER_SIZE" >> "$GITHUB_ENV"
           fi
 
           # ------------------------------------------------
