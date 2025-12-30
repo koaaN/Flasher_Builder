@@ -278,13 +278,9 @@ if [[ "$region" == "CN" ]]; then
   oos_here="$work_dir/OOS_FILES_HERE"
   mkdir -p "$oos_here"
 
-  case "$dev" in
-    13|13T|15|Ace5|Ace5Pro|Ace6|Ace6T)
-      preload_dir="$bloat_base/GLO_BLOAT"
-      echo "CN debloat: Copying my_preload from $preload_dir → $oos_here"
-      copy_or_download "$preload_dir" "my_preload" "$oos_here/my_preload.img"
-      ;;
-  esac
+  preload_dir="$bloat_base/GLO_BLOAT"
+  echo "CN debloat: Copying my_preload from $preload_dir → $oos_here"
+  copy_or_download "$preload_dir" "my_preload" "$oos_here/my_preload.img"
 fi
 
 # --------------------------------
