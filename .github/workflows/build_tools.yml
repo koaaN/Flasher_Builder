@@ -301,7 +301,7 @@ jobs:
           BUILDER_MAP["RegionalHybrid Flasher|13|CN"]="REGIONALHYBRID_CN_FULL_BUILD"
           
           BUILDER_MAP["RegionalHybrid Flasher|15|EU"]="REGIONALHYBRID_EU_FULL_BUILD"
-          BUILDER_MAP["RegionalHybrid Flasher|15|GLO"]="REGIONALHYBRID_GLO_FULL_BUILD"
+          BUILDER_MAP["RegionalHybrid Flasher|15|GLO"]="BUILD_REGIONAL"
           BUILDER_MAP["RegionalHybrid Flasher|15|IN"]="REGIONALHYBRID_IN_FULL_BUILD"
 
           # ===== Regional Flasher =====
