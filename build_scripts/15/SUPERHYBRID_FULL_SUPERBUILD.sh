@@ -136,7 +136,7 @@ rm -rf "$new_folder"
 # OP15 OOS EXTRA: Keep "Convert" images ONLY
 #--------------------------------------------
 
-if [[ "$dev" == "15" && "$region" != "CN" ]]; then
+if [[ "$dev" == "15" && "$REGION" != "CN" ]]; then
   echo "Cleaning OOS_FILES_HERE, Convert images ONLY"
   if [[ -d "$oos_here" ]]; then
     pushd "$oos_here" >/dev/null
