@@ -198,18 +198,14 @@ if [[ "$ftype" =~ Super ]]; then
 #   Super: Decide Super_Packer
 # -----------------------------
 
-  if [[ "$region" == "CN" ]]; then
-    packer="super_cos.sh"
-  else
-    packer="super_oos.sh"
-  fi
+  packer="super.sh"
 
 # -----------------------------
 #      Super: Packer path
 # -----------------------------
 
 
-  pdir="$root/super_packers/$dev"
+  pdir="$root/super_packers"
   script="$pdir/$packer"
 
   if [[ -f "$script" ]]; then
@@ -217,7 +213,7 @@ if [[ "$ftype" =~ Super ]]; then
     chmod +x "$super_dir/$packer"
     echo "Using super_packer: $script"
   else
-    echo "ERROR: Missing $packer for $dev at $script" >&2
+    echo "ERROR: Missing $packer at $script" >&2
     exit 1
   fi
   
