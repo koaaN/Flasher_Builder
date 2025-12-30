@@ -25,7 +25,7 @@ fi
 # Calculate working folders
 #---------------------------
 
-if [[ "$FTYPE" == "SuperHybrid Flasher" ]]; then
+if [[ "$FTYPE" == "RegionalHybrid Flasher" ]]; then
   # ===== RegionalHybrid =====
   if [[ "$REGION" == "CN" ]]; then
     reg_src="$script_dir/RegionalHybrid Flasher CN"
