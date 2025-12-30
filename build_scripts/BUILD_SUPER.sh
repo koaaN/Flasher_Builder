@@ -233,15 +233,15 @@ echo "Done moving files into SuperHybrid Flasher"
 # Pack super.img
 #----------------
 
-packer="$super_work/super.sh"
+packer="$super_work/super_packer.sh"
 if [[ ! -x "$packer" ]]; then
   echo "ERROR: Super packer script nicht gefunden/ausführbar: $packer"
-  echo "Erwarte Linux-Packer unter 'SuperHybrid Flasher/Super/super.sh'."
+  echo "Erwarte Linux-Packer unter 'SuperHybrid Flasher/Super/super_packer.sh'."
   exit 1
 fi
 
 echo "Packing super.img"
-( cd "$super_work" && bash "./super.sh" )
+( cd "$super_work" && bash "./super_packer.sh" )
 
 #-------------------------------
 # Move super.img to $super_dest
