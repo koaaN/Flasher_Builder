@@ -39,7 +39,9 @@ for p in "${parts_a[@]}"; do
     cmd+=( --image     "${p}_a=${file}" )
     added_parts+=( "$p" )
   else
-    echo "Warning: ${file} not found!"
+    if [[ "$p" != "system_dlkm_gki" && "$p" != "system_dlkm_oki" ]]; then
+      echo "Warning: ${file} not found!"
+    fi
   fi
 done
 
