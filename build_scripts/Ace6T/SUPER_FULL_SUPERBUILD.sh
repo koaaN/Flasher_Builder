@@ -104,6 +104,18 @@ done < <(find "$input_dir" -mindepth 1 -maxdepth 1 -type d -print0)
 
 [[ -n "$new_folder" ]] || { echo "ERROR: No new folder found after extraction"; exit 1; }
 
+#-------------------------------------------------------
+# Ace5 & Ace6T OOS EXTRA: Delete odm from extracted dir
+#-------------------------------------------------------
+
+if [[ ( "$DEV" == "Ace5" || "$DEV" == "Ace6T" ) && "$REGION" != "CN" ]]; then
+  if [[ -f "$new_folder/odm.img" ]]; then
+    echo "Removing odm.img for $DEV (ColorOS odm will be used)"
+    rm -f "$new_folder/odm.img"
+  fi
+fi
+
+
 #--------------------------------
 # Find & Move Logical Partitions
 #--------------------------------
