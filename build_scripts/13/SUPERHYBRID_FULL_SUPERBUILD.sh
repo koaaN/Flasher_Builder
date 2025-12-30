@@ -81,16 +81,16 @@ rm -rf "$new_folder"
 
 echo "Done moving files into Super Flasher"
 
-# 11) super.img packen (Super/super_oos.sh wird im Template erwartet)
-packer="$super_work/super_oos.sh"
+# 11) super.img packen (Super/super.sh wird im Template erwartet)
+packer="$super_work/super.sh"
 if [[ ! -x "$packer" ]]; then
   echo "ERROR: Super packer script nicht gefunden/ausführbar: $packer"
-  echo "Erwarte Linux-Packer unter 'SuperHybrid Flasher/Super/super_oos.sh'."
+  echo "Erwarte Linux-Packer unter 'SuperHybrid Flasher/Super/super.sh'."
   exit 1
 fi
 
 echo "Packing super.img ..."
-( cd "$super_work" && bash "./super_oos.sh" )
+( cd "$super_work" && bash "./super.sh" )
 
 # 12) super.img ins Flasher-Root verschieben
 if [[ -f "$super_work/super.img" ]]; then
