@@ -286,7 +286,7 @@ jobs:
           BUILDER_MAP["Super Flasher|Ace5|EU"]="SUPER_OOS_FULL_SUPERBUILD"
           BUILDER_MAP["Super Flasher|Ace5|IN"]="SUPER_OOS_FULL_SUPERBUILD"
 
-          BUILDER_MAP["Super Flasher|Ace6|CN"]="SUPER_CN_FULL_SUPERBUILD"
+          BUILDER_MAP["Super Flasher|Ace6|CN"]="SUPER_FULL_SUPERBUILD"
           
           BUILDER_MAP["Super Flasher|Ace6T|CN"]="SUPER_CN_FULL_SUPERBUILD"
           BUILDER_MAP["Super Flasher|Ace6T|IN"]="SUPER_IN_FULL_SUPERBUILD"
