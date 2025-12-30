@@ -259,9 +259,9 @@ jobs:
           BUILDER_MAP["SuperHybrid Flasher|13|CN"]="SUPERHYBRID_CN_FULL_SUPERBUILD"
 
           BUILDER_MAP["SuperHybrid Flasher|15|CN"]="SUPERHYBRID_CN_FULL_SUPERBUILD"
-          BUILDER_MAP["SuperHybrid Flasher|15|EU"]="SUPERHYBRID_EU_FULL_SUPERBUILD"
-          BUILDER_MAP["SuperHybrid Flasher|15|GLO"]="SUPERHYBRID_GLO_FULL_SUPERBUILD"
-          BUILDER_MAP["SuperHybrid Flasher|15|IN"]="SUPERHYBRID_IN_FULL_SUPERBUILD"
+          BUILDER_MAP["SuperHybrid Flasher|15|EU"]="SUPERHYBRID_FULL_SUPERBUILD"
+          BUILDER_MAP["SuperHybrid Flasher|15|GLO"]="SUPERHYBRID_FULL_SUPERBUILD"
+          BUILDER_MAP["SuperHybrid Flasher|15|IN"]="SUPERHYBRID_FULL_SUPERBUILD"
 
           # ===== Super Flasher =====
           BUILDER_MAP["Super Flasher|13R|CN"]="SUPER_CN_FULL_SUPERBUILD"
