@@ -137,7 +137,7 @@ rm -rf "$new_folder"
 #--------------------------------------------
 
 if [[ "$DEV" == "15" && "$REGION" != "CN" ]]; then
-  echo "Cleaning OOS_FILES_HERE, Convert images ONLY"
+  echo "OP15: Cleaning OOS_FILES_HERE, Convert images ONLY"
   if [[ -d "$oos_here" ]]; then
     pushd "$oos_here" >/dev/null
 
