@@ -124,6 +124,7 @@ else
     mv -f "$new_folder"/* "$oos_here/" || true
   fi
   shopt -u dotglob
+fi
 
 #-------------------------------------------
 # Delete the temporary extraction directory
