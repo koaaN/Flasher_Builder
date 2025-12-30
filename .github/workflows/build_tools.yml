@@ -84,7 +84,6 @@ jobs:
 
           # Make executable
           find build_scripts   -type f -name "*.sh" -exec chmod +x {} +
-          find super_packers   -type f -name "*.sh" -exec chmod +x {} +
           find flasher_scripts -type f -name "*.sh" -exec chmod +x {} +
 
           # Binaries (if present)
