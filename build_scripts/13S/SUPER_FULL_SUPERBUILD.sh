@@ -25,17 +25,35 @@ fi
 # Calculate working folders
 #---------------------------
 
-if [[ "$REGION" == "CN" ]]; then
-  super_src="$script_dir/SuperHybrid Flasher CN"
-  super_dest="$input_dir/SuperHybrid Flasher CN"
-  super_work="$super_dest/Super"
-  cos_here="$super_dest/COS_FILES_HERE"
-  oos_here="$super_dest/OOS_FILES_HERE"
+if [[ "$FTYPE" == "SuperHybrid Flasher" ]]; then
+  # ===== SuperHybrid =====
+  if [[ "$REGION" == "CN" ]]; then
+    super_src="$script_dir/SuperHybrid Flasher CN"
+    super_dest="$input_dir/SuperHybrid Flasher CN"
+    super_work="$super_dest/Super"
+    cos_here="$super_dest/COS_FILES_HERE"
+    oos_here="$super_dest/OOS_FILES_HERE"
+  else
+    super_src="$script_dir/SuperHybrid Flasher"
+    super_dest="$input_dir/SuperHybrid Flasher"
+    super_work="$super_dest/Super"
+    oos_here="$super_dest/OOS_FILES_HERE"
+  fi
+
 else
-  super_src="$script_dir/SuperHybrid Flasher"
-  super_dest="$input_dir/SuperHybrid Flasher"
-  super_work="$super_dest/Super"
-  oos_here="$super_dest/OOS_FILES_HERE"
+  # ===== Super (non-hybrid) =====
+  if [[ "$REGION" == "CN" ]]; then
+    super_src="$script_dir/Super Flasher CN"
+    super_dest="$input_dir/Super Flasher CN"
+    super_work="$super_dest/Super"
+    cos_here="$super_dest/COS_FILES_HERE"
+    oos_here="$super_dest/OOS_FILES_HERE"
+  else
+    super_src="$script_dir/Super Flasher"
+    super_dest="$input_dir/Super Flasher"
+    super_work="$super_dest/Super"
+    oos_here="$super_dest/OOS_FILES_HERE"
+  fi
 fi
 
 
