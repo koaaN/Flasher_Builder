@@ -276,10 +276,9 @@ jobs:
           BUILDER_MAP["Super Flasher|13T|IN"]="SUPER_FULL_SUPERBUILD"
           BUILDER_MAP["Super Flasher|13T|CN"]="SUPER_FULL_SUPERBUILD"
           
-          BUILDER_MAP["Super Flasher|15R|CN"]="SUPER_CN_FULL_SUPERBUILD"
-          BUILDER_MAP["Super Flasher|15R|EU"]="SUPER_EU_FULL_SUPERBUILD"
-          BUILDER_MAP["Super Flasher|15R|GLO"]="SUPER_GLO_FULL_SUPERBUILD"
-          BUILDER_MAP["Super Flasher|15R|IN"]="SUPER_IN_FULL_SUPERBUILD"
+          BUILDER_MAP["Super Flasher|15R|EU"]="SUPER_FULL_SUPERBUILD"
+          BUILDER_MAP["Super Flasher|15R|GLO"]="SUPER_FULL_SUPERBUILD"
+          BUILDER_MAP["Super Flasher|15R|IN"]="SUPER_FULL_SUPERBUILD"
           
           BUILDER_MAP["Super Flasher|Ace5|CN"]="SUPER_CN_FULL_SUPERBUILD"
           BUILDER_MAP["Super Flasher|Ace5|GLO"]="SUPER_OOS_FULL_SUPERBUILD"
