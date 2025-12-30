@@ -29,9 +29,9 @@ if [[ ! -x "$otaripper_bin" ]]; then
   exit 1
 fi
 
-packer_src="$root_dir/super_packers/Ace6/super_cos.sh"
+packer_src="$root_dir/super_packers/super.sh"
 if [[ ! -f "$packer_src" ]]; then
-  echo "ERROR: Packer super_cos.sh nicht gefunden: $packer_src"
+  echo "ERROR: Packer super.sh nicht gefunden: $packer_src"
   exit 1
 fi
 
@@ -158,8 +158,8 @@ echo "Done moving files into Super Flasher CN."
 # 🔟 super.img packen mit super_cos.sh aus super_packers/15
 echo "Preparing COS super packer ..."
 # Packer + lpmake ins Super-Arbeitsverzeichnis legen, damit super_cos.sh LPM="$script_dir/lpmake" benutzen kann
-cp -f "$packer_src" "$super_work/super_cos.sh"
-chmod +x "$super_work/super_cos.sh"
+cp -f "$packer_src" "$super_work/super.sh"
+chmod +x "$super_work/super.sh"
 
 cp -f "$lpmake_src" "$super_work/lpmake"
 chmod +x "$super_work/lpmake"
@@ -167,7 +167,7 @@ chmod +x "$super_work/lpmake"
 echo "Packing super.img ..."
 (
   cd "$super_work"
-  ./super_cos.sh
+  ./super.sh
 )
 
 # 11) super.img ins Flasher-Root verschieben
@@ -187,5 +187,6 @@ echo "BUILD DONE!!!"
 echo "Final CN Super flasher folder:"
 
 echo "  $super_dest"
+
 
 
