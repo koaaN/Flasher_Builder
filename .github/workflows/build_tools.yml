@@ -290,8 +290,8 @@ jobs:
           BUILDER_MAP["Super Flasher|Ace6T|CN"]="SUPER_FULL_SUPERBUILD"
           BUILDER_MAP["Super Flasher|Ace6T|IN"]="SUPER_IN_FULL_SUPERBUILD"
           
-          BUILDER_MAP["Super Flasher|Pad3|GLO"]="SUPER_GLO_FULL_SUPERBUILD"
-          BUILDER_MAP["Super Flasher|Pad3|EU"]="SUPER_GLO_FULL_SUPERBUILD"
+          BUILDER_MAP["Super Flasher|Pad3|GLO"]="SUPER_FULL_SUPERBUILD"
+          BUILDER_MAP["Super Flasher|Pad3|EU"]="SUPER_FULL_SUPERBUILD"
 
           # ===== Regional Hybrid Flasher =====
           BUILDER_MAP["RegionalHybrid Flasher|13|GLO"]="REGIONALHYBRID_FULL_BUILD"
