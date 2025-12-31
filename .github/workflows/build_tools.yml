@@ -536,11 +536,6 @@ jobs:
           if [[ "$ftype" == "Super Flasher" && "$region" != "CN" && ( "$device" == "Oneplus 13T" || "$device" == "Oneplus Ace 6T" ) ]]; then
             category="OxygenOS Flashers"
             rel="$device/$category"
-
-          elif [[ "$device" == "Oneplus Ace 5 Pro" ]]; then
-            category="Regional Flashers"
-            rel="$device/$category"
-
           else
             if [[ "$ftype" =~ ^(SuperHybrid\ Flasher|Super\ Flasher)$ ]]; then
               category="Super Flashers"
