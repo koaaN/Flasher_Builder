@@ -51,7 +51,7 @@ ECHO  #################################
 pause
 
 :: Excluded files list (these should not be flashed again)
-set excluded_images=boot.img dtbo.img init_boot.img modem.img recovery.img vbmeta.img vbmeta_system.img vbmeta_vendor.img vendor_boot.img my_bigball.img my_carrier.img my_company.img my_engineering.img my_heytap.img my_manifest.img my_preload.img my_product.img my_region.img my_stock.img odm.img product.img system.img system_dlkm.img system_ext.img vendor.img vendor_dlkm.img   
+set excluded_images=boot.img dtbo.img init_boot.img modem.img recovery.img vbmeta.img vbmeta_system.img vbmeta_vendor.img vendor_boot.img my_bigball.img my_carrier.img my_company.img my_engineering.img my_heytap.img my_manifest.img my_preload.img my_product.img my_region.img my_stock.img odm.img product.img system.img system_dlkm.img system_dlkm_oki.img system_ext.img vendor.img vendor_dlkm.img   
 
 :: Loop through all .img files in COS_FILES_HERE but skip excluded images
 for %%G in (COS_FILES_HERE\*.img) do (
@@ -63,7 +63,7 @@ for %%G in (COS_FILES_HERE\*.img) do (
 )
 
 :: Define partitions list outside the IF block
-set "partitions=my_bigball my_carrier my_engineering my_heytap my_manifest my_product my_region my_stock odm product system system_dlkm system_ext vendor vendor_dlkm my_company my_preload"
+set "partitions=my_bigball my_carrier my_engineering my_heytap my_manifest my_product my_region my_stock odm product system system_dlkm system_dlkm_oki system_ext vendor vendor_dlkm my_company my_preload"
 
 :: Check if super.img exists, if not, delete, create & flash logical partitions
 if not exist "super.img" (
