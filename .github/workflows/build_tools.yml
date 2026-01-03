@@ -264,6 +264,8 @@ jobs:
           BUILDER_MAP["SuperHybrid Flasher|15|GLO"]="BUILD_SUPER"
           BUILDER_MAP["SuperHybrid Flasher|15|IN"]="BUILD_SUPER"
 
+          BUILDER_MAP["SuperHybrid Flasher|Ace6|CN"]="BUILD_SUPER"
+
           # ===== Super Flasher =====
           BUILDER_MAP["Super Flasher|13R|CN"]="BUILD_SUPER"
           BUILDER_MAP["Super Flasher|13R|GLO"]="BUILD_SUPER"
