@@ -256,7 +256,7 @@ if [[ "$ftype" =~ Super ]]; then
     done
   fi
 
-  if [[ "$dev" == "GT7Pro" && "$ftype" == "Super Flasher" && "$region" == "GLO" ]]; then    
+  if [[ "$dev" == "GT7Pro" && "$ftype" == "Super Flasher" && "$region" == "EU" ]]; then    
 
     fixes_dir="$bloat_base/FIXES"
     cos_here="$work_dir/COS_FILES_HERE"
@@ -327,6 +327,7 @@ fi
 # ----------------------------
 
 echo "WORK_DIR=$work_dir" >> "$GITHUB_ENV"
+
 
 
 
