@@ -438,11 +438,19 @@ jobs:
             esac
 
             # 🔥 Oneplus 15 + SuperHybrid Flasher + EU/GLO/IN
+            # 🔥 Oneplus 15 + SuperHybrid Flasher + EU/GLO/IN
             if [[ "$DEV" == "15" && "$FTYPE" == "SuperHybrid Flasher" ]]; then
               case "$region_code" in
                 EU)  artifact_base="${ftype_name} 15 CN2EU ${ver}" ;;
                 GLO) artifact_base="${ftype_name} 15 CN2GLO ${ver}" ;;
                 IN)  artifact_base="${ftype_name} 15 CN2IN ${ver}" ;;
+                *)   artifact_base="${ftype_name} ${region_disp} ${ver}" ;;
+              esac
+            elif [[ "$DEV" == "GT7Pro" && "$FTYPE" == "SuperHybrid Flasher" ]]; then
+              case "$region_code" in
+                EU)  artifact_base="${ftype_name} GT7Pro CN2EU ${ver}" ;;
+                GLO) artifact_base="${ftype_name} GT7Pro CN2GLO ${ver}" ;;
+                IN)  artifact_base="${ftype_name} GT7Pro CN2IN ${ver}" ;;
                 *)   artifact_base="${ftype_name} ${region_disp} ${ver}" ;;
               esac
             else
