@@ -447,7 +447,7 @@ jobs:
                 IN)  artifact_base="${ftype_name} 15 CN2IN ${ver}" ;;
                 *)   artifact_base="${ftype_name} ${region_disp} ${ver}" ;;
               esac
-            elif [[ "$DEV" == "GT7Pro" && "$FTYPE" == "SuperHybrid Flasher" ]]; then
+            elif [[ "$DEV" == "GT7Pro" && "$FTYPE" == "Super Flasher" ]]; then
               case "$region_code" in
                 EU)  artifact_base="${ftype_name} GT7Pro CN2EU ${ver}" ;;
                 GLO) artifact_base="${ftype_name} GT7Pro CN2GLO ${ver}" ;;
