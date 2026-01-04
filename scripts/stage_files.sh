@@ -256,6 +256,18 @@ if [[ "$ftype" =~ Super ]]; then
     done
   fi
 
+  if [[ "$dev" == "GT7Pro" && "$ftype" == "Super Flasher" && "$region" == "GLO" ]]; then    
+
+    fixes_dir="$bloat_base/FIXES"
+    cos_here="$work_dir/COS_FILES_HERE"
+    echo "Adding GT7 CN Fixes to: $cos_here"
+    mkdir -p "$cos_here"
+
+    for f in my_region oplusstanvbk; do
+      copy_or_download "$fixes_dir" "$f" "$cos_here/$f.img"
+    done
+  fi
+
   # -----------------------------
   #          Super: BLOAT
   # -----------------------------
@@ -315,6 +327,7 @@ fi
 # ----------------------------
 
 echo "WORK_DIR=$work_dir" >> "$GITHUB_ENV"
+
 
 
 
