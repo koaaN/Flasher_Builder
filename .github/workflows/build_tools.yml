@@ -19,6 +19,7 @@ on:
           - Oneplus Ace 6
           - Oneplus Ace 6T
           - Oneplus Pad 3
+          - Realme GT 7 Pro
         default: Oneplus 13
       flasher_type:
         description: "Flasher type"
@@ -204,6 +205,7 @@ jobs:
             ["Oneplus Ace 6"]="Ace6"
             ["Oneplus Ace 6T"]="Ace6T"
             ["Oneplus Pad 3"]="Pad3"
+            ["Realme GT 7 Pro"]="GT7Pro"
           )
           
           dev="${DEV_MAP[$dev_disp]}"
@@ -225,6 +227,7 @@ jobs:
               ["15"]="18907922432 18907922432"
               ["15R"]="16231956480 16231956480"
               ["Pad3"]="11711471616 11711471616"
+              ["GT7Pro"]="15569256448 15569256448"
             )
 
             entry="${SUPER_SIZE_TABLE[$dev]}"
@@ -295,6 +298,8 @@ jobs:
           
           BUILDER_MAP["Super Flasher|Pad3|GLO"]="BUILD_SUPER"
           BUILDER_MAP["Super Flasher|Pad3|EU"]="BUILD_SUPER"
+
+          BUILDER_MAP["Super Flasher|GT7Pro|CN"]="BUILD_SUPER"
 
           # ===== Regional Hybrid Flasher =====
           BUILDER_MAP["RegionalHybrid Flasher|13|GLO"]="BUILD_REGIONAL"
@@ -428,6 +433,7 @@ jobs:
               "Oneplus Ace 6")  device_model="A6" ;;
               "Oneplus Ace 6T")  device_model="A6T" ;;
               "Oneplus Pad 3")  device_model="Pad3" ;;
+              "Realme GT 7 Pro")  device_model="GT7Pro" ;;
               *)   device_model="$dev_disp" ;;
             esac
 
