@@ -300,6 +300,7 @@ jobs:
           BUILDER_MAP["Super Flasher|Pad3|EU"]="BUILD_SUPER"
 
           BUILDER_MAP["Super Flasher|GT7Pro|CN"]="BUILD_SUPER"
+          BUILDER_MAP["Super Flasher|GT7Pro|EU"]="BUILD_SUPER"
 
           # ===== Regional Hybrid Flasher =====
           BUILDER_MAP["RegionalHybrid Flasher|13|GLO"]="BUILD_REGIONAL"
