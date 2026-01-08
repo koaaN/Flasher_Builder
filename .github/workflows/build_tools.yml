@@ -266,6 +266,7 @@ jobs:
           BUILDER_MAP["SuperHybrid Flasher|15|EU"]="BUILD_SUPER"
           BUILDER_MAP["SuperHybrid Flasher|15|GLO"]="BUILD_SUPER"
           BUILDER_MAP["SuperHybrid Flasher|15|IN"]="BUILD_SUPER"
+          BUILDER_MAP["SuperHybrid Flasher|15|NA"]="BUILD_SUPER"
 
           BUILDER_MAP["SuperHybrid Flasher|Ace6|CN"]="BUILD_SUPER"
 
@@ -312,6 +313,7 @@ jobs:
           BUILDER_MAP["RegionalHybrid Flasher|15|EU"]="BUILD_REGIONAL"
           BUILDER_MAP["RegionalHybrid Flasher|15|GLO"]="BUILD_REGIONAL"
           BUILDER_MAP["RegionalHybrid Flasher|15|IN"]="BUILD_REGIONAL"
+          BUILDER_MAP["RegionalHybrid Flasher|15|NA"]="BUILD_REGIONAL"
 
           # ===== Regional Flasher =====
           BUILDER_MAP["Regional Flasher|Ace5|CN"]="BUILD_REGIONAL"
