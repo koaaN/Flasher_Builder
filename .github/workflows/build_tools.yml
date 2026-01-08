@@ -326,6 +326,8 @@ jobs:
           BUILDER_MAP["Regional Flasher|13S|IN"]="BUILD_REGIONAL"
           
           BUILDER_MAP["Regional Flasher|15R|IN"]="BUILD_REGIONAL"
+          BUILDER_MAP["Regional Flasher|15R|GLO"]="BUILD_REGIONAL"
+          BUILDER_MAP["Regional Flasher|15R|EU"]="BUILD_REGIONAL"
 
           # ------------------------------------------------
           key="$ftype|$dev|$region"
