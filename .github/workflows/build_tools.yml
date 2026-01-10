@@ -18,6 +18,7 @@ on:
           - Oneplus Ace 5 Pro
           - Oneplus Ace 6
           - Oneplus Ace 6T
+          - Oneplus Pad 2 PRO
           - Oneplus Pad 3
           - Realme GT 7 Pro
         default: Oneplus 13
@@ -204,6 +205,7 @@ jobs:
             ["Oneplus Ace 5 Pro"]="Ace5Pro"
             ["Oneplus Ace 6"]="Ace6"
             ["Oneplus Ace 6T"]="Ace6T"
+            ["Oneplus Pad 2 Pro"]="Pad2Pro"
             ["Oneplus Pad 3"]="Pad3"
             ["Realme GT 7 Pro"]="GT7Pro"
           )
@@ -226,6 +228,7 @@ jobs:
               ["Ace6T"]="16886267904 16886267904"
               ["15"]="18907922432 18907922432"
               ["15R"]="16231956480 16231956480"
+              ["Pad2Pro"]="13304619008 13304619008"
               ["Pad3"]="11711471616 11711471616"
               ["GT7Pro"]="15569256448 15569256448"
             )
@@ -296,6 +299,10 @@ jobs:
           
           BUILDER_MAP["Super Flasher|Ace6T|CN"]="BUILD_SUPER"
           BUILDER_MAP["Super Flasher|Ace6T|IN"]="BUILD_SUPER"
+
+          BUILDER_MAP["Super Flasher|Pad2Pro|GLO"]="BUILD_SUPER"
+          BUILDER_MAP["Super Flasher|Pad2Pro|EU"]="BUILD_SUPER"
+          BUILDER_MAP["Super Flasher|Pad2Pro|CN"]="BUILD_SUPER"
           
           BUILDER_MAP["Super Flasher|Pad3|GLO"]="BUILD_SUPER"
           BUILDER_MAP["Super Flasher|Pad3|EU"]="BUILD_SUPER"
@@ -437,6 +444,7 @@ jobs:
               "Oneplus Ace 5 Pro")  device_model="A5P" ;;
               "Oneplus Ace 6")  device_model="A6" ;;
               "Oneplus Ace 6T")  device_model="A6T" ;;
+              "Oneplus Pad 2 Pro")  device_model="Pad2Pro" ;;
               "Oneplus Pad 3")  device_model="Pad3" ;;
               "Realme GT 7 Pro")  device_model="GT7Pro" ;;
               *)   device_model="$dev_disp" ;;
