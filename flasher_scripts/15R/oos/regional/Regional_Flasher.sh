@@ -25,9 +25,6 @@ echo "         script inspired by FTH PHONE 1902 and Venkayy"
 echo
 echo "************************      START FLASH     ************************"
 
-# Make sure slot A is active
-"$FASTBOOT" --set-active=a
-
 ###############################################################################
 # Flash the fastboot images first (from OOS_FILES_HERE)
 ###############################################################################
@@ -168,6 +165,9 @@ if [[ ! -f super.img ]]; then
 else
   echo "super.img found. Logical partition flashes skipped..."
 fi
+
+# Change active slot to a
+"$FASTBOOT" --set-active=a
 
 ###############################################################################
 # Final messages / wipe decisions
