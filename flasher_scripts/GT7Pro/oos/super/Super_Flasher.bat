@@ -12,7 +12,6 @@ set fastboot=Platform-Tools\fastboot.exe
 if not exist "%fastboot%" echo "%fastboot%" not found. & pause & exit /B 1
 set file=vendor_boot
 echo.************************      START FLASH     ************************
-%fastboot% --set-active=a
 
 :: Flash the fastboot images first
 %fastboot% flash boot_a OOS_FILES_HERE\boot.img
@@ -79,6 +78,9 @@ if not exist "super.img" (
     echo super.img found. Logical partition flashes skipped...
 )
 
+:: Change slot to a
+%fastboot% --set-active=a
+
 echo.********************** CHECK ABOVE FOR ERRORS **************************
 echo.************** IF ERRORS, DO NOT BOOT INTO SYSTEM **********************
 
@@ -135,6 +137,7 @@ if errorlevel 2 (
 )
 
 pause
+
 
 
 
