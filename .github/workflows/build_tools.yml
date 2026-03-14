@@ -14,6 +14,7 @@ on:
           - Oneplus 13T
           - Oneplus 15
           - Oneplus 15R
+          - Oneplus 15T
           - Oneplus Ace 5
           - Oneplus Ace 5 Pro
           - Oneplus Ace 6
@@ -201,6 +202,7 @@ jobs:
             ["Oneplus 13T"]="13T"
             ["Oneplus 15"]="15"
             ["Oneplus 15R"]="15R"
+            ["Oneplus 15T"]="15T"
             ["Oneplus Ace 5"]="Ace5"
             ["Oneplus Ace 5 Pro"]="Ace5Pro"
             ["Oneplus Ace 6"]="Ace6"
@@ -228,6 +230,7 @@ jobs:
               ["Ace6T"]="16886267904 16886267904"
               ["15"]="18907922432 18907922432"
               ["15R"]="16231956480 16231956480"
+              ["15T"]="18136170496 18136170496"
               ["Pad2Pro"]="13304619008 13304619008"
               ["Pad3"]="11711471616 11711471616"
               ["GT7Pro"]="15569256448 15569256448"
@@ -287,6 +290,8 @@ jobs:
           BUILDER_MAP["Super Flasher|15R|EU"]="BUILD_SUPER"
           BUILDER_MAP["Super Flasher|15R|GLO"]="BUILD_SUPER"
           BUILDER_MAP["Super Flasher|15R|IN"]="BUILD_SUPER"
+
+          BUILDER_MAP["Super Flasher|15T|CN"]="BUILD_SUPER"
           
           BUILDER_MAP["Super Flasher|Ace5|CN"]="BUILD_SUPER"
           BUILDER_MAP["Super Flasher|Ace5|GLO"]="BUILD_SUPER"
@@ -441,6 +446,7 @@ jobs:
               "Oneplus 13T")  device_model="13T" ;;
               "Oneplus 15")  device_model="15" ;;
               "Oneplus 15R")  device_model="15R" ;;
+              "Oneplus 15T")  device_model="15T" ;;
               "Oneplus Ace 5")  device_model="A5" ;;
               "Oneplus Ace 5 Pro")  device_model="A5P" ;;
               "Oneplus Ace 6")  device_model="A6" ;;
@@ -581,6 +587,7 @@ jobs:
           no_region_devices=(
             "Oneplus 13S"
             "Oneplus 13T"
+            "Oneplus 15T"
             "Oneplus Ace 5"
             "Oneplus Ace 5 Pro"
             "Oneplus Ace 6"
@@ -701,7 +708,7 @@ jobs:
               chat_id="-1001902568181"
               chat_name="Oneplus 13 Group"
               ;;
-            "Oneplus 15"|"Oneplus 15R"|"Oneplus Ace 6"|"Oneplus Ace 6T")
+            "Oneplus 15"|"Oneplus 15R"|"Oneplus 15T"|"Oneplus Ace 6"|"Oneplus Ace 6T")
               chat_id="-1001903485514"
               chat_name="Oneplus 15 Group"
               ;;
