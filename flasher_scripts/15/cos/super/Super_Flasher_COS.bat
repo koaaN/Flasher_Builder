@@ -15,24 +15,24 @@ set file=vendor_boot
 echo.************************      START FLASH     ************************
 
 :: Flash the fastboot images first
-%fastboot% flash boot_a OOS_FILES_HERE\boot.img
-%fastboot% flash boot_b OOS_FILES_HERE\boot.img
-%fastboot% flash dtbo_a OOS_FILES_HERE\dtbo.img
-%fastboot% flash dtbo_b OOS_FILES_HERE\dtbo.img
-%fastboot% flash init_boot_a OOS_FILES_HERE\init_boot.img
-%fastboot% flash init_boot_b OOS_FILES_HERE\init_boot.img
-%fastboot% flash modem_a OOS_FILES_HERE\modem.img
-%fastboot% flash modem_b OOS_FILES_HERE\modem.img
-%fastboot% flash recovery_a OOS_FILES_HERE\recovery.img
-%fastboot% flash recovery_b OOS_FILES_HERE\recovery.img
-%fastboot% flash vbmeta_a OOS_FILES_HERE\vbmeta.img
-%fastboot% flash vbmeta_b OOS_FILES_HERE\vbmeta.img
-%fastboot% flash vbmeta_system_a OOS_FILES_HERE\vbmeta_system.img
-%fastboot% flash vbmeta_system_b OOS_FILES_HERE\vbmeta_system.img
-%fastboot% flash vbmeta_vendor_a OOS_FILES_HERE\vbmeta_vendor.img
-%fastboot% flash vbmeta_vendor_b OOS_FILES_HERE\vbmeta_vendor.img
-%fastboot% flash vendor_boot_a OOS_FILES_HERE\vendor_boot.img
-%fastboot% flash vendor_boot_b OOS_FILES_HERE\vendor_boot.img
+%fastboot% flash boot_a COS_FILES_HERE\boot.img
+%fastboot% flash boot_b COS_FILES_HERE\boot.img
+%fastboot% flash dtbo_a COS_FILES_HERE\dtbo.img
+%fastboot% flash dtbo_b COS_FILES_HERE\dtbo.img
+%fastboot% flash init_boot_a COS_FILES_HERE\init_boot.img
+%fastboot% flash init_boot_b COS_FILES_HERE\init_boot.img
+%fastboot% flash modem_a COS_FILES_HERE\modem.img
+%fastboot% flash modem_b COS_FILES_HERE\modem.img
+%fastboot% flash recovery_a COS_FILES_HERE\recovery.img
+%fastboot% flash recovery_b COS_FILES_HERE\recovery.img
+%fastboot% flash vbmeta_a COS_FILES_HERE\vbmeta.img
+%fastboot% flash vbmeta_b COS_FILES_HERE\vbmeta.img
+%fastboot% flash vbmeta_system_a COS_FILES_HERE\vbmeta_system.img
+%fastboot% flash vbmeta_system_b COS_FILES_HERE\vbmeta_system.img
+%fastboot% flash vbmeta_vendor_a COS_FILES_HERE\vbmeta_vendor.img
+%fastboot% flash vbmeta_vendor_b COS_FILES_HERE\vbmeta_vendor.img
+%fastboot% flash vendor_boot_a COS_FILES_HERE\vendor_boot.img
+%fastboot% flash vendor_boot_b COS_FILES_HERE\vendor_boot.img
 
 :: Check if super.img exists
 if exist "super.img" (
@@ -50,8 +50,8 @@ pause
 :: Excluded files list (these should not be flashed again)
 set excluded_images=boot.img dtbo.img init_boot.img modem.img recovery.img vbmeta.img vbmeta_system.img vbmeta_vendor.img vendor_boot.img my_bigball.img my_carrier.img my_company.img my_engineering.img my_heytap.img my_manifest.img my_preload.img my_product.img my_region.img my_stock.img odm.img product.img system.img system_dlkm.img system_dlkm_oki.img system_ext.img vendor.img vendor_dlkm.img   
 
-:: Loop through all .img files in OOS_FILES_HERE but skip excluded images
-for %%G in (OOS_FILES_HERE\*.img) do (
+:: Loop through all .img files in COS_FILES_HERE but skip excluded images
+for %%G in (COS_FILES_HERE\*.img) do (
     echo %excluded_images% | findstr /i /c:"%%~nxG" >nul
     if errorlevel 1 (
         echo Flashing %%~nG...
@@ -71,7 +71,7 @@ if not exist "super.img" (
         %fastboot% delete-logical-partition %%P_b-cow
         %fastboot% create-logical-partition %%P_a 1
         %fastboot% create-logical-partition %%P_b 1
-        %fastboot% flash %%P_a OOS_FILES_HERE\%%P.img
+        %fastboot% flash %%P_a COS_FILES_HERE\%%P.img
     )
 )
 
