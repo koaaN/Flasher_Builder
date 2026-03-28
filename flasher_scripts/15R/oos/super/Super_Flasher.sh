@@ -20,7 +20,7 @@ fi
 echo "**********************************************************************"
 echo
 echo "                Oneplus 15R - OOS Super Flasher"
-echo "          Packaged by docnok63, Jonas Salo and Daniel"
+echo "              Packaged by docnok63, Jonas Salo and Daniel"
 echo "         script inspired by FTH PHONE 1902 and Venkayy"
 echo
 echo "************************      START FLASH     ************************"
@@ -54,16 +54,14 @@ echo "************************      START FLASH     ************************"
 
 if [[ -f super.img ]]; then
   "$FASTBOOT" flash super super.img
-else
-  echo "super.img not found. Skipping super.img..."
 fi
 
 ###############################################################################
 # Reboot to fastbootd
 ###############################################################################
 
-"$FASTBOOT" reboot fastboot
 echo "  *******************      REBOOTING TO FASTBOOTD     *******************"
+"$FASTBOOT" reboot fastboot
 echo "  #################################"
 echo "  #     Hit English on Phone      #"
 echo "  #################################"
@@ -150,24 +148,26 @@ PARTITIONS=(
   my_preload
 )
 
+# Delete, create & flash logical partitions
 if [[ ! -f super.img ]]; then
-  # Delete, create & flash logical partitions
   for p in "${PARTITIONS[@]}"; do
-    "$FASTBOOT" delete-logical-partition "${p}_a"      || true
-    "$FASTBOOT" delete-logical-partition "${p}_b"      || true
-    "$FASTBOOT" delete-logical-partition "${p}_a-cow"  || true
-    "$FASTBOOT" delete-logical-partition "${p}_b-cow"  || true
+    "$FASTBOOT" delete-logical-partition "${p}_a"
+    "$FASTBOOT" delete-logical-partition "${p}_b"
+    "$FASTBOOT" delete-logical-partition "${p}_a-cow"
+    "$FASTBOOT" delete-logical-partition "${p}_b-cow"
 
     "$FASTBOOT" create-logical-partition "${p}_a" 1
     "$FASTBOOT" create-logical-partition "${p}_b" 1
-    "$FASTBOOT" flash "$p" "OOS_FILES_HERE/${p}.img"
+    "$FASTBOOT" flash "${p}_a" "OOS_FILES_HERE/${p}.img"
   done
-else
-  echo "super.img found. Logical partition flashes skipped..."
 fi
 
+###############################################################################
 # Change active slot to a
+###############################################################################
+
 "$FASTBOOT" --set-active=a
+"$FASTBOOT" reboot fastboot
 
 ###############################################################################
 # Final messages / wipe decisions
@@ -177,40 +177,19 @@ echo "********************** CHECK ABOVE FOR ERRORS **************************"
 echo "************** IF ERRORS, DO NOT BOOT INTO SYSTEM **********************"
 
 # If super.img was NOT flashed, ask wipe question and then exit
-if [[ ! -f super.img ]]; then
-  read -rp "Do you want to wipe data? (y/N): " ans
-  case "$ans" in
-    [yY]*)
-      echo "****************** FLASHING COMPLETE *****************"
-      echo "Wipe data by tapping Format Data on the screen, enter the code, and press format data."
-      echo "Phone will automatically reboot into Android after wipe is done."
-      read -rp "Press Enter when you're done..." _
-      exit 0
-      ;;
-    *)
-      echo "*********************** NO NEED TO WIPE DATA ****************************"
-      read -rp "Flashing complete. Press Enter to reboot the phone to Android..." _
-      "$FASTBOOT" reboot
-      exit 0
-      ;;
-  esac
-fi
-
-# If super.img *was* flashed, ask the ColorOS / wipe question
-echo "Are you flashing from ColorOS or Want to WIPE DATA?? (y/n)"
-read -r ans2
-
-case "$ans2" in
-  [nN]*)
-    echo "*********************** NO NEED TO WIPE DATA ****************************"
-    read -rp "Flashing complete. Press Enter to reboot the phone to Android..." _
-    "$FASTBOOT" reboot
-    ;;
-  *)
+read -rp "Do you want to wipe data? (y/N): " ans
+case "$ans" in
+  [yY]*)
     echo "****************** FLASHING COMPLETE *****************"
     echo "Wipe data by tapping Format Data on the screen, enter the code, and press format data."
     echo "Phone will automatically reboot into Android after wipe is done."
     read -rp "Press Enter when you're done..." _
+    exit 0
+    ;;
+  *)
+    echo "*********************** NO NEED TO WIPE DATA ****************************"
+    read -rp "Flashing complete. Press Enter to reboot the phone to Android..." _
+    "$FASTBOOT" reboot
+    exit 0
     ;;
 esac
-
