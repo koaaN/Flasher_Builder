@@ -1,10 +1,10 @@
-v@echo off
+@echo off
 title COS Super Flasher
 echo.**********************************************************************
 echo.
-echo.           Oneplus ACE 6T - COS Super Flasher                      
-echo.       Packaged by docnok63, Jonas Salo ^& Daniel
-echo.      script inspired by FTH PHONE 1902 and Venkay
+echo.              Oneplus ACE 6T - COS Super Flasher                      
+echo.             Packaged by docnok63, Jonas Salo ^& Daniel
+echo.        script inspired by FTH PHONE 1902 and Venkay
 echo.
 @echo off
 
@@ -37,15 +37,13 @@ echo.************************      START FLASH     ************************
 :: Check if super.img exists
 if exist "super.img" (
     %fastboot% flash super super.img
-) else (
-    echo super.img not found. Skipping super.img...
 )
 
 :: Reboot to fastbootd
-%fastboot% reboot fastboot
 echo.  *******************      REBOOTING TO FASTBOOTD     *******************
+%fastboot% reboot fastboot
 ECHO  #################################
-ECHO  # Hit English on Phone          #
+ECHO  #     Hit English on Phone      #
 ECHO  #################################
 pause
 
@@ -73,17 +71,9 @@ if not exist "super.img" (
         %fastboot% delete-logical-partition %%P_b-cow
         %fastboot% create-logical-partition %%P_a 1
         %fastboot% create-logical-partition %%P_b 1
-        %fastboot% flash %%P COS_FILES_HERE\%%P.img
+        %fastboot% flash %%P_a COS_FILES_HERE\%%P.img
     )
-) else (
-    echo super.img found. Logical partition flashes skipped...
 )
-
-:: Change slot to a
-%fastboot% --set-active=a
-
-echo.********************** CHECK ABOVE FOR ERRORS **************************
-echo.************** IF ERRORS, DO NOT BOOT INTO SYSTEM **********************
 
 :: Ask if user wants full Chinese bloat or not
     choice /C YN /M "Do you want full chinese bloat?:"
@@ -96,7 +86,7 @@ if errorlevel 2 (
     %fastboot% delete-logical-partition my_preload_b-cow
     %fastboot% create-logical-partition my_preload_a 1
     %fastboot% create-logical-partition my_preload_b 1
-    %fastboot% flash my_preload OOS_FILES_HERE\my_preload.img
+    %fastboot% flash my_preload_a OOS_FILES_HERE\my_preload.img
     echo ********* Debloat image flashed, Hit any key to continue *********
     pause
 ) else (
@@ -105,41 +95,28 @@ if errorlevel 2 (
     pause
 )
 
+:: Change slot to a
+%fastboot% --set-active=a
+%fastboot% reboot fastboot
+
+echo.********************** CHECK ABOVE FOR ERRORS **************************
+echo.************** IF ERRORS, DO NOT BOOT INTO SYSTEM **********************
+
 :: If super.img was not flashed, exit here but keep window open
-if not exist "super.img" (
-    choice /C YN /M "Do you want to wipe data?:" 
+choice /C YN /M "Do you want to wipe data?:"
 
-    if errorlevel 2 (
-        echo *********************** NO NEED TO WIPE DATA ****************************
-        echo ***** Flashing complete. Hit any key to reboot the phone to Android *****
-        pause
-        %fastboot% reboot
-        exit /B 0
-    )
-
-    if errorlevel 1 (
-        echo ****************** FLASHING COMPLETE *****************
-        echo Wipe data by tapping Format Data on the screen, enter the code, and press format data.
-        echo Phone will automatically reboot into Android after wipe is done.
-        pause
-        exit /B 0
-    )
-)
-
-:: Ask if flashing from ColorOS (press Y for yes or N for no)
-echo Are you flashing from ColorOS or Want to WIPE DATA?? (y/n)
-choice /c YN /n > nul
-
-:: Check if the user pressed 'y' or 'n'
 if errorlevel 2 (
     echo *********************** NO NEED TO WIPE DATA ****************************
     echo ***** Flashing complete. Hit any key to reboot the phone to Android *****
     pause
     %fastboot% reboot
-) else if errorlevel 1 (
+    exit /B 0
+)
+
+if errorlevel 1 (
     echo ****************** FLASHING COMPLETE *****************
     echo Wipe data by tapping Format Data on the screen, enter the code, and press format data.
     echo Phone will automatically reboot into Android after wipe is done.
+    pause
+    exit /B 0
 )
-
-pause
