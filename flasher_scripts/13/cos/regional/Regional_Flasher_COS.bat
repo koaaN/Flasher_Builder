@@ -73,7 +73,7 @@ if not exist "super.img" (
         %fastboot% delete-logical-partition %%P_b-cow
         %fastboot% create-logical-partition %%P_a 1
         %fastboot% create-logical-partition %%P_b 1
-        %fastboot% flash %%P COS_FILES_HERE\%%P.img
+        %fastboot% flash %%P_a COS_FILES_HERE\%%P.img
     )
 ) else (
     echo super.img found. Logical partition flashes skipped...
