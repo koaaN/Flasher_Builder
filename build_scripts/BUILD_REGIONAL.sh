@@ -80,7 +80,7 @@ done < <(find "$input_dir" -mindepth 1 -maxdepth 1 -type d -print0)
 
 echo "Running otaripper"
 pushd "$input_dir" >/dev/null
-"$otaripper_bin" "$input_file"
+"$otaripper_bin" "$input_file" -n
 popd >/dev/null
 
 #----------------------
