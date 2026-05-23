@@ -685,6 +685,7 @@ jobs:
       # ===============================================================================
       # ===============================================================================
 
+
       - name: Telegram notify
         if: ${{ inputs.upload_to == 'DS_FTP' }}
         shell: bash
@@ -695,6 +696,8 @@ jobs:
 
           device_disp="${{ inputs.device }}"
           region="$REGION"
+          type="$FTYPE"
+          version="${OTA_VERSION:-UNKNOWN}"
           artifact="$ARTIFACT_NAME"
           ftp_rel_dir="$FTP_UPLOAD_DIR"
 
@@ -705,11 +708,11 @@ jobs:
           chat_name=""
           case "$device_disp" in
             "Oneplus 13"|"Oneplus 13R"|"Oneplus 13S"|"Oneplus 13T"|"Oneplus Ace 5"|"Oneplus Ace 5 Pro")
-              chat_id="-1001902568181"
+              chat_id="193732076"
               chat_name="Oneplus 13 Group"
               ;;
             "Oneplus 15"|"Oneplus 15R"|"Oneplus 15T"|"Oneplus Ace 6"|"Oneplus Ace 6T")
-              chat_id="-1001903485514"
+              chat_id="193732076"
               chat_name="Oneplus 15 Group"
               ;;
             *)
@@ -754,6 +757,8 @@ jobs:
           echo "================ Telegram notify (dry info) ================"
           echo "Device:   $device_disp"
           echo "Region:   $region  -> img_folder=$img_folder"
+          echo "Type:     $type"
+          echo "Version:  $version"
           echo "Artifact: $artifact"
           echo "Target:   $chat_name ($chat_id)"
           echo "ZIP:      $zip_link"
@@ -771,8 +776,8 @@ jobs:
           fi
 
           payload_path="$RUNNER_TEMP/tg_payload.json"
-          CHAT_ID="$chat_id" DEVICE="$device_disp" ARTIFACT="$artifact" ZIP="$zip_link" BOOT="$boot_link" INIT="$init_boot_link" OUT="$payload_path" \
-          python3 -c 'import os,json; p={"chat_id":int(os.environ["CHAT_ID"]),"text":"✨ <b>New Build released</b> ✨\n"+os.environ["DEVICE"]+" <b>"+os.environ["ARTIFACT"]+"</b>","parse_mode":"HTML","disable_web_page_preview":True,"reply_markup":{"inline_keyboard":[[{"text":"⬇️ Download ZIP","url":os.environ["ZIP"]}],[{"text":"📦 boot.img","url":os.environ["BOOT"]},{"text":"📦 init_boot.img","url":os.environ["INIT"]}]]}}; open(os.environ["OUT"],"w",encoding="utf-8").write(json.dumps(p, ensure_ascii=False, separators=(",",":")))'
+          CHAT_ID="$chat_id" DEVICE="$device_disp" REGION="$region" TYPE="$type" VERSION="$version" ARTIFACT="$artifact" ZIP="$zip_link" BOOT="$boot_link" INIT="$init_boot_link" OUT="$payload_path" \
+          python3 -c 'import os,json,html; chat_id=int(os.environ["CHAT_ID"]); device=html.escape(os.environ["DEVICE"]); region=html.escape(os.environ["REGION"]); typ=html.escape(os.environ["TYPE"]); version=html.escape(os.environ["VERSION"]); artifact=html.escape(os.environ["ARTIFACT"]); zip_url=os.environ["ZIP"]; boot_url=os.environ["BOOT"]; init_boot_url=os.environ["INIT"]; text="🚀 <b>New Build Released</b>\n"+f"📱 <b>Device</b>  <code>{device}</code>\n"+f"🌍 <b>Region</b>  <code>{region}</code>\n"+f"🧩 <b>Type</b>    <code>{typ}</code>\n"+f"🏷️ <b>Version</b> <code>{version}</code>\n\n"+"📦 <b>Package</b>\n"+f"<code>{artifact}</code>\n\n"+"⬇️ Choose a download below."; p={"chat_id":chat_id,"text":text,"parse_mode":"HTML","disable_web_page_preview":True,"reply_markup":{"inline_keyboard":[[{"text":"⬇️ Full ZIP","url":zip_url}],[{"text":"🧱 boot.img","url":boot_url},{"text":"🧱 init_boot.img","url":init_boot_url}]]}}; open(os.environ["OUT"],"w",encoding="utf-8").write(json.dumps(p, ensure_ascii=False, separators=(",",":")))'
 
           test -s "$payload_path" || { echo "Telegram payload not created"; exit 1; }
 
