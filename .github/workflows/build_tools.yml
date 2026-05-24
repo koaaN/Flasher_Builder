@@ -748,8 +748,8 @@ jobs:
           init_boot_param="$(python3 -c 'import sys,urllib.parse;print(urllib.parse.quote(sys.argv[1],safe=""))' "${img_folder}/init_boot.img")"
           init_boot_param="${init_boot_param//%20/+}"
 
-          boot_link="https://roms.danielspringer.at/download_from_zip.php?zip=${zip_param}&file=${boot_param}"
-          init_boot_link="https://roms.danielspringer.at/download_from_zip.php?zip=${zip_param}&file=${init_boot_param}"
+          boot_link="https://roms.danielspringer.at/index.php?action=download_from_zip&zip=${zip_param}&file=${boot_param}"
+          init_boot_link="https://roms.danielspringer.at/index.php?action=download_from_zip&zip=${zip_param}&file=${init_boot_param}"
 
           # -----------------------------
           # Always log what would happen
