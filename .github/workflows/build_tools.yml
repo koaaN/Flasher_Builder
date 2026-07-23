@@ -708,7 +708,7 @@ jobs:
           chat_name=""
           case "$device_disp" in
             "Oneplus 13"|"Oneplus 13R"|"Oneplus 13S"|"Oneplus 13T"|"Oneplus Ace 5"|"Oneplus Ace 5 Pro")
-              chat_id="-1001902568181"
+              chat_id="193732076"
               chat_name="Oneplus 13 Group"
               ;;
             "Oneplus 15"|"Oneplus 15R"|"Oneplus 15T"|"Oneplus Ace 6"|"Oneplus Ace 6T")
@@ -751,6 +751,22 @@ jobs:
           boot_link="https://roms.danielspringer.at/index.php?action=download_from_zip&zip=${zip_param}&file=${boot_param}"
           init_boot_link="https://roms.danielspringer.at/index.php?action=download_from_zip&zip=${zip_param}&file=${init_boot_param}"
 
+          # Resolve an exact changelog for this uploaded ZIP. The resolver
+          # returns 302 only when the package exists and its device, region
+          # and version map to one unambiguous changelog.
+          changelog_link=""
+          changelog_status="$(
+            curl -sS --head --max-time 15 -o /dev/null -w '%{http_code}' \
+              --get "https://roms.danielspringer.at/index.php" \
+              --data-urlencode "view=changelog" \
+              --data-urlencode "package=${zip_plain}" \
+            || true
+          )"
+          if [[ "$changelog_status" == "302" ]]; then
+            changelog_param="$(python3 -c 'import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$zip_plain")"
+            changelog_link="https://roms.danielspringer.at/index.php?view=changelog&package=${changelog_param}#changelog-view"
+          fi
+
           # -----------------------------
           # Always log what would happen
           # -----------------------------
@@ -764,6 +780,11 @@ jobs:
           echo "ZIP:      $zip_link"
           echo "boot.img: $boot_link"
           echo "init_boot.img: $init_boot_link"
+          if [[ -n "$changelog_link" ]]; then
+            echo "Changelog: available ($changelog_status)"
+          else
+            echo "Changelog: unavailable ($changelog_status) -> button omitted"
+          fi
           echo "notify_telegram input: ${{ inputs.notify_telegram }}"
           echo "============================================================"
 
@@ -776,8 +797,8 @@ jobs:
           fi
 
           payload_path="$RUNNER_TEMP/tg_payload.json"
-          CHAT_ID="$chat_id" DEVICE="$device_disp" REGION="$region" TYPE="$type" VERSION="$version" ARTIFACT="$artifact" ZIP="$zip_link" BOOT="$boot_link" INIT="$init_boot_link" OUT="$payload_path" \
-          python3 -c 'import os,json,html; chat_id=int(os.environ["CHAT_ID"]); device=html.escape(os.environ["DEVICE"]); region=html.escape(os.environ["REGION"]); typ=html.escape(os.environ["TYPE"]); version=html.escape(os.environ["VERSION"]); artifact=html.escape(os.environ["ARTIFACT"]); zip_url=os.environ["ZIP"]; boot_url=os.environ["BOOT"]; init_boot_url=os.environ["INIT"]; text="🚀 <b>New Build Released</b>\n"+f"📱 <b>Device</b>  <code>{device}</code>\n"+f"🌍 <b>Region</b>  <code>{region}</code>\n"+f"🧩 <b>Type</b>    <code>{typ}</code>\n"+f"🏷️ <b>Version</b> <code>{version}</code>\n\n"+"📦 <b>Package</b>\n"+f"<code>{artifact}</code>\n\n"+"⬇️ Choose a download below."; p={"chat_id":chat_id,"text":text,"parse_mode":"HTML","disable_web_page_preview":True,"reply_markup":{"inline_keyboard":[[{"text":"⬇️ Full ZIP","url":zip_url}],[{"text":"🧱 boot.img","url":boot_url},{"text":"🧱 init_boot.img","url":init_boot_url}]]}}; open(os.environ["OUT"],"w",encoding="utf-8").write(json.dumps(p, ensure_ascii=False, separators=(",",":")))'
+          CHAT_ID="$chat_id" DEVICE="$device_disp" REGION="$region" TYPE="$type" VERSION="$version" ARTIFACT="$artifact" ZIP="$zip_link" BOOT="$boot_link" INIT="$init_boot_link" CHANGELOG="$changelog_link" OUT="$payload_path" \
+          python3 -c 'import os,json,html; chat_id=int(os.environ["CHAT_ID"]); device=html.escape(os.environ["DEVICE"]); region=html.escape(os.environ["REGION"]); typ=html.escape(os.environ["TYPE"]); version=html.escape(os.environ["VERSION"]); artifact=html.escape(os.environ["ARTIFACT"]); zip_url=os.environ["ZIP"]; boot_url=os.environ["BOOT"]; init_boot_url=os.environ["INIT"]; changelog_url=os.environ["CHANGELOG"]; text="🚀 <b>New Build Released</b>\n"+f"📱 <b>Device</b>  <code>{device}</code>\n"+f"🌍 <b>Region</b>  <code>{region}</code>\n"+f"🧩 <b>Type</b>    <code>{typ}</code>\n"+f"🏷️ <b>Version</b> <code>{version}</code>\n\n"+"📦 <b>Package</b>\n"+f"<code>{artifact}</code>\n\n"+"⬇️ Choose a download below."; package_row=[{"text":"⬇️ Full ZIP","url":zip_url}]; package_row.extend([{"text":"📋 Changelog","url":changelog_url}] if changelog_url else []); keyboard=[package_row,[{"text":"🧱 boot.img","url":boot_url},{"text":"🧱 init_boot.img","url":init_boot_url}]]; p={"chat_id":chat_id,"text":text,"parse_mode":"HTML","disable_web_page_preview":True,"reply_markup":{"inline_keyboard":keyboard}}; open(os.environ["OUT"],"w",encoding="utf-8").write(json.dumps(p, ensure_ascii=False,separators=(",",":")))'
 
           test -s "$payload_path" || { echo "Telegram payload not created"; exit 1; }
 
