@@ -733,7 +733,7 @@ jobs:
           chat_name=""
           case "$device_disp" in
             "Oneplus 13"|"Oneplus 13R"|"Oneplus 13S"|"Oneplus 13T"|"Oneplus Ace 5"|"Oneplus Ace 5 Pro")
-              chat_id="-1001902568181"
+              chat_id="193732076"
               chat_name="Oneplus 13 Group"
               ;;
             "Oneplus 15"|"Oneplus 15R"|"Oneplus 15T"|"Oneplus Ace 6"|"Oneplus Ace 6T")
