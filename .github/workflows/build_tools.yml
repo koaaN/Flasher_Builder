@@ -53,9 +53,9 @@ on:
         type: choice
         required: true
         options:
-          - DS_FTP
+          - DS_SFTP
           - Artifact Only
-        default: DS_FTP
+        default: DS_SFTP
       notify_telegram:
         description: "Notify Telegram"
         type: boolean
@@ -626,68 +626,93 @@ jobs:
           rel="${rel//\\//}"
           [[ "${rel: -1}" == "/" ]] || rel="${rel}/"
           echo "REL_UPLOAD_DIR=$rel" >> "$GITHUB_ENV"
-
-          ftp_base="$(printf "%s" "${{ secrets.DS_FTP_PATH }}" | sed 's#^/*##; s#/*$##;')"
-          if [ -n "$ftp_base" ]; then
-            ftp_abs="$ftp_base/$rel"
-          else
-            ftp_abs="$rel"
-          fi
-          echo "FTP_UPLOAD_DIR=$ftp_abs" >> "$GITHUB_ENV"
+          # The SFTP account starts directly in its /Files directory.
+          # Keep this path relative: adding "Files/" here would upload to /Files/Files/.
+          echo "SFTP_UPLOAD_DIR=$rel" >> "$GITHUB_ENV"
           
       # ===============================================================================
       # ===============================================================================
 
-      - name: Upload to DS_FTP
-        if: ${{ inputs.upload_to == 'DS_FTP' }}
+      - name: Upload to DS_SFTP
+        if: ${{ inputs.upload_to == 'DS_SFTP' }}
         env:
-          DS_FTP_HOST: ${{ secrets.DS_FTP_HOST }}
-          DS_FTP_USER: ${{ secrets.DS_FTP_USER }}
-          DS_FTP_PASS: ${{ secrets.DS_FTP_PASS }}
+          DS_SFTP_HOST: ${{ secrets.DS_SFTP_HOST }}
+          DS_SFTP_USER: ${{ secrets.DS_SFTP_USER }}
+          DS_SFTP_PRIVATE_KEY: ${{ secrets.DS_SFTP_PRIVATE_KEY }}
+          DS_SFTP_KNOWN_HOSTS: ${{ secrets.DS_SFTP_KNOWN_HOSTS }}
         shell: bash
         run: |
           set -euo pipefail
-          : "${DS_FTP_HOST:?Missing DS_FTP_HOST}"
-          : "${DS_FTP_USER:?Missing DS_FTP_USER}"
-          : "${DS_FTP_PASS:?Missing DS_FTP_PASS}"
+          : "${DS_SFTP_HOST:?Missing DS_SFTP_HOST}"
+          : "${DS_SFTP_USER:?Missing DS_SFTP_USER}"
+          : "${DS_SFTP_PRIVATE_KEY:?Missing DS_SFTP_PRIVATE_KEY}"
+          : "${DS_SFTP_KNOWN_HOSTS:?Missing DS_SFTP_KNOWN_HOSTS}"
+          command -v sftp >/dev/null 2>&1 || { echo "sftp client not found"; exit 1; }
+          command -v ssh-keygen >/dev/null 2>&1 || { echo "ssh-keygen not found"; exit 1; }
 
-          remote_dir="$(printf "%s" "$FTP_UPLOAD_DIR" | sed 's#^/*##')"
+          remote_dir="$(printf "%s" "$SFTP_UPLOAD_DIR" | sed 's#^/*##; s#/*$##')"
           file_name="${ARTIFACT_NAME}.zip"
           zip_path="$ZIP_FILE"
           [ -f "$zip_path" ] || { echo "ZIP not found: $zip_path"; exit 1; }
 
-          if command -v python3 >/dev/null 2>&1; then
-            enc_path="$(python3 -c "import sys,urllib.parse;print(urllib.parse.quote(sys.argv[1], safe='/'))" "${remote_dir}${file_name}")"
-          else
-            enc_path="$(printf '%s' "${remote_dir}${file_name}" \
-              | sed -e 's/%/%25/g' -e 's/ /%20/g' -e 's/#/%23/g' -e 's/+/%2B/g' -e 's/?/%3F/g')"
+          if [[ -z "$remote_dir" || "$remote_dir" == /* || "$remote_dir" == *..* ]]; then
+            echo "Unsafe SFTP upload directory: $remote_dir"
+            exit 1
           fi
+          case "${remote_dir}${file_name}${zip_path}" in
+            *$'\n'*|*$'\r'*|*'"'*)
+              echo "Unsupported quote or newline in SFTP path"
+              exit 1
+              ;;
+          esac
 
-          part_url="ftp://${DS_FTP_HOST}/${enc_path}.filepart"
-          echo "Uploading via curl to: $part_url"
+          ssh_tmp="$(mktemp -d "${RUNNER_TEMP}/ds-sftp.XXXXXX")"
+          trap 'rm -rf -- "$ssh_tmp"' EXIT
+          key_file="$ssh_tmp/id_ed25519"
+          known_hosts_file="$ssh_tmp/known_hosts"
+          batch_file="$ssh_tmp/upload.batch"
 
-          curl --ftp-pasv --disable-eprt --ftp-method nocwd \
-               --user "${DS_FTP_USER}:${DS_FTP_PASS}" \
-               --ftp-create-dirs \
-               -T "$zip_path" "$part_url" \
-               --fail --show-error --silent
+          printf '%s\n' "$DS_SFTP_PRIVATE_KEY" > "$key_file"
+          printf '%s\n' "$DS_SFTP_KNOWN_HOSTS" > "$known_hosts_file"
+          chmod 600 "$key_file" "$known_hosts_file"
+          ssh-keygen -y -f "$key_file" >/dev/null
+          ssh-keygen -lf "$known_hosts_file" -E sha256 \
+            | awk '{print $2}' \
+            | grep -Fx 'SHA256:/iJcgY2EReHPrZbmvttIBRyk3UxqCH4RQr6byGj1dPU' >/dev/null \
+            || { echo "Unexpected SFTP host key"; exit 1; }
 
-          cwd_path="${remote_dir%/}"
-          if [[ -n "$cwd_path" ]]; then CWD_Q=(-Q "CWD $cwd_path"); else CWD_Q=(); fi
+          current=""
+          IFS='/' read -r -a path_parts <<< "$remote_dir"
+          for part in "${path_parts[@]}"; do
+            [[ -n "$part" ]] || continue
+            current="${current:+$current/}$part"
+            printf -- '-mkdir "%s"\n' "$current" >> "$batch_file"
+          done
 
-          curl --ftp-pasv --disable-eprt -sS -o /dev/null \
-               --user "${DS_FTP_USER}:${DS_FTP_PASS}" "ftp://${DS_FTP_HOST}/" \
-               "${CWD_Q[@]}" \
-               -Q "RNFR ${file_name}.filepart" \
-               -Q "RNTO ${file_name}" \
-               --fail --show-error --silent
+          remote_file="${remote_dir}/${file_name}"
+          remote_part="${remote_file}.filepart"
+          {
+            printf -- '-rm "%s"\n' "$remote_part"
+            printf 'put "%s" "%s"\n' "$zip_path" "$remote_part"
+            printf 'rename "%s" "%s"\n' "$remote_part" "$remote_file"
+          } >> "$batch_file"
+
+          echo "Uploading via SFTP to /Files/${remote_file}"
+          sftp -q -P 2022 \
+            -i "$key_file" \
+            -o BatchMode=yes \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            -o "UserKnownHostsFile=$known_hosts_file" \
+            -b "$batch_file" \
+            "${DS_SFTP_USER}@${DS_SFTP_HOST}"
                
       # ===============================================================================
       # ===============================================================================
 
 
       - name: Telegram notify
-        if: ${{ inputs.upload_to == 'DS_FTP' }}
+        if: ${{ inputs.upload_to == 'DS_SFTP' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -699,7 +724,7 @@ jobs:
           type="$FTYPE"
           version="${OTA_VERSION:-UNKNOWN}"
           artifact="$ARTIFACT_NAME"
-          ftp_rel_dir="$FTP_UPLOAD_DIR"
+          sftp_rel_dir="$SFTP_UPLOAD_DIR"
 
           # -----------------------------
           # Device -> Chat ID mapping
@@ -724,12 +749,12 @@ jobs:
           # -----------------------------
           # Build links (same logic as before)
           # -----------------------------
-          raw_path="Files/${ftp_rel_dir}${artifact}.zip"
+          raw_path="Files/${sftp_rel_dir}${artifact}.zip"
           enc_raw="$(python3 -c 'import sys,urllib.parse;print(urllib.parse.quote(sys.argv[1],safe=""))' "$raw_path")"
           enc_raw="${enc_raw//%20/+}"
           zip_link="https://roms.danielspringer.at/download.php?file=${enc_raw}&download=true"
 
-          zip_dir="$ftp_rel_dir"
+          zip_dir="$sftp_rel_dir"
           zip_dir="${zip_dir#Files/}"
           zip_dir="${zip_dir#/}"
           zip_plain="${zip_dir}${artifact}.zip"
