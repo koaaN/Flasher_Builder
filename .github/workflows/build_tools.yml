@@ -694,6 +694,7 @@ jobs:
           {
             printf -- '-rm "%s"\n' "$remote_part"
             printf 'put "%s" "%s"\n' "$zip_path" "$remote_part"
+            printf 'chmod 0664 "%s"\n' "$remote_part"
             printf 'rename "%s" "%s"\n' "$remote_part" "$remote_file"
           } >> "$batch_file"
 
