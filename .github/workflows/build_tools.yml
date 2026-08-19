@@ -48,6 +48,10 @@ on:
         description: "FULL OTA.zip URL (leave empty for placeholder)"
         type: string
         required: false
+      base_ota_url:
+        description: "BASE FULL OTA.zip URL (Ace 6 OOS IN only)"
+        type: string
+        required: false
       upload_to:
         description: "Upload To"
         type: choice
@@ -146,6 +150,33 @@ jobs:
               -H "brand: oneplus-exp" \
               -o "download/OTA.zip" "$url"
           fi
+
+      - name: Download BASE OTA zip (Ace 6 OOS)
+        if: ${{ inputs.device == 'Oneplus Ace 6' && inputs.flasher_type == 'SuperHybrid Flasher' && inputs.region == 'IN' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          url="${{ inputs.base_ota_url }}"
+          [ -n "$url" ] || { echo "BASE FULL OTA URL is required for Ace 6 OOS builds"; exit 1; }
+
+          if command -v aria2c >/dev/null 2>&1; then
+            aria2c -x 12 -s 12 -c --file-allocation=none --retry-wait=5 --max-tries=10 --timeout=30 \
+              --summary-interval=10 --console-log-level=notice \
+              --header="User-Agent: Dalvik/2.1.0 (Linux; U; Android 16; CPH2653 Build/AP3A.240617.008)" \
+              --header="userId: oplus-ota|15002017" \
+              --header="language: en-US" \
+              --header="brand: oneplus-exp" \
+              -o "download/BASE.zip" "$url"
+          else
+            curl -L --fail --retry 5 --retry-delay 5 \
+              -H "User-Agent: Dalvik/2.1.0 (Linux; U; Android 16; CPH2653 Build/AP3A.240617.008)" \
+              -H "userId: oplus-ota|15002017" \
+              -H "language: en-US" \
+              -H "brand: oneplus-exp" \
+              -o "download/BASE.zip" "$url"
+          fi
+
+          echo "BASE_OTA_PATH=$(realpath download/BASE.zip)" >> "$GITHUB_ENV"
           
       # ===============================================================================
       # ===============================================================================
@@ -275,6 +306,7 @@ jobs:
           BUILDER_MAP["SuperHybrid Flasher|15|NA"]="BUILD_SUPER"
 
           BUILDER_MAP["SuperHybrid Flasher|Ace6|CN"]="BUILD_SUPER"
+          BUILDER_MAP["SuperHybrid Flasher|Ace6|IN"]="BUILD_ACE6_OOS"
 
           # ===== Super Flasher =====
           BUILDER_MAP["Super Flasher|13R|CN"]="BUILD_SUPER"
@@ -466,6 +498,8 @@ jobs:
                 IN)  artifact_base="${ftype_name} 15 CN2IN ${ver}" ;;
                 *)   artifact_base="${ftype_name} ${region_disp} ${ver}" ;;
               esac
+            elif [[ "$DEV" == "Ace6" && "$FTYPE" == "SuperHybrid Flasher" && "$region_code" == "IN" ]]; then
+              artifact_base="${ftype_name} A6 OP15R ${ver}"
             elif [[ "$DEV" == "GT7Pro" && "$FTYPE" == "Super Flasher" ]]; then
               case "$region_code" in
                 EU)  artifact_base="${ftype_name} GT7Pro CN2EU ${ver}" ;;
@@ -569,7 +603,9 @@ jobs:
           # -----------------------------
           # Base category & relative path
           # -----------------------------
-          if [[ "$ftype" == "Super Flasher" && "$region" != "CN" && ( "$device" == "Oneplus 13T" || "$device" == "Oneplus Ace 6T" ) ]]; then
+          if [[ "$device" == "Oneplus Ace 6" && "$region" != "CN" ]]; then
+            rel="$device/OxygenOS Flashers"
+          elif [[ "$ftype" == "Super Flasher" && "$region" != "CN" && ( "$device" == "Oneplus 13T" || "$device" == "Oneplus Ace 6T" ) ]]; then
             category="OxygenOS Flashers"
             rel="$device/$category"
           else

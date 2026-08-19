@@ -120,6 +120,9 @@ mkdir -p "$OUT_DIR"
 echo "Adding Otaripper to: $OUT_DIR"
 [ -f "$root/otaripper/otaripper" ] && cp -f "$root/otaripper/otaripper" "$OUT_DIR/" && chmod +x "$OUT_DIR/otaripper"
 [ -n "${BUILDER_SH:-}" ] && [ -f "$builder_dir/$BUILDER_SH" ] && cp -f "$builder_dir/$BUILDER_SH" "$OUT_DIR/" && chmod +x "$OUT_DIR/$BUILDER_SH"
+if [[ "${BUILDER_SH:-}" == "BUILD_ACE6_OOS.sh" ]]; then
+  cp -f "$root/build_tools_assets/avbtool.py" "$OUT_DIR/avbtool.py"
+fi
 
 # -----------------------------
 #    Calculate Working folder
@@ -273,6 +276,7 @@ if [[ "$ftype" =~ Super ]]; then
   # -----------------------------
 
   bloat_folder="$(get_bloat_folder "$dev" "$region")"
+  [[ "$dev" == "Ace6" && "$ftype" == "SuperHybrid Flasher" && "$region" == "IN" ]] && bloat_folder="OOS_BLOAT"
   echo "Adding bloat"
   copy_bloat_from_folder "$bloat_base" "$bloat_folder" "$super_dir"
 fi
