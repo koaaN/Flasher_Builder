@@ -869,3 +869,15 @@ jobs:
                --data-binary "@${payload_path}"
 
           echo "✅ Telegram: sent to $chat_name ($chat_id)."
+
+
+
+
+      - name: Cleanup runner workspace
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Cleaning workspace: $GITHUB_WORKSPACE"
+          find "$GITHUB_WORKSPACE" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
+          echo "✅ Workspace cleaned."
