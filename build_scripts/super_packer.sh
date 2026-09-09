@@ -16,6 +16,12 @@ fi
 
 cd "$script_dir"
 
+# The physical super partition is 4 MiB larger than each QTI dynamic
+# partition group. SUPER_SIZE is the physical device size from the
+# device's super metadata; keep the group size separate.
+group_size_diff=$((4 * 1024 * 1024))
+group_size=$((SUPER_SIZE - group_size_diff))
+
 # Basis-Command als Array aufbauen
 cmd=(
   "$LPM"
@@ -24,8 +30,8 @@ cmd=(
   --virtual-ab
   --super-name super
   --device "super:${SUPER_SIZE}"
-  --group "qti_dynamic_partitions_a:${SUPER_SIZE}"
-  --group "qti_dynamic_partitions_b:${SUPER_SIZE}"
+  --group "qti_dynamic_partitions_a:${group_size}"
+  --group "qti_dynamic_partitions_b:${group_size}"
 )
 
 # A-Slot Partitions with Images
