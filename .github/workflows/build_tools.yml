@@ -49,7 +49,7 @@ on:
         type: string
         required: false
       base_ota_url:
-        description: "BASE FULL OTA.zip URL (Ace 6 OOS IN only)"
+        description: "BASE FULL OTA.zip URL (For Ace6 OOS (Ace6 COS OTA here))"
         type: string
         required: false
       upload_to:
