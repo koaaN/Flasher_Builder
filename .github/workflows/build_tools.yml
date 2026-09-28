@@ -497,16 +497,7 @@ jobs:
               *)   device_model="$dev_disp" ;;
             esac
 
-            # 🔥 Oneplus 15 + SuperHybrid Flasher + EU/GLO/IN
-            # 🔥 Oneplus 15 + SuperHybrid Flasher + EU/GLO/IN
-            if [[ "$DEV" == "15" && "$FTYPE" == "SuperHybrid Flasher" ]]; then
-              case "$region_code" in
-                EU)  artifact_base="${ftype_name} 15 CN2EU ${ver}" ;;
-                GLO) artifact_base="${ftype_name} 15 CN2GLO ${ver}" ;;
-                IN)  artifact_base="${ftype_name} 15 CN2IN ${ver}" ;;
-                *)   artifact_base="${ftype_name} ${region_disp} ${ver}" ;;
-              esac
-            elif [[ "$DEV" == "Ace6" && "$FTYPE" == "SuperHybrid Flasher" && "$region_code" == "IN" ]]; then
+            if [[ "$DEV" == "Ace6" && "$FTYPE" == "SuperHybrid Flasher" && "$region_code" == "IN" ]]; then
               artifact_base="${ftype_name} A6 OP15R ${ver}"
             elif [[ "$DEV" == "GT7Pro" && "$FTYPE" == "Super Flasher" ]]; then
               case "$region_code" in
