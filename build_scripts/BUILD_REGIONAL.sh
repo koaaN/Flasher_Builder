@@ -65,38 +65,13 @@ rm -rf "$reg_dest"
 mkdir -p "$reg_dest"
 rsync -a "$reg_src/" "$reg_dest/"
 
-#-----------------------------------------------
-# Record existing directories before extraction
-#-----------------------------------------------
-
-declare -A before
-while IFS= read -r -d '' d; do
-  before["$(basename "$d")"]=1
-done < <(find "$input_dir" -mindepth 1 -maxdepth 1 -type d -print0)
-
-#---------------
-# Run otaripper
-#---------------
-
+# Extract to an explicit directory; otaripper versions may otherwise
+# produce nested or differently named output directories.
+new_folder="$input_dir/extracted_images"
+mkdir -p "$new_folder"
 echo "Running otaripper"
-pushd "$input_dir" >/dev/null
-"$otaripper_bin" "$input_file"
-popd >/dev/null
-
-#----------------------
-# Detect extracted dir
-#----------------------
-
-new_folder=""
-while IFS= read -r -d '' d; do
-  base="$(basename "$d")"
-  if [[ -z "${before[$base]+x}" ]]; then
-    new_folder="$d"
-    break
-  fi
-done < <(find "$input_dir" -mindepth 1 -maxdepth 1 -type d -print0)
-
-[[ -n "$new_folder" ]] || { echo "ERROR: No new folder found after extraction"; exit 1; }
+"$otaripper_bin" --output-dir "$new_folder" "$input_file"
+[[ -f "$new_folder/boot.img" ]] || { echo "ERROR: Full OTA boot.img missing"; exit 1; }
 
 #-------------------------------------------
 # Move extracted images into XOS_FILES_HERE

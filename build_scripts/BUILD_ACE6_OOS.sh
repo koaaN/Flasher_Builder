@@ -39,22 +39,16 @@ extract_ota() {
   if [[ "$name" == "TARGET" ]]; then
     (
       cd "$dir"
-      "$otaripper" "$name.zip" --partitions \
+      "$otaripper" "$name.zip" --output-dir "$dir/IMAGES" --partitions \
         my_bigball,my_carrier,my_engineering,my_heytap,my_manifest,my_product,my_region,my_stock,system,system_ext,product \
         >&2
     )
   else
-    ( cd "$dir" && "$otaripper" "$name.zip" >&2 )
+    ( cd "$dir" && "$otaripper" "$name.zip" --output-dir "$dir/IMAGES" >&2 )
   fi
 
-  local extracted
-  extracted="$(find "$dir" -mindepth 1 -maxdepth 1 -type d -name 'extracted*' | head -n1)"
-  [[ -n "$extracted" ]] || { echo "ERROR: No extracted folder created for $name" >&2; exit 1; }
-  if [[ -d "$extracted/IMAGES" ]]; then
-    printf '%s\n' "$extracted/IMAGES"
-  else
-    printf '%s\n' "$extracted"
-  fi
+  [[ -d "$dir/IMAGES" ]] || { echo "ERROR: No extracted images for $name" >&2; exit 1; }
+  printf '%s\n' "$dir/IMAGES"
 }
 
 echo "Extracting Ace 6 BASE OTA"

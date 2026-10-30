@@ -1,0 +1,856 @@
+"""Qt 6 desktop workspace for local firmware package builds."""
+from __future__ import annotations
+
+import json
+from pathlib import Path, PurePosixPath
+import platform
+import queue
+import shutil
+import subprocess
+import sys
+import threading
+import time
+import uuid
+
+from PySide6.QtCore import QByteArray, QEvent, QPoint, QPointF, QRectF, QSize, Qt, QTimer, QUrl
+from PySide6.QtGui import QColor, QDesktopServices, QFont, QFontDatabase, QIcon, QPainter, QPen, QPixmap, QTextCursor
+from PySide6.QtSvg import QSvgRenderer
+from PySide6.QtWidgets import (QApplication, QButtonGroup, QComboBox, QFileDialog, QFrame,
+    QAbstractItemView, QGraphicsDropShadowEffect, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QListView, QMainWindow, QMessageBox, QPlainTextEdit,
+    QProgressBar, QPushButton, QScrollArea, QSizePolicy, QSplitter, QStackedWidget,
+    QStyle, QStyledItemDelegate, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget)
+
+from .backend import ROOT, BuildError, Catalog
+from .runtime import Runtime
+
+
+ICONS = {
+    'layers': '<path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="m3 12 9 5 9-5M3 16l9 5 9-5"/>',
+    'build': '<rect x="4" y="3" width="16" height="18" rx="3"/><path d="M8 8h8M8 12h8M8 16h4"/>',
+    'clock': '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+    'settings': '<path d="M4 6h16M4 12h16M4 18h16"/><circle cx="9" cy="6" r="2"/><circle cx="15" cy="12" r="2"/><circle cx="9" cy="18" r="2"/>',
+    'folder': '<path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v10H3V7Z"/>',
+    'arrow': '<path d="M5 12h14m-5-5 5 5-5 5"/>',
+    'upload': '<path d="M12 16V4m-4 4 4-4 4 4M4 15v5h16v-5"/>',
+    'check': '<path d="m5 12 4 4L19 6"/>',
+    'monitor': '<rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8m-4-4v4"/>',
+    'terminal': '<path d="m5 7 5 5-5 5m8 0h6"/>',
+    'file': '<path d="M14 3H5v18h14V8l-5-5Zm0 0v5h5M8 13h8M8 17h5"/>',
+    'link': '<path d="m10 13 4-4m-7 6-2 2a4 4 0 0 0 6 5l4-4a4 4 0 0 0-1-6m3-3 2-2a4 4 0 0 0-6-5L9 5a4 4 0 0 0 1 6" transform="translate(0 -1)"/>',
+    'help': '<circle cx="12" cy="12" r="9"/><path d="M9 9a3 3 0 0 1 6 0c0 2-3 2-3 4m0 3v.1"/>',
+    'stop': '<rect x="6" y="6" width="12" height="12" rx="2"/>',
+}
+
+
+def icon(name, color='#617188', size=20):
+    svg = f'<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="{color}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">{ICONS[name]}</svg>'
+    pixmap = QPixmap(size * 2, size * 2)
+    pixmap.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(pixmap)
+    QSvgRenderer(QByteArray(svg.encode())).render(painter)
+    painter.end()
+    pixmap.setDevicePixelRatio(2)
+    return QIcon(pixmap)
+
+
+class SelectItemDelegate(QStyledItemDelegate):
+    """Draw menu rows without the platform's native combo-box decoration."""
+    def __init__(self, combo):
+        super().__init__(combo)
+        self.combo = combo
+
+    def sizeHint(self, option, index):
+        return QSize(180, 38)
+
+    def paint(self, painter, option, index):
+        painter.save()
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        rect = QRectF(option.rect).adjusted(4, 2, -4, -2)
+        selected = index.row() == self.combo.currentIndex()
+        active = bool(option.state & (QStyle.StateFlag.State_Selected | QStyle.StateFlag.State_MouseOver))
+        if active or selected:
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QColor('#eaf0ff' if active else '#f3f6fc'))
+            painter.drawRoundedRect(rect, 6, 6)
+        font = QFont(option.font)
+        font.setWeight(QFont.Weight.DemiBold if selected else QFont.Weight.Normal)
+        painter.setFont(font)
+        painter.setPen(QColor('#3268d9' if active or selected else '#40536e'))
+        text_rect = rect.adjusted(12, 0, -34, 0)
+        text = painter.fontMetrics().elidedText(str(index.data() or ''), Qt.TextElideMode.ElideRight, int(text_rect.width()))
+        painter.drawText(text_rect, Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft, text)
+        if selected:
+            x, y = rect.right() - 19, rect.center().y()
+            painter.setPen(QPen(QColor('#3268d9'), 1.8, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
+            painter.drawLine(QPointF(x-4, y), QPointF(x-1, y+3))
+            painter.drawLine(QPointF(x-1, y+3), QPointF(x+5, y-4))
+        painter.restore()
+
+
+class SelectPopup(QFrame):
+    def __init__(self, combo):
+        super().__init__(combo, Qt.WindowType.Popup | Qt.WindowType.FramelessWindowHint | Qt.WindowType.NoDropShadowWindowHint)
+        self.combo = combo
+        self.setObjectName('selectPopup')
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setAttribute(Qt.WidgetAttribute.WA_NoMouseReplay)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(10, 10, 10, 14)
+        self.panel = QFrame()
+        self.panel.setObjectName('selectMenu')
+        shadow = QGraphicsDropShadowEffect(self.panel)
+        shadow.setBlurRadius(18)
+        shadow.setOffset(0, 3)
+        shadow.setColor(QColor(22, 42, 73, 35))
+        self.panel.setGraphicsEffect(shadow)
+        inner = QVBoxLayout(self.panel)
+        inner.setContentsMargins(4, 5, 4, 5)
+        self.view = QListView()
+        self.view.setObjectName('selectOptions')
+        self.view.setMouseTracking(True)
+        self.view.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.view.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.view.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.view.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
+        self.view.setItemDelegate(SelectItemDelegate(combo))
+        self.view.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.view.clicked.connect(combo.accept_option)
+        self.view.entered.connect(self.view.setCurrentIndex)
+        self.view.installEventFilter(combo)
+        inner.addWidget(self.view)
+        layout.addWidget(self.panel)
+
+    def hideEvent(self, event):
+        self.combo.update()
+        super().hideEvent(event)
+
+
+class ComboBox(QComboBox):
+    """A fully styled selector and popup, retaining QComboBox's model/signals."""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setMouseTracking(True)
+        self.setMaxVisibleItems(8)
+        self.menu = SelectPopup(self)
+
+    def sizeHint(self):
+        hint = super().sizeHint()
+        return QSize(hint.width(), max(44, hint.height()))
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        opened = self.menu.isVisible()
+        focused = self.hasFocus() or opened
+        hovered = self.underMouse()
+        enabled = self.isEnabled()
+        border = '#6b91df' if focused else '#b8c9e4' if hovered else '#dce3ee'
+        painter.setPen(QPen(QColor(border if enabled else '#e5eaf1'), 1))
+        painter.setBrush(QColor('#ffffff' if focused else '#f8fafd' if enabled else '#f3f5f8'))
+        painter.drawRoundedRect(QRectF(self.rect()).adjusted(.5, .5, -.5, -.5), 7, 7)
+        painter.setFont(self.font())
+        painter.setPen(QColor('#263851' if enabled else '#a3adbc'))
+        text_rect = self.rect().adjusted(14, 0, -49, 0)
+        text = painter.fontMetrics().elidedText(self.currentText(), Qt.TextElideMode.ElideRight, text_rect.width())
+        painter.drawText(text_rect, Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft, text)
+        x, y = self.width() - 23, self.height() / 2
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor('#eaf0ff' if focused else '#edf2f8'))
+        painter.drawRoundedRect(QRectF(x-12, y-12, 24, 24), 5, 5)
+        painter.setPen(QPen(QColor('#3268d9' if focused and enabled else '#8b9bb2'), 1.5,
+                            Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
+        direction = -1 if opened else 1
+        painter.drawLine(QPointF(x-3, y-direction), QPointF(x, y+2*direction))
+        painter.drawLine(QPointF(x, y+2*direction), QPointF(x+3, y-direction))
+        painter.end()
+
+    def showPopup(self):
+        if not self.isEnabled() or not self.count():
+            return
+        view = self.menu.view
+        view.setFont(self.font())
+        view.setModel(self.model())
+        view.setModelColumn(self.modelColumn())
+        view.setRootIndex(self.rootModelIndex())
+        view.setAccessibleName(self.accessibleName() + ' options')
+        current = self.model().index(self.currentIndex(), self.modelColumn(), self.rootModelIndex())
+        view.setCurrentIndex(current)
+        panel_height = min(self.count(), self.maxVisibleItems()) * 38 + 12
+        width, height = self.width() + 20, panel_height + 24
+        below = self.mapToGlobal(QPoint(0, self.height() + 5))
+        above = self.mapToGlobal(QPoint(0, -5))
+        screen = self.screen().availableGeometry()
+        x = min(max(screen.left(), below.x() - 10), screen.right() - width + 1)
+        y = below.y() - 10
+        if y + height > screen.bottom() and above.y() - height >= screen.top():
+            y = above.y() - height + 14
+        y = max(screen.top(), min(y, screen.bottom() - height + 1))
+        self.menu.setGeometry(x, y, width, height)
+        self.menu.show()
+        view.scrollTo(current, QAbstractItemView.ScrollHint.EnsureVisible)
+        view.setFocus(Qt.FocusReason.PopupFocusReason)
+        self.update()
+
+    def hidePopup(self):
+        self.menu.hide()
+        super().hidePopup()
+        self.update()
+
+    def accept_option(self, index):
+        if index.isValid():
+            self.setCurrentIndex(index.row())
+            self.activated.emit(index.row())
+            self.textActivated.emit(self.currentText())
+        self.hidePopup()
+        self.setFocus(Qt.FocusReason.PopupFocusReason)
+
+    def eventFilter(self, watched, event):
+        if hasattr(self, 'menu') and watched is self.menu.view and event.type() == QEvent.Type.KeyPress:
+            key = event.key()
+            if key in (Qt.Key.Key_Return, Qt.Key.Key_Enter, Qt.Key.Key_Space):
+                self.accept_option(self.menu.view.currentIndex())
+                return True
+            if key == Qt.Key.Key_Escape:
+                self.hidePopup()
+                self.setFocus(Qt.FocusReason.PopupFocusReason)
+                return True
+            if key in (Qt.Key.Key_Tab, Qt.Key.Key_Backtab):
+                self.accept_option(self.menu.view.currentIndex())
+                self.focusNextPrevChild(key == Qt.Key.Key_Tab)
+                return True
+        return super().eventFilter(watched, event)
+
+    def enterEvent(self, event):
+        self.update()
+        super().enterEvent(event)
+
+    def leaveEvent(self, event):
+        self.update()
+        super().leaveEvent(event)
+
+    def wheelEvent(self, event):
+        # Scrolling the form should not silently change its device selection.
+        event.ignore()
+
+
+def label(text, name='', wrap=False):
+    widget = QLabel(text)
+    widget.setObjectName(name)
+    widget.setWordWrap(wrap)
+    return widget
+
+
+def button(text, symbol=None, name='', callback=None):
+    widget = QPushButton(text)
+    widget.setObjectName(name)
+    widget.setCursor(Qt.CursorShape.PointingHandCursor)
+    if symbol:
+        widget.setIcon(icon(symbol, '#ffffff' if name == 'primary' else '#617188'))
+        widget.setIconSize(QSize(18, 18))
+    if callback:
+        widget.clicked.connect(callback)
+    return widget
+
+
+def card():
+    widget = QFrame()
+    widget.setObjectName('card')
+    layout = QVBoxLayout(widget)
+    layout.setContentsMargins(24, 18, 24, 18)
+    layout.setSpacing(12)
+    return widget, layout
+
+
+STYLE = '''
+QMainWindow, QWidget { background: #f4f6f9; color: #1b273b; font-family: "Inter", "Segoe UI", "DejaVu Sans"; font-size: 13px; }
+QWidget#sidebar { background: #101c30; }
+QWidget#sidebar QLabel { background: transparent; color: #91a0b9; }
+QWidget#sidebar QLabel#brand { font-size: 18px; font-weight: 700; color: #f7f9fe; }
+QWidget#sidebar QLabel#brandSub { font-size: 10px; color: #7487a4; letter-spacing: 2px; }
+QWidget#sidebar QLabel#sideHeading { color: #607591; font-size: 10px; font-weight: 600; letter-spacing: 1.8px; }
+QWidget#sidebar QPushButton { text-align: left; padding: 13px 16px; background: transparent; border: 0; border-radius: 7px; color: #a3b2c9; font-weight: 500; }
+QWidget#sidebar QPushButton:hover { background: #1a2a43; color: white; }
+QWidget#sidebar QPushButton:checked { background: #213a61; color: #eef5ff; }
+QWidget#sidebar QFrame#engineCard { background: #16263e; border: 1px solid #253750; border-radius: 9px; }
+QWidget#sidebar QLabel#engineTitle { color: #e2eaf8; font-weight: 600; }
+QLabel { background: transparent; }
+QLabel#eyebrow { color: #7f8b9c; font-size: 10px; font-weight: 600; letter-spacing: 1.8px; }
+QLabel#title { font-size: 29px; font-weight: 700; color: #18283f; }
+QLabel#subtitle, QLabel#muted { color: #7b889a; font-size: 12px; }
+QLabel#cardTitle { font-size: 15px; font-weight: 650; color: #20324b; }
+QLabel#fieldLabel { color: #485871; font-size: 11px; font-weight: 600; }
+QLabel#sectionNumber { background: #eef3ff; border-radius: 6px; color: #3b66c8; font-size: 11px; font-weight: 700; padding: 6px; }
+QLabel#badge { color: #346852; background: #eaf4ee; border: 1px solid #d8e8df; border-radius: 12px; padding: 5px 11px; font-size: 11px; }
+QLabel#osBadge { color: #536b92; background: #f0f4fa; border-radius: 5px; padding: 5px 8px; font-size: 10px; }
+QFrame#card { background: #ffffff; border: 1px solid #e1e6ef; border-radius: 11px; }
+QWidget#innerPanel { background: transparent; }
+QFrame#line { background: #edf0f5; border: none; max-height: 1px; min-height: 1px; }
+QLineEdit, QComboBox { background: #ffffff; border: 1px solid #dce3ee; border-radius: 6px; min-height: 22px; padding: 9px 11px; color: #263851; selection-background-color: #dce7ff; }
+QComboBox { padding-right: 24px; }
+QComboBox::drop-down { width: 25px; border: 0; }
+QFrame#selectPopup { background: transparent; border: none; }
+QFrame#selectMenu { background: #ffffff; border: 1px solid #dce3ee; border-radius: 10px; }
+QListView#selectOptions { background: transparent; border: none; outline: none; padding: 0; }
+QListView#selectOptions::item { border: none; }
+QLineEdit:focus, QComboBox:focus { border: 1px solid #5c83d7; }
+QLineEdit:disabled, QComboBox:disabled { background: #f4f6f9; color: #a3adbc; }
+QPushButton { border: 1px solid #dce3ee; border-radius: 6px; background: white; padding: 10px 14px; color: #40536e; font-weight: 500; }
+QPushButton:hover { background: #f1f5fc; border-color: #b9c9e5; }
+QPushButton:pressed { background: #e4ecfa; }
+QPushButton:disabled { background: #f2f4f8; color: #a5afbf; border-color: #e6eaf1; }
+QPushButton#primary { background: #3268d9; border: 1px solid #3268d9; color: white; font-weight: 600; padding: 12px 20px; }
+QPushButton#primary:hover { background: #245ac9; }
+QPushButton#primary:disabled { background: #a0b8e8; border-color: #a0b8e8; color: #f0f4ff; }
+QPushButton#quiet { background: transparent; border: none; padding: 7px 8px; color: #7b889a; font-size: 11px; }
+QPushButton#quiet:hover { color: #3268d9; background: #edf2fc; }
+QPushButton#region { background: #f7f9fc; padding: 8px 15px; color: #76859b; font-size: 11px; }
+QPushButton#region:checked { background: #eaf0ff; border: 1px solid #9db7ec; color: #285bc0; font-weight: 700; }
+QPushButton#sourceTab { background: #f7f9fc; border: none; padding: 7px 12px; font-size: 11px; color: #8290a4; }
+QPushButton#sourceTab:checked { background: #eaf0ff; color: #3268d9; }
+QLabel#summaryDevice { font-size: 22px; font-weight: 650; color: #20324b; }
+QLabel#summaryValue { color: #3c4f6b; font-size: 12px; }
+QLabel#hint { color: #7d8b9e; font-size: 11px; line-height: 1.4; }
+QLabel#step { font-size: 10px; color: #94a0b1; }
+QLabel#step[active="true"] { color: #3268d9; font-weight: 600; }
+QLabel#logTitle { color: #d6e1f2; font-size: 12px; font-weight: 600; }
+QFrame#consoleCard { background: #142137; border: 1px solid #233249; border-radius: 9px; }
+QFrame#consoleCard QWidget { background: transparent; }
+QPlainTextEdit { background: #142137; color: #afc3df; border: none; font-family: "JetBrains Mono", "Consolas", "DejaVu Sans Mono"; font-size: 11px; padding: 8px 14px; selection-background-color: #315682; }
+QProgressBar { border: none; background: #e3e9f3; border-radius: 2px; max-height: 4px; min-height: 4px; }
+QProgressBar::chunk { background: #4277dd; border-radius: 2px; }
+QScrollArea { border: none; background: transparent; }
+QScrollBar:vertical { width: 7px; background: transparent; margin: 0; }
+QScrollBar::handle:vertical { background: #c4cddc; border-radius: 3px; min-height: 30px; }
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
+QSplitter::handle { background: transparent; height: 12px; }
+QTreeWidget { background: white; border: 0; alternate-background-color: #f8fafd; color: #40536e; padding: 4px; }
+QTreeWidget::item { padding: 12px 6px; border-bottom: 1px solid #eef1f6; }
+QTreeWidget::item:selected { background: #eaf0ff; color: #2c5fba; }
+QHeaderView::section { background: #f5f7fb; color: #7b889a; border: 0; padding: 12px 8px; font-size: 10px; font-weight: 600; }
+QToolTip { background: #1b2e49; color: white; border: 0; padding: 6px; }
+'''
+
+
+class App(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle('Flasher Builder')
+        self.setWindowIcon(icon('layers', '#3268d9', 64))
+        self.resize(1400, 940)
+        self.setMinimumSize(1120, 780)
+        self.catalog = Catalog()
+        self.events = queue.Queue()
+        self.busy = False
+        self.closing = False
+        self.cancel_file = None
+        self.last_folder = ROOT / 'builds'
+        self.action = None
+        self.started = None
+        self.settings = ROOT / '.flasher-builder.json'
+        self.saved = {}
+        try:
+            self.saved = json.loads(self.settings.read_text(encoding='utf-8'))
+        except (OSError, ValueError):
+            pass
+        self.inputs = []
+        self.fields = {}
+        self.build_layout()
+        self.restore()
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self.poll)
+        self.timer.start(100)
+
+    def build_layout(self):
+        shell = QWidget()
+        self.setCentralWidget(shell)
+        horizontal = QHBoxLayout(shell)
+        horizontal.setContentsMargins(0, 0, 0, 0)
+        horizontal.setSpacing(0)
+        sidebar = QWidget()
+        sidebar.setObjectName('sidebar')
+        sidebar.setFixedWidth(218)
+        side = QVBoxLayout(sidebar)
+        side.setContentsMargins(18, 29, 18, 22)
+        side.setSpacing(7)
+        brand = QHBoxLayout()
+        mark = QLabel(); mark.setPixmap(icon('layers', '#77a3ff', 31).pixmap(31, 31))
+        brand.addWidget(mark)
+        brand_text = QVBoxLayout(); brand_text.setSpacing(2)
+        brand_text.addWidget(label('Flasher', 'brand'))
+        brand_text.addWidget(label('BUILDER STUDIO', 'brandSub'))
+        brand.addLayout(brand_text); brand.addStretch()
+        side.addLayout(brand)
+        side.addSpacing(38)
+        side.addWidget(label('WORKSPACE', 'sideHeading'))
+        side.addSpacing(5)
+        self.nav = []
+        self.nav_group = QButtonGroup(self)
+        for i, (text, symbol) in enumerate((('New package', 'build'), ('Build history', 'clock'), ('Environment', 'settings'))):
+            b = button('  ' + text, callback=lambda checked=False, index=i: self.navigate(index))
+            b.setIcon(icon(symbol, '#8da9d3'))
+            b.setCheckable(True)
+            self.nav_group.addButton(b)
+            self.nav.append(b)
+            side.addWidget(b)
+        self.nav[0].setChecked(True)
+        side.addStretch()
+        engine = QFrame(); engine.setObjectName('engineCard')
+        el = QVBoxLayout(engine); el.setContentsMargins(13, 14, 13, 14); el.setSpacing(6)
+        el.addWidget(label('●  LOCAL ENGINE', 'engineTitle'))
+        el.addWidget(label('Windows + WSL' if sys.platform == 'win32' else 'Linux · x86_64'))
+        el.addWidget(label('Files stay on this PC'))
+        side.addWidget(engine)
+        side.addSpacing(9)
+        docs = button('  Documentation', callback=lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(ROOT / 'README.md'))))
+        docs.setIcon(icon('help', '#7b90ad'))
+        side.addWidget(docs)
+        horizontal.addWidget(sidebar)
+        content = QWidget()
+        body = QVBoxLayout(content)
+        body.setContentsMargins(32, 26, 32, 20)
+        body.setSpacing(17)
+        header = QHBoxLayout()
+        heading = QVBoxLayout(); heading.setSpacing(6)
+        heading.addWidget(label('WORKSPACE  /  FIRMWARE TOOLS', 'eyebrow'))
+        self.title_label = label('New package', 'title'); heading.addWidget(self.title_label)
+        self.subtitle = label('Turn a full OTA into a ready-to-use flasher package.', 'subtitle'); heading.addWidget(self.subtitle)
+        header.addLayout(heading); header.addStretch()
+        header.addWidget(label('●  Running locally', 'badge'), alignment=Qt.AlignmentFlag.AlignTop)
+        body.addLayout(header)
+        self.splitter = QSplitter(Qt.Orientation.Vertical)
+        self.pages = QStackedWidget()
+        self.pages.addWidget(self.build_page())
+        self.pages.addWidget(self.history_page())
+        self.pages.addWidget(self.environment_page())
+        self.splitter.addWidget(self.pages)
+        self.splitter.addWidget(self.console())
+        self.splitter.setChildrenCollapsible(False)
+        self.splitter.setSizes([600, 195])
+        body.addWidget(self.splitter, 1)
+        footer = QHBoxLayout()
+        footer.addWidget(label('FULL OTA → EXTRACT → BUILD → PACKAGE', 'eyebrow'))
+        footer.addStretch()
+        footer.addWidget(label('Qt 6  /  Local workspace', 'muted'))
+        body.addLayout(footer)
+        horizontal.addWidget(content, 1)
+
+    def build_page(self):
+        scroll = QScrollArea(); scroll.setWidgetResizable(True)
+        panel = QWidget(); scroll.setWidget(panel)
+        layout = QHBoxLayout(panel); layout.setContentsMargins(0, 0, 0, 0); layout.setSpacing(20)
+        left = QVBoxLayout(); left.setSpacing(14)
+        configure, form = card()
+        title = QHBoxLayout()
+        title.addWidget(label('01', 'sectionNumber'))
+        title.addWidget(label('Package configuration', 'cardTitle'))
+        title.addStretch(); self.os_badge = label('OXYGEN OS', 'osBadge'); title.addWidget(self.os_badge)
+        form.addLayout(title)
+        grid = QGridLayout(); grid.setHorizontalSpacing(16); grid.setVerticalSpacing(8)
+        for col, (key, text) in enumerate((('device', 'DEVICE'), ('kind', 'FLASHER TYPE'))):
+            grid.addWidget(label(text, 'fieldLabel'), 0, col)
+            widget = ComboBox(); widget.setMinimumWidth(170); widget.setAccessibleName(text.title())
+            self.fields[key] = widget; self.inputs.append(widget)
+            grid.addWidget(widget, 1, col)
+            grid.setColumnStretch(col, 1)
+        form.addLayout(grid)
+        form.addWidget(label('REGION', 'fieldLabel'))
+        regions = QHBoxLayout(); regions.setSpacing(7)
+        self.region_group = QButtonGroup(self)
+        self.region_buttons = {}
+        for region in ('GLO', 'EU', 'IN', 'NA', 'CN'):
+            b = button('Global' if region == 'GLO' else region, name='region', callback=lambda checked=False, r=region: self.set_region(r))
+            b.setCheckable(True); self.region_group.addButton(b)
+            self.region_buttons[region] = b; self.inputs.append(b); regions.addWidget(b)
+        regions.addStretch(); form.addLayout(regions)
+        self.selection_info = label('Select a device and region to get started.', 'hint', True)
+        form.addWidget(self.selection_info)
+        left.addWidget(configure)
+        source_card, source_layout = card()
+        source_head = QHBoxLayout()
+        source_head.addWidget(label('02', 'sectionNumber'))
+        source_head.addWidget(label('OTA source', 'cardTitle'))
+        source_head.addStretch()
+        self.source_group = QButtonGroup(self)
+        self.file_tab = button('Local file', 'file', 'sourceTab', lambda: self.source_mode(False))
+        self.url_tab = button('Download URL', 'link', 'sourceTab', lambda: self.source_mode(True))
+        for b in (self.file_tab, self.url_tab):
+            b.setCheckable(True); self.source_group.addButton(b); source_head.addWidget(b); self.inputs.append(b)
+        self.file_tab.setChecked(True)
+        source_layout.addLayout(source_head)
+        self.fields['ota'], self.browse_ota = self.source_input(source_layout, 'Choose a full OTA .zip file', 'ota')
+        self.source_hint = label('Use a full OTA package. Incremental updates are not supported.', 'hint', True)
+        source_layout.addWidget(self.source_hint)
+        self.base_panel = QWidget(); self.base_panel.setObjectName('innerPanel')
+        base_layout = QVBoxLayout(self.base_panel); base_layout.setContentsMargins(0, 5, 0, 0); base_layout.setSpacing(8)
+        base_layout.addWidget(label('ACE 6 COLOROS BASE OTA', 'fieldLabel'))
+        self.fields['base'], _ = self.source_input(base_layout, 'Choose BASE OTA or paste its download URL', 'base')
+        source_layout.addWidget(self.base_panel)
+        line = QFrame(); line.setObjectName('line'); source_layout.addWidget(line)
+        source_layout.addWidget(label('SAVE PACKAGE TO', 'fieldLabel'))
+        output_row = QHBoxLayout(); output_row.setSpacing(8)
+        self.fields['output'] = QLineEdit(str(ROOT / 'builds')); self.inputs.append(self.fields['output'])
+        self.fields['output'].editingFinished.connect(self.update_summary)
+        output_row.addWidget(self.fields['output'], 1)
+        output_browse = button('Browse', 'folder', callback=self.choose_output)
+        self.inputs.append(output_browse); output_row.addWidget(output_browse)
+        source_layout.addLayout(output_row)
+        left.addWidget(source_card)
+        actions = QHBoxLayout(); actions.setSpacing(10)
+        self.start_button = button('Build package', 'arrow', 'primary', lambda: self.start('build'))
+        self.start_button.setMinimumWidth(175)
+        actions.addWidget(self.start_button)
+        self.cancel_button = button('Cancel build', 'stop', callback=self.cancel); self.cancel_button.setEnabled(False)
+        actions.addWidget(self.cancel_button); actions.addStretch()
+        self.output_button = button('Open output', 'folder', 'quiet', self.open_output); actions.addWidget(self.output_button)
+        left.addStretch()
+        layout.addLayout(left, 1)
+        right = QVBoxLayout(); right.setSpacing(14)
+        summary, summary_layout = card(); summary.setFixedWidth(276)
+        summary_layout.addWidget(label('YOUR PACKAGE', 'eyebrow'))
+        emblem = QLabel(); emblem.setPixmap(icon('layers', '#3971dc', 38).pixmap(38, 38))
+        summary_layout.addWidget(emblem)
+        self.summary_device = label('OnePlus 13', 'summaryDevice', True); summary_layout.addWidget(self.summary_device)
+        self.summary_kind = label('SuperHybrid Flasher', 'muted', True); summary_layout.addWidget(self.summary_kind)
+        line = QFrame(); line.setObjectName('line'); summary_layout.addWidget(line)
+        self.summary_values = {}
+        for key, title in (('os', 'System'), ('region', 'Region'), ('format', 'Output'), ('engine', 'Build engine')):
+            row = QHBoxLayout(); row.addWidget(label(title, 'muted')); row.addStretch()
+            value = label('', 'summaryValue'); row.addWidget(value); self.summary_values[key] = value
+            summary_layout.addLayout(row)
+        line = QFrame(); line.setObjectName('line'); summary_layout.addWidget(line)
+        self.space = label('', 'hint', True); summary_layout.addWidget(self.space)
+        right.addWidget(summary)
+        notes, nl = card(); notes.setFixedWidth(276)
+        nl.addWidget(label('Before you build', 'cardTitle'))
+        nl.addWidget(label('01   Use a full OTA for your device.\n\n02   Allow 40–80 GB of free space.\n\n03   Find your ZIP and checksum in\n       the output folder.', 'hint', True))
+        right.addWidget(notes)
+        right.addStretch()
+        layout.addLayout(right)
+        self.fields['device'].addItems(list(self.catalog.devices))
+        self.fields['device'].currentTextChanged.connect(self.device_changed)
+        self.fields['kind'].currentTextChanged.connect(self.kind_changed)
+        wrapper = QWidget()
+        wrapped = QVBoxLayout(wrapper); wrapped.setContentsMargins(0, 0, 0, 0); wrapped.setSpacing(12)
+        wrapped.addWidget(scroll, 1); wrapped.addLayout(actions)
+        return wrapper
+
+    def source_input(self, parent_layout, placeholder, key):
+        row = QHBoxLayout(); row.setSpacing(8)
+        field = QLineEdit(); field.setPlaceholderText(placeholder)
+        field.setClearButtonEnabled(True)
+        row.addWidget(field, 1)
+        browse = button('Choose ZIP', 'folder', callback=lambda: self.choose_ota(key))
+        row.addWidget(browse)
+        self.inputs.extend((field, browse))
+        parent_layout.addLayout(row)
+        return field, browse
+
+    def history_page(self):
+        page, layout = card()
+        row = QHBoxLayout(); row.addWidget(label('Recent packages', 'cardTitle')); row.addStretch()
+        row.addWidget(button('Refresh', 'clock', callback=self.load_history)); layout.addLayout(row)
+        self.history = QTreeWidget(); self.history.setHeaderLabels(['PACKAGE', 'REGION', 'VERSION', 'CREATED'])
+        self.history.setRootIsDecorated(False); self.history.setAlternatingRowColors(True)
+        self.history.itemDoubleClicked.connect(self.open_history)
+        self.history.setColumnWidth(0, 430)
+        layout.addWidget(self.history, 1)
+        layout.addWidget(label('Double-click a package to open its folder. Test packages are labelled TEST.', 'hint'))
+        return page
+
+    def environment_page(self):
+        scroll = QScrollArea(); scroll.setWidgetResizable(True)
+        page, layout = card(); scroll.setWidget(page)
+        layout.addWidget(label('Build environment', 'cardTitle'))
+        layout.addWidget(label('Check the local tools before starting a firmware build.', 'muted'))
+        details = QGridLayout(); details.setVerticalSpacing(22); details.setColumnStretch(1, 1)
+        for row, (title, value) in enumerate((('BUILD BACKEND', 'WSL Linux' if sys.platform == 'win32' else 'Native Linux'), ('ARCHITECTURE', platform.machine()), ('BUILD TOOLS', 'otaripper  /  lpmake  /  avbtool'), ('WORKFLOW CATALOG', f'{len(self.catalog.builders)} supported device, flasher and region combinations'))):
+            details.addWidget(label(title, 'fieldLabel'), row, 0)
+            details.addWidget(label(value, 'summaryValue', True), row, 1)
+        layout.addLayout(details)
+        self.fields['distro'] = QLineEdit(); self.fields['distro'].setPlaceholderText('Default WSL distribution')
+        self.inputs.append(self.fields['distro'])
+        if sys.platform == 'win32':
+            layout.addWidget(label('WSL DISTRIBUTION', 'fieldLabel')); layout.addWidget(self.fields['distro'])
+        else:
+            self.fields['distro'].hide()
+        line = QFrame(); line.setObjectName('line'); layout.addWidget(line)
+        actions = QHBoxLayout()
+        self.check_button = button('Check setup', 'check', 'primary', lambda: self.start('check'))
+        self.test_button = button('Run pipeline self-test', 'terminal', callback=lambda: self.start('test'))
+        actions.addWidget(self.check_button); actions.addWidget(self.test_button); actions.addStretch(); layout.addLayout(actions)
+        layout.addWidget(label('The self-test creates a tiny synthetic OTA and checks the real extraction, packing and ZIP pipeline. Test packages contain synthetic data and must never be flashed.', 'hint', True))
+        layout.addStretch()
+        return scroll
+
+    def console(self):
+        area = QWidget(); area.setMinimumHeight(165)
+        vertical = QVBoxLayout(area); vertical.setContentsMargins(0, 0, 0, 0); vertical.setSpacing(9)
+        status_row = QHBoxLayout()
+        self.status = label('Ready when you are', 'cardTitle'); status_row.addWidget(self.status)
+        status_row.addStretch()
+        self.elapsed = label('No build running', 'muted'); status_row.addWidget(self.elapsed)
+        vertical.addLayout(status_row)
+        self.progress = QProgressBar(); self.progress.setRange(0, 5); self.progress.setValue(0); self.progress.setTextVisible(False)
+        vertical.addWidget(self.progress)
+        stages = QHBoxLayout()
+        self.steps = []
+        for i, name in enumerate(('01  Prepare OTA', '02  Stage files', '03  Build images', '04  Package ZIP', '05  Complete')):
+            item = label(name, 'step'); self.steps.append(item); stages.addWidget(item)
+            if i < 4: stages.addStretch()
+        vertical.addLayout(stages)
+        console = QFrame(); console.setObjectName('consoleCard')
+        cl = QVBoxLayout(console); cl.setContentsMargins(5, 8, 5, 6); cl.setSpacing(0)
+        row = QHBoxLayout(); row.setContentsMargins(12, 0, 10, 0)
+        terminal = QLabel(); terminal.setPixmap(icon('terminal', '#7289aa', 16).pixmap(16, 16)); row.addWidget(terminal)
+        row.addWidget(label('Build output', 'logTitle')); row.addStretch()
+        row.addWidget(button('Save log', name='quiet', callback=self.save_log)); cl.addLayout(row)
+        self.log = QPlainTextEdit(); self.log.setReadOnly(True); self.log.setMaximumBlockCount(12000)
+        self.log.setPlaceholderText('Waiting for a build. Configure your package above, then select Build package.')
+        cl.addWidget(self.log, 1); vertical.addWidget(console, 1)
+        return area
+
+    def restore(self):
+        for key in ('output', 'distro'):
+            value = self.saved.get(key)
+            if isinstance(value, str): self.fields[key].setText(value)
+        device = self.saved.get('device', 'Oneplus 13')
+        self.fields['device'].setCurrentText(device if device in self.catalog.devices else 'Oneplus 13')
+        self.device_changed()
+        self.fields['kind'].setCurrentText(self.saved.get('kind', 'SuperHybrid Flasher'))
+        if self.saved.get('region') in self.available_regions(): self.set_region(self.saved['region'])
+        self.update_summary()
+
+    def values(self):
+        return {k: widget.currentText() if isinstance(widget, QComboBox) else widget.text().strip() for k, widget in self.fields.items()} | {'region': self.region}
+
+    def available_regions(self):
+        return self.catalog.regions(self.fields['device'].currentText(), self.fields['kind'].currentText())
+
+    def device_changed(self):
+        previous = self.fields['kind'].currentText()
+        combo = self.fields['kind']; combo.blockSignals(True)
+        combo.clear(); combo.addItems(self.catalog.types(self.fields['device'].currentText()))
+        if combo.findText(previous) >= 0: combo.setCurrentText(previous)
+        combo.blockSignals(False); self.kind_changed()
+
+    def kind_changed(self):
+        regions = self.available_regions()
+        self.region = self.region if hasattr(self, 'region') and self.region in regions else regions[0]
+        for region, b in self.region_buttons.items():
+            b.setVisible(region in regions)
+            b.setEnabled(region in regions and not self.busy)
+            b.setToolTip('Available' if region in regions else 'This combination is not supported by the workflow')
+        self.set_region(self.region)
+
+    def set_region(self, region):
+        self.region = region
+        self.region_buttons[region].setChecked(True)
+        self.update_summary()
+
+    def update_summary(self):
+        if not self.fields['kind'].currentText(): return
+        values = self.values()
+        needs_base = values['device'] == 'Oneplus Ace 6' and values['kind'] == 'SuperHybrid Flasher' and self.region == 'IN'
+        self.base_panel.setVisible(needs_base)
+        try:
+            self.catalog.selection(values['device'], values['kind'], self.region)
+            text = 'Target: OnePlus 15R India OxygenOS OTA · Base: Ace 6 ColorOS OTA' if needs_base else 'Only combinations supported by the build workflow are available.'
+            self.selection_valid = True
+        except BuildError as e:
+            text = str(e); self.selection_valid = False
+        self.selection_info.setText(text)
+        self.start_button.setEnabled(self.selection_valid and not self.busy)
+        self.os_badge.setText('COLOR OS' if self.region == 'CN' else 'OXYGEN OS')
+        self.summary_device.setText(values['device'].replace('Oneplus', 'OnePlus'))
+        self.summary_kind.setText(values['kind'])
+        for key, value in dict(os='ColorOS' if self.region == 'CN' else 'OxygenOS', region='Global' if self.region == 'GLO' else self.region,
+                               format='ZIP + SHA-256', engine='WSL Linux' if sys.platform == 'win32' else 'Native Linux').items():
+            self.summary_values[key].setText(value)
+        try:
+            p = Path(values['output']).expanduser().resolve()
+            while not p.exists(): p = p.parent
+            free = shutil.disk_usage(p).free / 1024**3
+            self.space.setText(f'{free:.1f} GB available on output drive\n' + ('Choose a larger drive for full builds.' if free < 40 else 'Ready for your next build.'))
+        except OSError:
+            self.space.setText('Choose an accessible output folder.')
+
+    def source_mode(self, url):
+        self.fields['ota'].setPlaceholderText('https://… / full-OTA.zip' if url else 'Choose a full OTA .zip file')
+        self.browse_ota.setVisible(not url)
+        self.source_hint.setText('Paste the direct HTTP(S) link to a full OTA ZIP.' if url else 'Use a full OTA package. Incremental updates are not supported.')
+
+    def navigate(self, index):
+        self.pages.setCurrentIndex(index); self.nav[index].setChecked(True)
+        titles = [('New package', 'Turn a full OTA into a ready-to-use flasher package.'),
+                  ('Build history', 'Your packages, checksums and build records in one place.'),
+                  ('Environment', 'Check your local engine and verify the build pipeline.')]
+        self.title_label.setText(titles[index][0]); self.subtitle.setText(titles[index][1])
+        if index == 1: self.load_history()
+
+    def choose_ota(self, key):
+        path, _ = QFileDialog.getOpenFileName(self, 'Select full OTA', '', 'OTA ZIP (*.zip);;All files (*)')
+        if path:
+            self.fields[key].setText(path)
+            if key == 'ota': self.file_tab.setChecked(True); self.source_mode(False)
+
+    def choose_output(self):
+        path = QFileDialog.getExistingDirectory(self, 'Build output folder', self.fields['output'].text())
+        if path: self.fields['output'].setText(path); self.update_summary()
+
+    def start(self, action):
+        if self.busy: return
+        values = self.values()
+        if action == 'build' and not values['ota']:
+            QMessageBox.warning(self, 'Full OTA required', 'Choose a full OTA ZIP or paste its download URL.'); return
+        if action == 'build' and not self.base_panel.isHidden() and not values['base']:
+            QMessageBox.warning(self, 'BASE OTA required', 'Choose the Ace 6 ColorOS BASE full OTA.'); return
+        try:
+            output = Path(values['output']).expanduser().resolve(); output.mkdir(parents=True, exist_ok=True)
+            values['output'] = str(output)
+            self.cancel_file = output / ('.cancel-' + uuid.uuid4().hex)
+            self.current_output = self.last_folder = output
+            self.settings.write_text(json.dumps({k: values[k] for k in ('device', 'kind', 'region', 'output', 'distro')}, indent=2) + '\n', encoding='utf-8')
+        except OSError as e:
+            QMessageBox.warning(self, 'Output folder unavailable', str(e)); return
+        self.busy = True; self.action = action; self.started = time.monotonic()
+        self.set_busy(True); self.log.clear()
+        self.status.setText({'check': 'Checking your environment', 'test': 'Running pipeline self-test', 'build': 'Preparing your build'}[action])
+        self.progress.setRange(0, 0)
+        self.highlight_step(-1)
+        def task():
+            try:
+                command = Runtime(values['distro']).command(values, action, self.cancel_file)
+                if '--output' in command: self.events.put(('output-root', command[command.index('--output') + 1]))
+                options = {'creationflags': subprocess.CREATE_NO_WINDOW} if sys.platform == 'win32' else {}
+                with subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                                      encoding='utf-8', errors='replace', bufsize=1, **options) as process:
+                    for line in process.stdout: self.events.put(('line', line))
+                    code = process.wait()
+                self.events.put(('done', code))
+            except Exception as e:
+                self.events.put(('line', f'ERROR: {e}\n')); self.events.put(('done', 1))
+        threading.Thread(target=task, daemon=True).start()
+
+    def set_busy(self, busy):
+        for widget in self.inputs: widget.setEnabled(not busy)
+        self.start_button.setEnabled(not busy and self.selection_valid)
+        self.check_button.setEnabled(not busy); self.test_button.setEnabled(not busy)
+        self.cancel_button.setEnabled(busy and self.action != 'check')
+        if not busy: self.kind_changed()
+
+    def highlight_step(self, index):
+        for i, item in enumerate(self.steps):
+            item.setProperty('active', i == index)
+            item.style().unpolish(item); item.style().polish(item)
+
+    def poll(self):
+        if self.busy and self.started:
+            seconds = int(time.monotonic() - self.started)
+            self.elapsed.setText(f'{seconds // 60:02d}:{seconds % 60:02d} elapsed')
+        try:
+            for _ in range(300):
+                kind, value = self.events.get_nowait()
+                if kind == 'output-root': self.backend_output = PurePosixPath(value)
+                elif kind == 'line':
+                    if value.startswith('@@RESULT '):
+                        try:
+                            result = json.loads(value[len('@@RESULT '):])
+                            relative = PurePosixPath(result['job']).relative_to(self.backend_output)
+                            self.last_folder = self.current_output.joinpath(*relative.parts)
+                        except (ValueError, KeyError): pass
+                    else:
+                        self.log.moveCursor(QTextCursor.MoveOperation.End); self.log.insertPlainText(value)
+                    if value.startswith('STEP '):
+                        self.status.setText(value.strip().replace('STEP ', '').replace(' • ', '   ·   '))
+                        try: self.highlight_step(int(value[5]) - 1)
+                        except ValueError: pass
+                else:
+                    cancelled = self.cancel_file and self.cancel_file.exists()
+                    self.busy = False
+                    self.progress.setRange(0, 5); self.progress.setValue(5 if value == 0 else 0)
+                    self.status.setText('Build cancelled · partial files retained' if cancelled else
+                                        ('Environment ready' if self.action == 'check' else 'Self-test passed · test data only' if self.action == 'test' else 'Package complete · ready in your output folder') if value == 0 else 'Build failed · see output below')
+                    self.highlight_step(4 if value == 0 else -1)
+                    self.set_busy(False)
+                    if self.cancel_file: self.cancel_file.unlink(missing_ok=True)
+                    if self.pages.currentIndex() == 1: self.load_history()
+                    if self.closing: self.close(); return
+        except queue.Empty: pass
+
+    def cancel(self):
+        if self.busy and self.cancel_file:
+            try:
+                self.cancel_file.touch(); self.status.setText('Stopping build…'); self.cancel_button.setEnabled(False)
+            except OSError as e: QMessageBox.warning(self, 'Could not cancel', str(e))
+
+    def open_output(self):
+        try:
+            self.last_folder.mkdir(parents=True, exist_ok=True)
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.last_folder)))
+        except OSError as e: QMessageBox.warning(self, 'Could not open folder', str(e))
+
+    def save_log(self):
+        path, _ = QFileDialog.getSaveFileName(self, 'Save build log', 'flasher-builder.log', 'Log files (*.log)')
+        if path:
+            try: Path(path).write_text(self.log.toPlainText(), encoding='utf-8')
+            except OSError as e: QMessageBox.warning(self, 'Could not save log', str(e))
+
+    def load_history(self):
+        self.history.clear()
+        output = Path(self.fields['output'].text()).expanduser()
+        paths = list(output.glob('*/build.json')) + list(output.glob('self-test-*/results/*/build.json'))
+        for path in sorted(paths, reverse=True)[:200]:
+            try:
+                info = json.loads(path.read_text(encoding='utf-8'))
+                title = ('TEST · ' if info.get('test_fixture') else '') + info['device'] + ' / ' + info['flasher_type']
+                item = QTreeWidgetItem([title, info['region'], info['version'], info['created'].replace('T', '  ')])
+                item.setData(0, Qt.ItemDataRole.UserRole, str(path.parent)); self.history.addTopLevelItem(item)
+            except (OSError, ValueError, KeyError): pass
+
+    def open_history(self, item, column):
+        QDesktopServices.openUrl(QUrl.fromLocalFile(item.data(0, Qt.ItemDataRole.UserRole)))
+
+    def closeEvent(self, event):
+        if self.busy:
+            if self.closing:
+                event.ignore(); return
+            answer = QMessageBox.question(self, 'Build running', 'Cancel the running task and close when it has stopped?')
+            if answer == QMessageBox.StandardButton.Yes: self.closing = True; self.cancel()
+            event.ignore()
+        else: event.accept()
+
+
+def main():
+    application = QApplication(sys.argv)
+    application.setApplicationName('Flasher Builder')
+    application.setStyle('Fusion')
+    application.setStyleSheet(STYLE)
+    font = QFont('Inter' if 'Inter' in QFontDatabase.families() else 'Segoe UI' if sys.platform == 'win32' else 'DejaVu Sans', 10)
+    application.setFont(font)
+    try:
+        window = App(); window.show()
+        if '--smoke-test' in sys.argv:
+            output = Path(sys.argv[sys.argv.index('--test-output') + 1]) if '--test-output' in sys.argv else ROOT / 'builds' / 'qt-smoke-test'
+            output.mkdir(parents=True, exist_ok=True)
+            window.fields['output'].setText(str(output.resolve()))
+            started = time.monotonic()
+            def launch_test():
+                window.navigate(2)
+                window.start('test')
+            def finish_test():
+                if window.busy and time.monotonic() - started < 90:
+                    return
+                success = not window.busy and window.status.text() == 'Self-test passed · test data only'
+                (output / 'qt-smoke-test.log').write_text(window.log.toPlainText(), encoding='utf-8')
+                (output / 'qt-smoke-test.json').write_text(json.dumps({'passed': success, 'status': window.status.text(), 'frozen': bool(getattr(sys, 'frozen', False))}, indent=2) + '\n', encoding='utf-8')
+                window.navigate(0)
+                window.grab().save(str(output / 'qt-preview.png'))
+                application.exit(0 if success else 1)
+            smoke_timer = QTimer(window)
+            smoke_timer.timeout.connect(finish_test)
+            QTimer.singleShot(100, launch_test)
+            smoke_timer.start(300)
+    except Exception as e:
+        QMessageBox.critical(None, 'Flasher Builder could not start', str(e)); return 1
+    return application.exec()

@@ -1,0 +1,17 @@
+__pycache__/
+*.pyc
+.flasher-builder.json
+builds/
+dist/
+
+/FlasherBuilder
+
+.private-fork/
+bloat-audit/
+
+.bloat-cache/
+
+# Materialized release assets are build/cache data, not Git blobs.
+bloat/**/*.img
+bloat/**/*.img.gz
+test-results/

@@ -404,6 +404,9 @@ jobs:
       # ===============================================================================
 
       - name: Stage files
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BLOAT_CACHE_DIR: ${{ runner.temp }}/flasher-bloat-cache
         shell: bash
         run: |
           set -euo pipefail

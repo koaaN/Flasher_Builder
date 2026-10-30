@@ -38,6 +38,11 @@ image_size() {
   fi
 }
 
+# Reject incomplete extraction before creating a misleading super image.
+for required in system.img vendor.img product.img; do
+  [[ -s "$required" ]] || { echo "ERROR: Required partition missing: $required" >&2; exit 1; }
+done
+
 # Basis-Command als Array aufbauen
 cmd=(
   "$LPM"

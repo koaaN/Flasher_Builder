@@ -35,7 +35,10 @@ copy_bloat_from_folder () {
     local stub="$src/${f%.img}"
     [ -f "$stub" ] || continue
     local url; url="$(tr -d '\r' < "$stub" | xargs || true)"
-    [ -n "$url" ] && echo "Downloading $f from $url" && curl -L --fail --retry 3 --retry-delay 5 -o "$dest/$f" "$url" || echo "WARN: download failed for $f"
+    [ -n "$url" ] || { echo "ERROR: Empty asset URL for $f" >&2; return 1; }
+    echo "Downloading $f"
+    curl -L --fail --retry 3 --retry-delay 5 -o "$dest/$f.part" "$url"
+    mv -f "$dest/$f.part" "$dest/$f"
   done
 }
 
@@ -98,7 +101,10 @@ copy_or_download () {
     local stub="$dir/$base"
     [ -f "$stub" ] || return
     local url; url="$(tr -d '\r' < "$stub" | xargs || true)"
-    [ -n "$url" ] && echo "Downloading ${base}.img from $url" && curl -L --fail --retry 3 --retry-delay 5 -o "$dest" "$url" || echo "WARN: download failed for ${base}.img"
+    [ -n "$url" ] || { echo "ERROR: Empty asset URL for ${base}.img" >&2; return 1; }
+    echo "Downloading ${base}.img"
+    curl -L --fail --retry 3 --retry-delay 5 -o "$dest.part" "$url"
+    mv -f "$dest.part" "$dest"
   fi
 }
 
@@ -109,6 +115,12 @@ dev="$DEV"
 ftype="$FTYPE"
 region="$REGION"
 root="$GITHUB_WORKSPACE"
+
+# Fetch only this build's verified private-release assets. A source checkout
+# without a manifest keeps the original local-file/URL behavior.
+if [[ -f "$root/bloat/assets-manifest.json" ]]; then
+  python3 "$root/scripts/materialize_bloat.py"     --root "$root" --cache "${BLOAT_CACHE_DIR:-$root/.bloat-cache}"     --device "$dev" --kind "$ftype" --region "$region"
+fi
 
 echo "DEVICE='$dev' • FLASHER TYPE='$ftype' • REGION='$region'"
 
@@ -328,7 +340,7 @@ if [[ "$ftype" == "Regional Flasher" || "$ftype" == "RegionalHybrid Flasher" ]];
   # -----------------------------
   if [[ "$region" = "CN" ]]; then
     cos_here="$work_dir/COS_FILES_HERE"
-    mkdir -p "$oos_here"
+    mkdir -p "$cos_here"
 
     bloat_folder_oos="$(get_bloat_folder "$dev" "$region")"
 

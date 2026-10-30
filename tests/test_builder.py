@@ -1,0 +1,107 @@
+import contextlib
+import io
+import os
+from pathlib import Path
+import signal
+import subprocess
+import sys
+import tempfile
+import threading
+import time
+import unittest
+from unittest.mock import patch
+import zipfile
+
+from flasher_builder.backend import BuildError, Cancelled, Catalog, ROOT, Worker, clean_source, validate_ota
+from flasher_builder.runtime import Runtime
+from flasher_builder.selftest import make_ota
+
+
+class BuilderTests(unittest.TestCase):
+    def test_every_workflow_combination_has_assets(self):
+        catalog = Catalog()
+        self.assertEqual(len(catalog.builders), 61)
+        for (kind, dev, region), builder in catalog.builders.items():
+            device = next(k for k, v in catalog.devices.items() if v == dev)
+            with self.subTest(device=device, kind=kind, region=region):
+                catalog.selection(device, kind, region)
+                self.assertTrue((ROOT / 'build_scripts' / builder).is_file())
+                if 'Super' in kind:
+                    self.assertGreater(catalog.sizes[dev], 0)
+        with self.assertRaises(BuildError):
+            catalog.selection('Oneplus 13', 'SuperHybrid Flasher', 'INVALID')
+
+    def test_ota_validation_rejects_incremental_and_placeholder(self):
+        with tempfile.TemporaryDirectory() as folder:
+            ota = Path(folder) / 'test.zip'
+            with zipfile.ZipFile(ota, 'w') as z:
+                z.writestr('PLACEHOLDER.txt', 'not firmware')
+            with self.assertRaises(BuildError):
+                validate_ota(ota)
+            make_ota(ota, {'boot': b'\0' * 4096})
+            self.assertEqual(validate_ota(ota)[0], '1.2.3.4')
+            with zipfile.ZipFile(ota) as z:
+                payload = z.read('payload.bin')
+            with zipfile.ZipFile(ota, 'w') as z:
+                z.writestr('payload.bin', payload)
+                z.writestr('META-INF/com/android/metadata', 'pre-build=old\nversion_name=1.2.3.4\n')
+            with self.assertRaisesRegex(BuildError, 'incremental'):
+                validate_ota(ota)
+
+    def test_url_cleanup_and_literal_argument_passing(self):
+        self.assertEqual(clean_source('  "https://host/ota?a=1\\u0026b=2"  '), 'https://host/ota?a=1&b=2')
+        malicious = 'https://host/ota?x=$(touch /tmp/should-never-exist)&a=1'
+        values = dict(output='/tmp/build dir', device='Oneplus 13', kind='SuperHybrid Flasher', region='GLO', ota=malicious, base='')
+        command = Runtime().command(values, 'build', '/tmp/cancel marker')
+        self.assertEqual(command[command.index('--ota') + 1], malicious)
+        self.assertEqual(command[command.index('--output') + 1], '/tmp/build dir')
+
+    def test_windows_wsl_command_maps_paths_and_preserves_url(self):
+        with patch('flasher_builder.runtime.sys.platform', 'win32'):
+            runtime = Runtime('Ubuntu Test')
+        self.assertEqual(runtime.prefix, ['wsl.exe', '--distribution', 'Ubuntu Test', '--exec'])
+        values = dict(output='Output Folder', device='Oneplus Ace 6', kind='SuperHybrid Flasher', region='IN', ota='https://host/ota?a=1&b=2', base='base OTA.zip')
+        with patch.object(runtime, 'path', side_effect=lambda p: '/mapped/' + str(p)):
+            command = runtime.command(values, 'build', 'cancel file')
+        self.assertEqual(command[command.index('--base') + 1], '/mapped/base OTA.zip')
+        self.assertEqual(command[command.index('--ota') + 1], values['ota'])
+        self.assertEqual(command[:6], ['wsl.exe', '--distribution', 'Ubuntu Test', '--exec', 'python3', '-u'])
+
+    def test_child_failure_surfaces(self):
+        with self.assertRaisesRegex(BuildError, 'exit 7'):
+            Worker().run([sys.executable, '-c', 'raise SystemExit(7)'])
+
+    def test_cancellation_stops_process_group(self):
+        with tempfile.TemporaryDirectory() as folder:
+            marker = Path(folder) / 'cancel'
+            pidfile = Path(folder) / 'pid'
+            code = 'import os,time; from pathlib import Path; Path(' + repr(str(pidfile)) + ').write_text(str(os.getpid())); time.sleep(30)'
+            trigger = threading.Timer(.5, marker.touch)
+            trigger.start()
+            start = time.monotonic()
+            try:
+                with self.assertRaises(Cancelled):
+                    Worker(marker).run([sys.executable, '-c', code])
+                self.assertLess(time.monotonic() - start, 5)
+                pid = int(pidfile.read_text())
+                with self.assertRaises(ProcessLookupError):
+                    os.kill(pid, 0)
+            finally:
+                trigger.cancel()
+
+    def test_failed_asset_download_aborts_staging(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            text = (ROOT / 'scripts/stage_files.sh').read_text()
+            # Exercise the actual helper with curl failing; no network required.
+            helper = text[:text.index('# -----------------------------\n#      Device Configuration')]
+            assets = root / 'assets'; assets.mkdir()
+            (assets / 'my_preload').write_text('https://invalid.test/asset')
+            command = helper + '\ncurl() { return 22; }\ncopy_bloat_from_folder "$1" assets "$2"\necho UNREACHABLE\n'
+            result = subprocess.run(['bash', '-c', command, 'test', str(root), str(root / 'dest')], capture_output=True, text=True)
+            self.assertEqual(result.returncode, 22, result.stdout + result.stderr)
+            self.assertNotIn('UNREACHABLE', result.stdout)
+
+
+if __name__ == '__main__':
+    unittest.main()
