@@ -9,6 +9,12 @@ import subprocess
 import tempfile
 
 
+def find_release(tag):
+    # The by-tag REST endpoint excludes unpublished drafts.
+    releases = json.loads(subprocess.check_output(['gh', 'api', 'repos/{owner}/{repo}/releases?per_page=100']))
+    return next((release for release in releases if release['tag_name'] == tag), None)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--directory', type=Path)
@@ -19,11 +25,9 @@ def main():
     if not re.fullmatch(r'v\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?', args.tag):
         raise ValueError('Use a version tag such as v1.0.0')
     if not re.fullmatch(r'[a-f0-9]{40}', args.commit): raise ValueError('Expected an exact commit SHA')
-    endpoint = 'repos/{owner}/{repo}/releases/tags/' + args.tag
     if args.prepare:
-        result = subprocess.run(['gh', 'api', endpoint], capture_output=True, text=True)
-        if result.returncode == 0:
-            release = json.loads(result.stdout)
+        release = find_release(args.tag)
+        if release is not None:
             if not release.get('draft'): raise ValueError('This version is already published; use a new tag.')
             subprocess.run(['gh', 'api', '--method', 'PATCH', 'repos/{owner}/{repo}/releases/' + str(release['id']),
                             '-f', 'target_commitish=' + args.commit], check=True)
@@ -59,8 +63,8 @@ For private bloat downloads, sign in with the bundled tools/github/gh auth login
 
 The source ZIP supports both systems. Third-party licenses, pinned tool checksums, and build instructions are included. Test fixtures are synthetic and must never be flashed.
 '''
-    release = json.loads(subprocess.check_output(['gh', 'api', endpoint]))
-    if not release.get('draft'): raise ValueError('Refusing to change a published release.')
+    release = find_release(args.tag)
+    if release is None or not release.get('draft'): raise ValueError('Expected an unpublished draft release.')
     subprocess.run(['gh', 'release', 'upload', args.tag, '--clobber', str(checksums)], check=True)
     with tempfile.TemporaryDirectory() as tmp:
         payload = Path(tmp) / 'release.json'
