@@ -9,12 +9,18 @@ force. No GitHub credentials are included in a package.
   This application downloads the OTA itself, then uses the local extractor.
   License: `otaripper/LICENSE`.
 - **lpmake**, Android Open Source Project, Apache-2.0.
-  The existing Linux executable is retained. Windows uses Rprop's native AOSP
-  Android 15 build at commit `5e92a5d504de33414318ced8bad5507440bb8c30`.
-  https://github.com/Rprop/aosp15_partition_tools/tree/5e92a5d504de33414318ced8bad5507440bb8c30
-  Its Windows executable is x86 and runs on supported x86-64 Windows systems.
-  It uses Windows' Universal C Runtime. The upstream build patches are included
-  beside the binary. License: `lpmake/LICENSE`.
+  The existing Linux executable is retained. Windows uses the x86-64 build from
+  MIO-KITCHEN at commit `8a750226c75e30900f031e1aeae3317c06011371`:
+  https://github.com/ColdWindScholar/MIO-KITCHEN-SOURCE/tree/8a750226c75e30900f031e1aeae3317c06011371/bin/Windows/AMD64
+  License: `lpmake/LICENSE`.
+- **Cygwin runtime 3.5.3**, Cygwin contributors, LGPL-3.0-or-later with the Cygwin
+  linking exception. Only `cygwin1.dll` is included beside Windows lpmake; no
+  Cygwin installation or shell is required. The library is independently
+  replaceable. Licenses: `lpmake/CYGWIN-LGPL-3.0`, `lpmake/CYGWIN-GPL-3.0`.
+  Complete corresponding upstream source for the library is included in the
+  Windows and source archives as `lpmake/sources/cygwin-3.5.3.tar.gz`.
+  https://github.com/cygwin/cygwin/tree/d8b21b8c77275941afcc5952fa3bb542413554ad
+  Linking exception: https://cygwin.com/licensing.html
 - **GitHub CLI 2.103.3**, GitHub and contributors, MIT.
   https://github.com/cli/cli/releases/tag/v2.103.3
   License: `tools/github/LICENSE`. Its platform binaries are fetched during

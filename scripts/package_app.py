@@ -55,6 +55,9 @@ def main():
                 other = project / name / (name if suffix else name + '.exe')
                 other.unlink(missing_ok=True)
             (project / 'tools/github' / ('gh' if suffix else 'gh.exe')).unlink(missing_ok=True)
+            if not suffix:
+                (project / 'lpmake/cygwin1.dll').unlink(missing_ok=True)
+                shutil.rmtree(project / 'lpmake/sources', ignore_errors=True)
             for name, entry, windowed in [('FlasherBuilderWorker', 'flasher-worker.py', False), ('FlasherBuilder', 'flasher-builder.py', True)]:
                 subprocess.run([sys.executable, '-m', 'PyInstaller', '--noconfirm', '--clean', '--onefile',
                             '--windowed' if windowed else '--console', '--exclude-module', 'PyQt6', '--exclude-module', 'PyQt5', '--exclude-module', 'PySide2', '--name', name, '--distpath', str(project),

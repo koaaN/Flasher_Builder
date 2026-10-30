@@ -1,5 +1,6 @@
 """Portable implementation of the repository's staging and three builder scripts."""
 from pathlib import Path, PurePosixPath
+import os
 import shutil
 import struct
 
@@ -98,7 +99,7 @@ def pack_super(worker, assets, directory, size):
         command += ['--partition', f'{name}_b:readonly:0:qti_dynamic_partitions_b']
     # Relative paths keep the AOSP Windows tool independent of host path encoding.
     command += ['--sparse', '--output', 'super.img']
-    worker.run(command, cwd=directory)
+    worker.run(command, cwd=directory, env=os.environ | {'TMPDIR': '.'})
     if not (directory / 'super.img').is_file():
         raise BuildError('lpmake did not create super.img.')
 

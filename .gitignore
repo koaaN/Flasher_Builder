@@ -21,3 +21,4 @@ bloat/.cancel-*
 .ota-catalog/
 /tools/github/gh
 /tools/github/gh.exe
+/lpmake/sources/*.tar.gz

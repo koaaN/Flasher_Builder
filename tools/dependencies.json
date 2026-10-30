@@ -18,10 +18,10 @@
   {
     "platform": "windows",
     "path": "lpmake/lpmake.exe",
-    "url": "https://raw.githubusercontent.com/Rprop/aosp15_partition_tools/5e92a5d504de33414318ced8bad5507440bb8c30/windows_x86/lpmake.exe",
+    "url": "https://raw.githubusercontent.com/ColdWindScholar/MIO-KITCHEN-SOURCE/8a750226c75e30900f031e1aeae3317c06011371/bin/Windows/AMD64/lpmake.exe",
     "member": null,
-    "archive_sha256": "602d59d2670f6dccfef81d854444aafe2cac7995d07e22158271bef65accaf3d",
-    "sha256": "602d59d2670f6dccfef81d854444aafe2cac7995d07e22158271bef65accaf3d"
+    "archive_sha256": "1b9974cb305f27a44ea688c8306395a36c088d8bc26738f4db242ca16c9fe26e",
+    "sha256": "1b9974cb305f27a44ea688c8306395a36c088d8bc26738f4db242ca16c9fe26e"
   },
   {
     "platform": "linux",
@@ -38,5 +38,21 @@
     "member": "bin/gh.exe",
     "archive_sha256": "98d0cfa794721665d7973dd728c78aff7bd836d58f10f6d7a03568eccb0a22e0",
     "sha256": "d303d8ac3f5e9438bf7c977b64dd6425513eae46218f8881d30694f28c1d0dfd"
+  },
+  {
+    "platform": "windows",
+    "path": "lpmake/cygwin1.dll",
+    "member": null,
+    "url": "https://raw.githubusercontent.com/ColdWindScholar/MIO-KITCHEN-SOURCE/8a750226c75e30900f031e1aeae3317c06011371/bin/Windows/AMD64/cygwin1.dll",
+    "sha256": "ab77212a71c2e2e8b870452d2c32bc72a6708d6e963dd3ebe2ac1a946cffc242",
+    "archive_sha256": "ab77212a71c2e2e8b870452d2c32bc72a6708d6e963dd3ebe2ac1a946cffc242"
+  },
+  {
+    "platform": "windows",
+    "path": "lpmake/sources/cygwin-3.5.3.tar.gz",
+    "member": null,
+    "url": "https://api.github.com/repos/cygwin/cygwin/tarball/cygwin-3.5.3",
+    "sha256": "b56c3b7a3c44d4fa3d44c8bb6fb9541c9f403cb79620ffeb9044325f2407f17f",
+    "archive_sha256": "b56c3b7a3c44d4fa3d44c8bb6fb9541c9f403cb79620ffeb9044325f2407f17f"
   }
 ]
