@@ -12,7 +12,9 @@ import threading
 import time
 import unittest
 from unittest.mock import patch
-from flasher_builder.backend import ROOT, BuildError, Cancelled, Catalog, Worker
+from flasher_builder.backend import ROOT, BuildError, Cancelled, Catalog, Worker, package
+from flasher_builder.selftest import verify_super
+import zipfile
 from flasher_builder.host import tool, worker_command
 from flasher_builder.native_pipeline import stage, image_size, pack_super
 
@@ -68,20 +70,43 @@ class NativePipelineTests(unittest.TestCase):
                         shutil.rmtree(root/'actions')
                     shutil.rmtree(root/'native')
 
-    def test_lpmake_handles_images_and_super_larger_than_4_gib(self):
+    def test_lpmake_handles_large_partitions_and_offsets(self):
         with tempfile.TemporaryDirectory(prefix='native-large-sparse-') as tmp:
             directory = Path(tmp)
             blocks = 5 * 1024**3 // 4096
-            # 5 GiB logical image; only one actual 4 KiB block is stored.
-            header = struct.pack('<IHHHHIIII', 0xed26ff3a, 1, 0, 28, 12, 4096, blocks, 2, 0)
-            skip = struct.pack('<HHII', 0xcac3, 0, blocks-1, 12)
-            data = struct.pack('<HHII', 0xcac1, 0, 1, 12+4096) + b'S' * 4096
-            (directory/'system.img').write_bytes(header + skip + data)
+            header = struct.pack('<IHHHHIIII', 0xed26ff3a, 1, 0, 28, 12, 4096, blocks, 1, 0)
+            sparse = directory/'expanded-size.img'
+            sparse.write_bytes(header + struct.pack('<HHII', 0xcac3, 0, blocks, 12))
+            self.assertEqual(image_size(sparse), 5*1024**3)
             for name in ('vendor', 'product'): (directory/(name+'.img')).write_bytes(b'V'*4096)
-            self.assertEqual(image_size(directory/'system.img'), 5*1024**3)
+            small_sparse = struct.pack('<IHHHHIIII', 0xed26ff3a, 1, 0, 28, 12, 4096, 4, 1, 0)
+            (directory/'system.img').write_bytes(small_sparse + struct.pack('<HHII', 0xcac1, 0, 4, 12+16384) + b'S'*16384)
             pack_super(Worker(), ROOT, directory, 16*1024**3)
             self.assertEqual(image_size(directory/'super.img'), 16*1024**3)
-            self.assertLess((directory/'super.img').stat().st_size, 4*1024**2)
+            # Allocate a 5 GiB system partition with a small initial image. This
+            # exercises true offsets above 4 GiB without scanning gigabytes of
+            # fixture zeros through the Windows compatibility runtime.
+            command = [tool(ROOT, 'lpmake'), '--metadata-size', '65536', '--metadata-slots', '3',
+                '--virtual-ab', '--device', 'super:17179869184', '--group', 'qti_dynamic_partitions_a:17175674880',
+                '--partition', 'system_a:readonly:5368709120:qti_dynamic_partitions_a', '--image', 'system_a=system.img',
+                '--partition', 'vendor_a:readonly:4096:qti_dynamic_partitions_a', '--image', 'vendor_a=vendor.img',
+                '--sparse', '--output', 'large-offset.img']
+            Worker().run(command, cwd=directory, env=os.environ | {'TMPDIR': '.'})
+            image = (directory/'large-offset.img').read_bytes()
+            locations = verify_super(image, dict(system=b'S'*16384, vendor=b'V'*4096))
+            self.assertGreater(locations['vendor_a'][0], 4*1024**3)
+            self.assertLess(len(image), 4*1024**2)
+
+    def test_output_zip_keeps_unix_executable_modes_on_every_host(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp); source = root/'files'; source.mkdir()
+            for name, data in [('run.sh', b'#!/bin/sh'), ('update-binary', b'recovery'), ('fastboot', b'\x7fELFpayload'), ('boot.img', b'boot')]:
+                path = source/name; path.write_bytes(data); path.chmod(0o644)
+            archive = root/'package.zip'; package(Worker(), source, archive)
+            with zipfile.ZipFile(archive) as z:
+                for name in ('run.sh', 'update-binary', 'fastboot'):
+                    self.assertEqual((z.getinfo(name).external_attr >> 16) & 0o777, 0o755)
+                self.assertEqual((z.getinfo('boot.img').external_attr >> 16) & 0o777, 0o644)
 
     @unittest.skipUnless(os.name == 'nt', 'Windows process cancellation')
     def test_windows_cancellation_stops_native_child(self):

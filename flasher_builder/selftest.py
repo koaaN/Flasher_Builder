@@ -111,6 +111,7 @@ def verify_super(image, expected):
         offset, size = partitions[name+'_a']
         if sparse_range(image, offset, len(data)) != data:
             raise BuildError('Self-test: wrong source bytes in super: '+name)
+    return partitions
 
 
 def run_self_test(args):

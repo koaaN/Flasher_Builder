@@ -265,6 +265,14 @@ def package(worker, result, dest):
             if path.is_file():
                 # ZipInfo preserves executable modes for Linux flasher scripts.
                 info = zipfile.ZipInfo.from_file(path, path.relative_to(result).as_posix())
+                # Windows stat() cannot preserve Unix executable bits. Recovery
+                # and Linux launchers in a Windows-built package still need them.
+                executable = path.suffix == '.sh' or path.name in ('update-binary', 'pack_super', 'unpack_super', 'pack_super_regional', 'volprompt')
+                if path.suffix not in ('.img', '.zip'):
+                    with path.open('rb') as header:
+                        executable = executable or header.read(4) == b'\x7fELF'
+                info.create_system = 3
+                info.external_attr = (0o100755 if executable else 0o100644) << 16
                 info.compress_type = zipfile.ZIP_DEFLATED
                 info._compresslevel = 3
                 with path.open('rb') as src, z.open(info, 'w', force_zip64=True) as dst:
