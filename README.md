@@ -45,7 +45,7 @@ A native Windows executable can also be built on Windows using the packaging com
 
 - Choose a supported device, flasher type and region. CN means ColorOS; other regions use OxygenOS templates.
 - Complete **step 2 — Bloat files**: choose a folder containing the required images or click **Download bloat**. The app verifies their sizes and SHA-256 hashes. **Continue to OTA**, step 3, and **Build package** stay locked until the selected build's files are verified locally.
-- In **step 3**, choose a full OTA ZIP or enter an HTTP(S) URL. Placeholder and incremental OTA files are rejected.
+- In **step 3**, use **Version catalog**, choose a full OTA ZIP, or enter an HTTP(S) URL. Placeholder and incremental OTA files are rejected.
 - **Ace 6 / SuperHybrid / IN** additionally requires the Ace 6 ColorOS **BASE** OTA. Its primary OTA must be the OnePlus 15R India OxygenOS **TARGET** OTA.
 - Choose the output folder and click **Build package**. The log reports download, staging, extraction, packing and compression. **Cancel** stops the worker's current subprocess group, including through WSL.
 - **Open output** opens the latest result folder. Each job has a unique name and contains the final ZIP, `.zip.sha256`, `build.json`, and `build.log`. Temporary work files are removed after a successful build. Failed or cancelled jobs retain partial work for inspection; those job folders can be deleted when no longer needed.
@@ -53,6 +53,30 @@ A native Windows executable can also be built on Windows using the packaging com
 Budget roughly **40–80 GB free** for full firmware builds, depending on device, OTA compression and the number of inputs. The worker checks available space before extraction, but actual requirements vary. The GUI logs the OTA's declared device identifier; choose firmware appropriate for the selected device. A successful package build does not establish compatibility with a physical phone.
 
 This application builds local ZIPs. SFTP uploads and Telegram announcements remain in the original GitHub Actions workflow. No runner registration is needed. Private release downloads use the GitHub CLI login in the Linux build environment; run `gh auth login` on Linux or inside WSL on Windows. No token is saved in the application settings.
+
+### OTA version catalog
+
+Open **Version catalog** in step 3 to fetch versions from [Daniel Springer's OTA catalog](https://roms.danielspringer.at/index.php?view=ota).
+The picker matches the selected device and region, shows the latest release first,
+and displays the model, size and security patch when available. **Fetch versions**
+uses the site's [public catalog API](https://roms.danielspringer.at/api/ota.php?format=html&help=1),
+with a shared 15-minute cache and ETag revalidation. An offline cached list is clearly marked.
+Selections with no matching catalog releases can still use a local ZIP or a manual URL.
+The picker does not guess substitute devices for conversion builds; the explicit
+Ace 6 OxygenOS builder uses **OP 15R / IN** as target and **OP ACE 6 / CN** as base.
+
+Select a version and click **Build package** to download it and build in one operation.
+Alternatively, **Download OTA** saves and verifies the full ZIP without building;
+the current session then shows **Already downloaded** and reuses that local ZIP for
+builds. On later launches, choose that saved ZIP in **Local file**. Downloads happen
+one at a time, including the target and base for Ace 6. Step 2 must be complete first.
+
+**Copy download link** resolves a fresh link onto the clipboard. Some links expire;
+the worker resolves them again immediately before transfer rather than reusing an
+old copied link. Temporary resolved links are not saved in settings, the cache or
+build logs. Catalog downloads check the listed size and MD5 when provided, as well
+as the existing full-OTA ZIP checks. Cancelled or failed standalone downloads remove
+their partial files and leave existing files intact.
 
 ## Bloat assets
 

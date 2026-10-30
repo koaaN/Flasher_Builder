@@ -39,7 +39,13 @@ class Runtime:
             cmd += ['--bloat-dir', self.path(values['bloat_dir'])]
         for key in ('device', 'kind', 'region'):
             cmd += ['--' + key, values[key]]
+        if action == 'ota':
+            cmd += ['--download-ota', '--download-role', values['download_role'],
+                    '--download-path', self.path(values['download_path'])]
         for key in ('ota', 'base'):
+            if values.get(key + '_catalog_id'):
+                cmd += ['--' + key + '-catalog-id', values[key + '_catalog_id']]
+                continue
             source = clean_source(values[key])
             if source:
                 cmd += ['--' + key, source if is_url(source) else self.path(source)]

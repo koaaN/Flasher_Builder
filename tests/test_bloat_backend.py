@@ -34,6 +34,12 @@ class BloatBackendTests(unittest.TestCase):
             with patch.object(backend, 'check_environment'), patch.object(backend.Worker, 'source') as fetch:
                 with self.assertRaises(backend.BuildError): backend.build(args)
                 fetch.assert_not_called()
+                args.download_role = 'ota'; args.download_path = str(root / 'out/OTA.zip')
+                args.ota_catalog_id = 'selected-version'
+                with patch.object(backend, 'selected_release') as resolve:
+                    with self.assertRaises(backend.BuildError): backend.download_ota(args)
+                    resolve.assert_not_called()
+                args.ota_catalog_id = ''
             self.assertFalse((root / 'out').exists())
             image = root / 'chosen/13/GLO_BLOAT/my_preload.img'; image.parent.mkdir(parents=True); image.write_bytes(raw)
             with patch.object(backend, 'check_environment'), patch.object(backend.Worker, 'source', side_effect=backend.BuildError('OTA boundary reached')) as fetch:

@@ -18,3 +18,4 @@ test-results/
 
 bloat/.cache/
 bloat/.cancel-*
+.ota-catalog/

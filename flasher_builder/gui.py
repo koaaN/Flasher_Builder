@@ -5,6 +5,7 @@ import json
 from pathlib import Path, PurePosixPath
 import platform
 import queue
+import re
 import shutil
 import subprocess
 import sys
@@ -22,6 +23,7 @@ from PySide6.QtWidgets import (QApplication, QButtonGroup, QComboBox, QFileDialo
 
 from .backend import ROOT, BuildError, Catalog
 from .runtime import Runtime
+from . import ota_catalog
 from scripts.materialize_bloat import load_manifest, inspect_downloads
 
 
@@ -357,6 +359,14 @@ class App(QMainWindow):
             pass
         self.inputs = []
         self.fields = {}
+        self.ota_mode = 'file'
+        self.ota_data = None
+        self.ota_context = None
+        self.ota_fetch_token = 0
+        self.ota_fetching = False
+        self.ota_link_token = 0
+        self.ota_link_pending = False
+        self.ota_local = {}
         self.bloat_verified = {}
         self.bloat_scan_token = 0
         self.bloat_probe_key = None
@@ -487,22 +497,51 @@ class App(QMainWindow):
         source_head.addWidget(label('03', 'sectionNumber'))
         source_head.addWidget(label('OTA source', 'cardTitle'))
         source_head.addStretch()
+        source_tabs = QHBoxLayout(); source_tabs.setSpacing(8)
         self.source_group = QButtonGroup(self)
         self.file_tab = button('Local file', 'file', 'sourceTab', lambda: self.source_mode(False))
         self.url_tab = button('Download URL', 'link', 'sourceTab', lambda: self.source_mode(True))
-        for b in (self.file_tab, self.url_tab):
-            b.setCheckable(True); self.source_group.addButton(b); source_head.addWidget(b); self.inputs.append(b)
+        self.catalog_tab = button('Version catalog', 'download', 'sourceTab', lambda: self.source_mode('catalog'))
+        for b in (self.file_tab, self.url_tab, self.catalog_tab):
+            b.setCheckable(True); self.source_group.addButton(b); source_tabs.addWidget(b); self.inputs.append(b)
         self.file_tab.setChecked(True)
         source_layout.addLayout(source_head)
+        source_tabs.addStretch(); source_layout.addLayout(source_tabs)
         self.ota_gate_hint = label('Complete step 2 to unlock OTA selection.', 'hint', True)
         source_layout.addWidget(self.ota_gate_hint)
+        self.catalog_panel = QWidget()
+        self.catalog_panel.setObjectName('innerPanel')
+        catalog_layout = QVBoxLayout(self.catalog_panel); catalog_layout.setContentsMargins(0, 0, 0, 0); catalog_layout.setSpacing(8)
+        catalog_head = QHBoxLayout()
+        catalog_head.addWidget(label('DANIEL SPRINGER · OTA CATALOG', 'fieldLabel'), 1)
+        self.ota_fetch_button = button('Fetch versions', 'download', callback=self.fetch_ota_versions)
+        self.inputs.append(self.ota_fetch_button); catalog_head.addWidget(self.ota_fetch_button)
+        catalog_layout.addLayout(catalog_head)
+        self.ota_catalog_status = label('Fetch available full OTA versions for your device and region.', 'hint', True)
+        catalog_layout.addWidget(self.ota_catalog_status)
+        self.ota_combos = {}; self.ota_details = {}; self.ota_download_buttons = {}; self.ota_copy_buttons = {}; self.ota_role_panels = {}
+        for role, title in (('ota', 'TARGET OTA'), ('base', 'ACE 6 COLOROS BASE OTA')):
+            panel = QWidget(); panel.setObjectName('innerPanel')
+            pl = QVBoxLayout(panel); pl.setContentsMargins(0, 0, 0, 0); pl.setSpacing(8)
+            pl.addWidget(label(title, 'fieldLabel'))
+            combo = ComboBox(); combo.setAccessibleName(title + ' version'); combo.setMinimumWidth(180)
+            combo.currentIndexChanged.connect(lambda index, r=role: self.ota_version_changed(r))
+            self.ota_combos[role] = combo; self.inputs.append(combo); pl.addWidget(combo)
+            detail = label('', 'hint', True); self.ota_details[role] = detail; pl.addWidget(detail)
+            row = QHBoxLayout()
+            download = button('Download OTA', 'download', callback=lambda checked=False, r=role: self.choose_ota_download(r))
+            copy = button('Copy download link', 'link', callback=lambda checked=False, r=role: self.copy_ota_link(r))
+            self.ota_download_buttons[role] = download; self.ota_copy_buttons[role] = copy
+            self.inputs.extend((download, copy)); row.addWidget(download); row.addWidget(copy); row.addStretch(); pl.addLayout(row)
+            self.ota_role_panels[role] = panel; catalog_layout.addWidget(panel)
+        source_layout.addWidget(self.catalog_panel); self.catalog_panel.hide()
         self.fields['ota'], self.browse_ota = self.source_input(source_layout, 'Choose a full OTA .zip file', 'ota')
         self.source_hint = label('Use a full OTA package. Incremental updates are not supported.', 'hint', True)
         source_layout.addWidget(self.source_hint)
         self.base_panel = QWidget(); self.base_panel.setObjectName('innerPanel')
         base_layout = QVBoxLayout(self.base_panel); base_layout.setContentsMargins(0, 5, 0, 0); base_layout.setSpacing(8)
         base_layout.addWidget(label('ACE 6 COLOROS BASE OTA', 'fieldLabel'))
-        self.fields['base'], _ = self.source_input(base_layout, 'Choose BASE OTA or paste its download URL', 'base')
+        self.fields['base'], self.browse_base = self.source_input(base_layout, 'Choose BASE OTA or paste its download URL', 'base')
         source_layout.addWidget(self.base_panel)
         line = QFrame(); line.setObjectName('line'); source_layout.addWidget(line)
         source_layout.addWidget(label('SAVE PACKAGE TO', 'fieldLabel'))
@@ -669,7 +708,14 @@ class App(QMainWindow):
         self.update_summary()
 
     def values(self):
-        return {k: widget.currentText() if isinstance(widget, QComboBox) else widget.text().strip() for k, widget in self.fields.items()} | {'region': self.region}
+        values = {k: widget.currentText() if isinstance(widget, QComboBox) else widget.text().strip() for k, widget in self.fields.items()} | {'region': self.region}
+        if self.ota_mode == 'catalog':
+            for role in ('ota', 'base'):
+                entry = self.ota_combos[role].currentData()
+                local = self.ota_local.get(entry['id']) if entry else None
+                values[role] = local if local and Path(local).is_file() else ''
+                values[role + '_catalog_id'] = entry['id'] if entry and not values[role] else ''
+        return values
 
     def available_regions(self):
         return self.catalog.regions(self.fields['device'].currentText(), self.fields['kind'].currentText())
@@ -699,7 +745,8 @@ class App(QMainWindow):
         if not self.fields['kind'].currentText(): return
         values = self.values()
         needs_base = values['device'] == 'Oneplus Ace 6' and values['kind'] == 'SuperHybrid Flasher' and self.region == 'IN'
-        self.base_panel.setVisible(needs_base)
+        self.base_panel.setVisible(needs_base and self.ota_mode != 'catalog')
+        self.refresh_ota_context()
         try:
             self.catalog.selection(values['device'], values['kind'], self.region)
             text = 'Target: OnePlus 15R India OxygenOS OTA · Base: Ace 6 ColorOS OTA' if needs_base else 'Only combinations supported by the build workflow are available.'
@@ -738,6 +785,7 @@ class App(QMainWindow):
         self.bloat_continue.setEnabled(enabled)
         self.ota_gate_hint.setVisible(not ready)
         self.start_button.setToolTip('Build the package' if ready else 'Complete step 2: required bloat files must be verified locally.')
+        self.update_ota_controls()
 
     def refresh_bloat_status(self, *args, force=False):
         if self.busy or 'bloat_dir' not in self.fields or not hasattr(self, 'region'):
@@ -840,9 +888,111 @@ class App(QMainWindow):
             self.log.appendPlainText('Could not save preferences: ' + str(e))
 
     def source_mode(self, url):
+        self.ota_mode = 'catalog' if url == 'catalog' else 'url' if url else 'file'
+        catalog = self.ota_mode == 'catalog'
+        self.catalog_panel.setVisible(catalog)
+        self.fields['ota'].setVisible(not catalog)
         self.fields['ota'].setPlaceholderText('https://… / full-OTA.zip' if url else 'Choose a full OTA .zip file')
-        self.browse_ota.setVisible(not url)
-        self.source_hint.setText('Paste the direct HTTP(S) link to a full OTA ZIP.' if url else 'Use a full OTA package. Incremental updates are not supported.')
+        self.browse_ota.setVisible(self.ota_mode == 'file')
+        self.source_hint.setText('Choose a version to download or build. Temporary links are refreshed automatically.' if catalog else
+                                 'Paste the direct HTTP(S) link to a full OTA ZIP.' if url else 'Use a full OTA package. Incremental updates are not supported.')
+        self.ota_link_token += 1; self.ota_link_pending = False
+        self.update_summary()
+        if catalog and self.ota_data is None: self.fetch_ota_versions()
+
+    def refresh_ota_context(self):
+        context = (self.fields['device'].currentText(), self.fields['kind'].currentText(), self.region)
+        if context != self.ota_context:
+            self.ota_context = context
+            self.ota_fetch_token += 1; self.ota_fetching = False
+            self.ota_link_token += 1; self.ota_link_pending = False
+            self.populate_ota_versions()
+        roles = ota_catalog.targets(*context)
+        self.ota_role_panels['base'].setVisible('base' in roles)
+
+    def populate_ota_versions(self):
+        counts = []
+        for role, combo in self.ota_combos.items():
+            previous = combo.currentData()
+            combo.blockSignals(True); combo.clear()
+            target = ota_catalog.targets(*self.ota_context).get(role)
+            if self.ota_data is not None and target:
+                entries = ota_catalog.releases_for(self.ota_data, *target)
+                for entry in entries:
+                    combo.addItem(entry['version'] + (' · Latest' if entry.get('is_latest') else ''), entry)
+                if previous:
+                    for i in range(combo.count()):
+                        if combo.itemData(i)['id'] == previous['id']: combo.setCurrentIndex(i); break
+                counts.append(f'{target[0]} / {target[1]}: {len(entries)} versions')
+            combo.blockSignals(False)
+            self.ota_version_changed(role)
+        stale = 'Offline · cached versions · ' if self.ota_data and self.ota_data.get('_stale') else ''
+        self.ota_catalog_status.setText(stale + ' · '.join(counts) if counts else 'Fetch available full OTA versions for your device and region.')
+        self.update_ota_controls()
+
+    def fetch_ota_versions(self):
+        if self.busy or self.ota_fetching: return
+        self.ota_fetch_token += 1; token = self.ota_fetch_token
+        self.ota_fetching = True
+        self.ota_catalog_status.setText('Fetching available versions…')
+        self.update_ota_controls()
+        def task():
+            try:
+                self.events.put(('ota-catalog', (token, ota_catalog.load_catalog(ROOT / '.ota-catalog'), None)))
+            except Exception as e:
+                self.events.put(('ota-catalog', (token, None, str(e))))
+        threading.Thread(target=task, daemon=True).start()
+
+    def ota_version_changed(self, role):
+        self.ota_link_token += 1; self.ota_link_pending = False
+        entry = self.ota_combos[role].currentData()
+        if not entry:
+            self.ota_details[role].setText('No version selected. Fetch versions or use a local file / direct URL.')
+        else:
+            details = [f'{entry["device"]} / {entry["region"]}', entry.get('model', '')]
+            if isinstance(entry.get('size'), int): details.append(f'{entry["size"] / 1024**3:.2f} GiB')
+            if entry.get('security_patch'): details.append('Patch ' + entry['security_patch'])
+            local = self.ota_local.get(entry['id'])
+            if local and Path(local).is_file(): details.append('Downloaded: ' + local)
+            self.ota_details[role].setText(' · '.join(d for d in details if d))
+        self.update_ota_controls()
+
+    def update_ota_controls(self):
+        if not hasattr(self, 'ota_fetch_button'): return
+        self.ota_fetch_button.setEnabled(not self.busy and not self.ota_fetching)
+        for role, combo in self.ota_combos.items():
+            entry = combo.currentData()
+            enabled = bool(entry) and not self.busy and not self.ota_link_pending
+            local = self.ota_local.get(entry['id']) if entry else None
+            downloaded = bool(local and Path(local).is_file())
+            self.ota_download_buttons[role].setText('Already downloaded' if downloaded else 'Download OTA')
+            self.ota_download_buttons[role].setEnabled(enabled and not downloaded)
+            self.ota_copy_buttons[role].setEnabled(enabled)
+
+    def copy_ota_link(self, role):
+        entry = self.ota_combos[role].currentData()
+        if not entry or self.busy or self.ota_link_pending or not self.local_bloat_ready(): return
+        self.ota_link_token += 1; token = self.ota_link_token
+        self.ota_link_pending = True; self.update_ota_controls()
+        self.ota_details[role].setText('Resolving a fresh download link…')
+        def task():
+            try:
+                url = ota_catalog.resolve_link(entry)
+                self.events.put(('ota-link', (token, role, url, None)))
+            except Exception as e:
+                self.events.put(('ota-link', (token, role, None, str(e))))
+        threading.Thread(target=task, daemon=True).start()
+
+    def choose_ota_download(self, role):
+        entry = self.ota_combos[role].currentData()
+        if not entry or self.busy: return
+        filename = re.sub(r'[^\w.()+-]', '_', entry['version']) + '.zip'
+        path, _ = QFileDialog.getSaveFileName(self, 'Save full OTA ZIP', str(Path(self.fields['output'].text()) / filename), 'OTA ZIP (*.zip)')
+        if not path: return
+        if Path(path).exists():
+            QMessageBox.warning(self, 'File already exists', 'Choose another filename or select the existing ZIP in the Local file tab.'); return
+        self.ota_download_request = (role, entry['id'], path)
+        self.start('ota')
 
     def navigate(self, index):
         self.pages.setCurrentIndex(index); self.nav[index].setChecked(True)
@@ -865,13 +1015,17 @@ class App(QMainWindow):
     def start(self, action):
         if self.busy: return
         values = self.values()
-        if action == 'build' and not self.local_bloat_ready():
+        if action in ('build', 'ota') and not self.local_bloat_ready():
             QMessageBox.warning(self, 'Bloat files required', 'Complete step 2 first: download the required bloat files or choose a folder that already contains them.')
             return
-        if action == 'build' and not values['ota']:
+        if action == 'build' and not values['ota'] and not values.get('ota_catalog_id'):
             QMessageBox.warning(self, 'Full OTA required', 'Choose a full OTA ZIP or paste its download URL.'); return
-        if action == 'build' and not self.base_panel.isHidden() and not values['base']:
+        if action == 'build' and 'base' in ota_catalog.targets(values['device'], values['kind'], values['region']) and not values['base'] and not values.get('base_catalog_id'):
             QMessageBox.warning(self, 'BASE OTA required', 'Choose the Ace 6 ColorOS BASE full OTA.'); return
+        if action == 'ota':
+            role, release_id, path = self.ota_download_request
+            values.update(download_role=role, download_path=path)
+            values[role] = ''; values[role + '_catalog_id'] = release_id
         try:
             output = Path(values['bloat_dir'] if action == 'bloat' else values['output']).expanduser().resolve()
             output.mkdir(parents=True, exist_ok=True)
@@ -886,8 +1040,9 @@ class App(QMainWindow):
         self.busy = True; self.action = action; self.started = time.monotonic()
         self.set_busy(True); self.log.clear()
         self.status.setText({'check': 'Checking your environment', 'test': 'Running pipeline self-test',
-                             'build': 'Preparing your build', 'bloat': 'Downloading selected bloat'}[action])
+                             'build': 'Preparing your build', 'bloat': 'Downloading selected bloat', 'ota': 'Downloading selected OTA'}[action])
         labels = ('01  Check files', '02  Download', '03  Verify images', '04  Save files', '05  Ready') if action == 'bloat' else \
+                 ('01  Resolve OTA', '02  Download', '03  Verify ZIP', '04  Verify checksum', '05  Ready') if action == 'ota' else \
                  ('01  Prepare OTA', '02  Stage files', '03  Build images', '04  Package ZIP', '05  Complete')
         for widget, text in zip(self.steps, labels): widget.setText(text)
         self.progress.setRange(0, 0)
@@ -908,10 +1063,12 @@ class App(QMainWindow):
 
     def set_busy(self, busy):
         for widget in self.inputs: widget.setEnabled(not busy)
+        if busy:
+            self.ota_link_token += 1; self.ota_link_pending = False
         self.update_build_gate()
         self.check_button.setEnabled(not busy); self.test_button.setEnabled(not busy)
         self.cancel_button.setEnabled(busy and self.action != 'check')
-        self.cancel_button.setText('Cancel download' if self.action == 'bloat' else 'Cancel build')
+        self.cancel_button.setText('Cancel download' if self.action in ('bloat', 'ota') else 'Cancel build')
         self.bloat_download.setEnabled(False)
         if busy:
             self.bloat_scan_token += 1
@@ -935,7 +1092,27 @@ class App(QMainWindow):
         try:
             for _ in range(300):
                 kind, value = self.events.get_nowait()
-                if kind == 'bloat-scan-finished':
+                if kind == 'ota-catalog':
+                    token, data, error = value
+                    if token == self.ota_fetch_token:
+                        self.ota_fetching = False
+                        if error:
+                            self.ota_catalog_status.setText(error)
+                            self.update_ota_controls()
+                        else:
+                            self.ota_data = data
+                            self.populate_ota_versions()
+                elif kind == 'ota-link':
+                    token, role, url, error = value
+                    if token == self.ota_link_token:
+                        self.ota_link_pending = False
+                        if url:
+                            QApplication.clipboard().setText(url)
+                            self.ota_details[role].setText('Fresh download link copied. Temporary links expire; copy again when needed.')
+                        else:
+                            self.ota_details[role].setText(error)
+                        self.update_ota_controls()
+                elif kind == 'bloat-scan-finished':
                     if self.bloat_active_token == value: self.bloat_active_token = None
                 elif kind == 'bloat-status':
                     token, data = value
@@ -945,6 +1122,12 @@ class App(QMainWindow):
                 elif kind == 'line':
                     if value.startswith('@@BLOAT_RESULT '):
                         self.log.appendPlainText('Bloat files saved and verified in the selected folder.\n')
+                    elif value.startswith('@@OTA_RESULT '):
+                        role, release_id, path = self.ota_download_request
+                        self.ota_local[release_id] = path
+                        self.last_folder = Path(path).parent
+                        self.ota_version_changed(role)
+                        self.log.appendPlainText('Full OTA saved and verified: ' + path + '\nThe build will reuse this local ZIP.\n')
                     elif value.startswith('@@RESULT '):
                         try:
                             result = json.loads(value[len('@@RESULT '):])
@@ -957,12 +1140,12 @@ class App(QMainWindow):
                         self.status.setText(value.strip().replace('STEP ', '').replace(' • ', '   ·   '))
                         try: self.highlight_step(int(value[5]) - 1)
                         except ValueError: pass
-                else:
+                elif kind == 'done':
                     cancelled = self.cancel_file and self.cancel_file.exists()
                     self.busy = False
                     self.progress.setRange(0, 5); self.progress.setValue(5 if value == 0 else 0)
-                    self.status.setText(('Download cancelled · completed files kept' if self.action == 'bloat' else 'Build cancelled · partial files retained') if cancelled else
-                                        ('Bloat downloaded · all files verified' if self.action == 'bloat' else 'Environment ready' if self.action == 'check' else 'Self-test passed · test data only' if self.action == 'test' else 'Package complete · ready in your output folder') if value == 0 else 'Download failed · see output below' if self.action == 'bloat' else 'Build failed · see output below')
+                    self.status.setText(('Download cancelled · completed files kept' if self.action in ('bloat', 'ota') else 'Build cancelled · partial files retained') if cancelled else
+                                        ('Bloat downloaded · all files verified' if self.action == 'bloat' else 'OTA downloaded · ready to build' if self.action == 'ota' else 'Environment ready' if self.action == 'check' else 'Self-test passed · test data only' if self.action == 'test' else 'Package complete · ready in your output folder') if value == 0 else 'Download failed · see output below' if self.action in ('bloat', 'ota') else 'Build failed · see output below')
                     self.highlight_step(4 if value == 0 else -1)
                     self.set_busy(False)
                     if self.cancel_file: self.cancel_file.unlink(missing_ok=True)
@@ -973,7 +1156,7 @@ class App(QMainWindow):
     def cancel(self):
         if self.busy and self.cancel_file:
             try:
-                self.cancel_file.touch(); self.status.setText('Stopping download…' if self.action == 'bloat' else 'Stopping build…'); self.cancel_button.setEnabled(False)
+                self.cancel_file.touch(); self.status.setText('Stopping download…' if self.action in ('bloat', 'ota') else 'Stopping build…'); self.cancel_button.setEnabled(False)
             except OSError as e: QMessageBox.warning(self, 'Could not cancel', str(e))
 
     def open_output(self):

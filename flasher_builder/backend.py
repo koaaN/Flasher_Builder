@@ -23,6 +23,11 @@ from urllib.parse import urlsplit
 import uuid
 import zipfile
 
+if __package__:
+    from . import ota_catalog
+else:
+    import ota_catalog
+
 ROOT = Path(sys.executable).resolve().parent if getattr(sys, 'frozen', False) else Path(__file__).resolve().parent.parent
 GIB = 1024 ** 3
 
@@ -106,6 +111,26 @@ class Worker:
     def check(self):
         if self.cancel and self.cancel.exists():
             raise Cancelled('Build cancelled. Partial files have been retained in the job folder.')
+
+    def metadata(self, function, *args):
+        """Keep cancellation responsive during bounded catalog/link HTTP requests."""
+        result = queue.Queue()
+        def task():
+            try:
+                result.put((True, function(*args)))
+            except Exception as e:
+                result.put((False, e))
+        threading.Thread(target=task, daemon=True).start()
+        while True:
+            self.check()
+            try:
+                ok, value = result.get(timeout=.15)
+                self.check()
+                if ok:
+                    return value
+                raise value
+            except queue.Empty:
+                pass
 
     def run(self, args, cwd=None, env=None):
         self.check()
@@ -246,22 +271,94 @@ def package(worker, result, dest):
     dest.with_suffix('.zip.sha256').write_text(f'{digest.hexdigest()}  {dest.name}\n', encoding='utf-8')
 
 
-def build(args):
-    repo = Path(args.repo).resolve()
-    check_environment(repo)
-    catalog = Catalog(repo)
-    dev, builder, template = catalog.selection(args.device, args.kind, args.region)
+def require_local_bloat(args, repo, dev):
     if (repo / 'bloat/assets-manifest.json').is_file():
         source = Path(getattr(args, 'bloat_dir', '') or os.environ.get('BLOAT_SOURCE_DIR', str(repo / 'bloat'))).expanduser().resolve()
         Worker(args.cancel).run(['python3', repo / 'scripts/materialize_bloat.py',
             '--root', repo, '--source', source, '--cache', source / '.cache', '--check-only',
             '--device', dev, '--kind', args.kind, '--region', args.region])
+
+
+def selected_release(args, role):
+    release_id = getattr(args, role + '_catalog_id', '')
+    if not release_id:
+        return None
+    target = ota_catalog.targets(args.device, args.kind, args.region).get(role)
+    if target is None:
+        raise BuildError('A BASE OTA is not used for this selection.')
+    return ota_catalog.find_release(Path(args.repo) / '.ota-catalog', release_id, *target)
+
+
+def prepare_ota(worker, args, role, destination):
+    entry = worker.metadata(selected_release, args, role) if getattr(args, role + '_catalog_id', '') else None
+    source = getattr(args, role)
+    if entry:
+        print(f'Catalog OTA: {entry["device"]} / {entry["region"]} / {entry["version"]}', flush=True)
+        size = entry.get('size')
+        if isinstance(size, int) and size > 0 and shutil.disk_usage(destination.parent).free < size + GIB:
+            raise BuildError('Not enough space to download this OTA. Choose another output drive.')
+        worker.check()
+        source = worker.metadata(ota_catalog.resolve_link, entry)
+        worker.check()
+    standalone = getattr(args, 'download_ota', False)
+    if standalone: print('STEP 2/5 • Download full OTA', flush=True)
+    result = worker.source(source, destination)
+    if standalone: print('STEP 3/5 • Verify full OTA ZIP', flush=True)
+    if entry:
+        size = entry.get('size')
+        if isinstance(size, int) and size > 0 and destination.stat().st_size != size:
+            raise BuildError('Downloaded OTA size does not match the catalog. Retry the download.')
+        md5 = entry.get('md5', '')
+        if md5:
+            if not re.fullmatch(r'[0-9a-fA-F]{32}', md5):
+                raise BuildError('The catalog has an invalid OTA checksum.')
+            print('Verifying catalog MD5 checksum…', flush=True)
+            if standalone: print('STEP 4/5 • Verify catalog checksum', flush=True)
+            digest = hashlib.md5()
+            with destination.open('rb') as f:
+                while chunk := f.read(4 * 1024 * 1024):
+                    worker.check()
+                    digest.update(chunk)
+            if digest.hexdigest().lower() != md5.lower():
+                raise BuildError('Downloaded OTA checksum does not match the catalog. Retry the download.')
+    return result
+
+
+def download_ota(args):
+    import tempfile
+    repo = Path(args.repo).resolve()
+    dev, _, _ = Catalog(repo).selection(args.device, args.kind, args.region)
+    require_local_bloat(args, repo, dev)
+    role = args.download_role
+    if not getattr(args, role + '_catalog_id', ''):
+        raise BuildError('Select an OTA catalog version first.')
+    destination = Path(args.download_path).expanduser().resolve()
+    if destination.exists():
+        raise BuildError('The destination already exists. Choose a new filename or use the existing local OTA.')
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    worker = Worker(args.cancel)
+    with tempfile.TemporaryDirectory(prefix='.ota-download-', dir=destination.parent) as temporary:
+        downloaded = Path(temporary) / 'OTA.zip'
+        print('STEP 1/5 • Resolve selected OTA', flush=True)
+        version, _, _ = prepare_ota(worker, args, role, downloaded)
+        worker.check()
+        downloaded.replace(destination)
+    print(f'STEP 5/5 • OTA {version} downloaded and verified', flush=True)
+    print('@@OTA_RESULT ' + json.dumps({'role': role, 'file': str(destination)}), flush=True)
+
+
+def build(args):
+    repo = Path(args.repo).resolve()
+    check_environment(repo)
+    catalog = Catalog(repo)
+    dev, builder, template = catalog.selection(args.device, args.kind, args.region)
+    require_local_bloat(args, repo, dev)
     output = Path(args.output).resolve()
     output.mkdir(parents=True, exist_ok=True)
     if shutil.disk_usage(output).free < GIB and not getattr(args, 'fixture', False):
         raise BuildError('Less than 1 GiB available in the output folder.')
     needs_base = builder == 'BUILD_ACE6_OOS.sh'
-    if needs_base and not args.base:
+    if needs_base and not args.base and not getattr(args, 'base_catalog_id', ''):
         raise BuildError('Ace 6 OxygenOS needs the Ace 6 ColorOS BASE full OTA and the 15R India TARGET full OTA.')
     job = output / (time.strftime('%Y%m%d-%H%M%S') + '-' + uuid.uuid4().hex[:6])
     job.mkdir()
@@ -284,9 +381,9 @@ def build(args):
             download = job / 'download'
             download.mkdir()
             print('STEP 1/5 • Prepare OTA', flush=True)
-            version, payload_size, metadata = worker.source(args.ota, download / 'OTA.zip')
+            version, payload_size, metadata = prepare_ota(worker, args, 'ota', download / 'OTA.zip')
             if needs_base:
-                _, base_size, _ = worker.source(args.base, download / 'BASE.zip')
+                _, base_size, _ = prepare_ota(worker, args, 'base', download / 'BASE.zip')
                 payload_size += base_size
             print(f'OTA version: {version}; target devices: {metadata.get("pre-device", "not specified")}', flush=True)
             # Sparse output + raw images + archive can coexist. Check again
@@ -372,6 +469,11 @@ def main():
     parser.add_argument('--check', action='store_true')
     parser.add_argument('--self-test', action='store_true')
     parser.add_argument('--download-bloat', action='store_true')
+    parser.add_argument('--download-ota', action='store_true')
+    parser.add_argument('--download-role', choices=('ota', 'base'), default='ota')
+    parser.add_argument('--download-path', default='')
+    parser.add_argument('--ota-catalog-id', default='')
+    parser.add_argument('--base-catalog-id', default='')
     parser.add_argument('--bloat-dir', default='')
     parser.add_argument('--device', default='Oneplus 13')
     parser.add_argument('--kind', default='SuperHybrid Flasher')
@@ -389,6 +491,10 @@ def main():
             if not args.bloat_dir:
                 raise BuildError('Choose a bloat download folder.')
             download_bloat(args)
+        elif args.download_ota:
+            if not args.download_path:
+                raise BuildError('Choose an OTA download destination.')
+            download_ota(args)
         elif args.self_test:
             from selftest import run_self_test
             run_self_test(args)
@@ -398,7 +504,7 @@ def main():
     except Cancelled as e:
         print(str(e), flush=True)
         return 130
-    except (BuildError, OSError, ValueError) as e:
+    except (BuildError, ota_catalog.CatalogError, OSError, ValueError) as e:
         print(f'ERROR: {e}', flush=True)
         return 1
 
