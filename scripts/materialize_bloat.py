@@ -106,7 +106,7 @@ def download_asset(repository, asset, cache):
         partial.unlink(missing_ok=True)
 
 
-def materialize(root, cache, manifest, device, kind, region, destination=None, source=None):
+def materialize(root, cache, manifest, device, kind, region, destination=None, source=None, local_only=False):
     paths = selected_paths(manifest, device, kind, region)
     print(f'Bloat release: {manifest["repository"]} / {manifest["tag"]} • {len(paths)} selected image path(s)', flush=True)
     objects = {}
@@ -125,6 +125,8 @@ def materialize(root, cache, manifest, device, kind, region, destination=None, s
             if candidate.is_relative_to(source.resolve()) and matches(candidate, asset['raw_bytes'], asset['raw_sha256']):
                 local = candidate
                 print('  Reusing downloaded image: ' + relative, flush=True)
+        if local is None and local_only:
+            raise AssetError('Required bloat image is not available locally: ' + relative + '. Complete step 2 before building.')
         key = asset['sha256']
         if local is None and key not in objects:
             objects[key] = download_asset(manifest['repository'], asset, cache)
@@ -201,6 +203,8 @@ def main():
     parser.add_argument('--cache', type=Path, required=True)
     parser.add_argument('--destination', type=Path)
     parser.add_argument('--source', type=Path)
+    parser.add_argument('--check-only', action='store_true')
+    parser.add_argument('--local-only', action='store_true')
     parser.add_argument('--device', required=True)
     parser.add_argument('--kind', required=True, choices=['Super Flasher', 'SuperHybrid Flasher', 'Regional Flasher', 'RegionalHybrid Flasher'])
     parser.add_argument('--region', required=True, choices=['GLO', 'EU', 'IN', 'NA', 'CN'])
@@ -208,9 +212,16 @@ def main():
     try:
         root = args.root.resolve()
         manifest = load_manifest(root / 'bloat/assets-manifest.json')
+        if args.check_only:
+            folder = (args.source or args.destination or (root / 'bloat')).resolve()
+            status = inspect_downloads(manifest, folder, args.device, args.kind, args.region)
+            if status['total'] and not status['ready']:
+                raise AssetError(f'Local bloat files required: {status["downloaded"]}/{status["total"]} verified. Complete step 2 before building.')
+            print(f'Local bloat files verified: {status["total"]}', flush=True)
+            return 0
         materialize(root, args.cache.resolve(), manifest, args.device, args.kind, args.region,
                     args.destination.resolve() if args.destination else None,
-                    args.source.resolve() if args.source else None)
+                    args.source.resolve() if args.source else None, local_only=args.local_only)
         return 0
     except (AssetError, OSError, ValueError, KeyError, gzip.BadGzipFile) as e:
         print('ERROR: ' + str(e), file=sys.stderr, flush=True)

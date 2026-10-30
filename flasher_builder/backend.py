@@ -182,8 +182,6 @@ def check_environment(root=ROOT):
     if sys.platform != 'linux' or platform.machine().lower() not in ('x86_64', 'amd64'):
         raise BuildError('The build tools require x86-64 Linux. On Windows, install an x86-64 WSL Ubuntu distribution.')
     required = ('bash', 'curl', 'rsync', 'python3', 'find', 'realpath', 'stat', 'od', 'awk', 'xargs', 'tr')
-    if (Path(root) / 'bloat/assets-manifest.json').is_file():
-        required += ('gh',)
     missing = [tool for tool in required if not shutil.which(tool)]
     if missing:
         raise BuildError('Missing build tools: ' + ', '.join(missing) + '. On Ubuntu run: sudo apt install python3 curl rsync coreutils findutils gawk gh')
@@ -253,6 +251,11 @@ def build(args):
     check_environment(repo)
     catalog = Catalog(repo)
     dev, builder, template = catalog.selection(args.device, args.kind, args.region)
+    if (repo / 'bloat/assets-manifest.json').is_file():
+        source = Path(getattr(args, 'bloat_dir', '') or os.environ.get('BLOAT_SOURCE_DIR', str(repo / 'bloat'))).expanduser().resolve()
+        Worker(args.cancel).run(['python3', repo / 'scripts/materialize_bloat.py',
+            '--root', repo, '--source', source, '--cache', source / '.cache', '--check-only',
+            '--device', dev, '--kind', args.kind, '--region', args.region])
     output = Path(args.output).resolve()
     output.mkdir(parents=True, exist_ok=True)
     if shutil.disk_usage(output).free < GIB and not getattr(args, 'fixture', False):
@@ -302,7 +305,8 @@ def build(args):
                        OTA_DIR=str(download), SUPER_SIZE=str(catalog.sizes.get(dev, 0)),
                        BASE_OTA_PATH=str(download / 'BASE.zip'), PYTHONUNBUFFERED='1',
                        BLOAT_CACHE_DIR=str(Path(os.environ.get('BLOAT_CACHE_DIR', str(repo / '.bloat-cache'))).expanduser().resolve()),
-                       BLOAT_SOURCE_DIR=os.environ.get('BLOAT_SOURCE_DIR', str(repo / 'bloat')))
+                       BLOAT_SOURCE_DIR=os.environ.get('BLOAT_SOURCE_DIR', str(repo / 'bloat')),
+                       BLOAT_REQUIRE_LOCAL='1')
             if getattr(args, 'bloat_dir', ''):
                 source = Path(args.bloat_dir).expanduser().resolve()
                 env['BLOAT_SOURCE_DIR'] = str(source)

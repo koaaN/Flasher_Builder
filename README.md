@@ -44,7 +44,8 @@ A native Windows executable can also be built on Windows using the packaging com
 ## Building a package
 
 - Choose a supported device, flasher type and region. CN means ColorOS; other regions use OxygenOS templates.
-- Choose a full OTA ZIP or enter an HTTP(S) URL. Placeholder and incremental OTA files are rejected.
+- Complete **step 2 — Bloat files**: choose a folder containing the required images or click **Download bloat**. The app verifies their sizes and SHA-256 hashes. **Continue to OTA**, step 3, and **Build package** stay locked until the selected build's files are verified locally.
+- In **step 3**, choose a full OTA ZIP or enter an HTTP(S) URL. Placeholder and incremental OTA files are rejected.
 - **Ace 6 / SuperHybrid / IN** additionally requires the Ace 6 ColorOS **BASE** OTA. Its primary OTA must be the OnePlus 15R India OxygenOS **TARGET** OTA.
 - Choose the output folder and click **Build package**. The log reports download, staging, extraction, packing and compression. **Cancel** stops the worker's current subprocess group, including through WSL.
 - **Open output** opens the latest result folder. Each job has a unique name and contains the final ZIP, `.zip.sha256`, `build.json`, and `build.log`. Temporary work files are removed after a successful build. Failed or cancelled jobs retain partial work for inspection; those job folders can be deleted when no longer needed.
@@ -71,11 +72,13 @@ Images are stored as `<chosen folder>/<device>/<region folder>/*.img`.
 Downloads happen one at a time. Completed images are reused, and a cancelled
 download can be retried without downloading those images again. A hidden
 `.cache` folder contains verified transport objects used for repairs and
-compressed images. Builds reuse the images from the chosen folder automatically.
+compressed images. Builds reuse the images from the chosen folder automatically. The worker rechecks them before any OTA transfer and requires local images during staging; it never silently downloads missing bloat as part of a GUI build.
 
-The builder fetches only the images needed by the selected device, region and
-flasher type. Downloads are verified and kept in `.bloat-cache/` for reuse.
-Images are verified again as they are staged. The Ace 6T ODM attachment is
+Step 2 fetches only the images needed by the selected device, region and
+flasher type. Downloads are verified and kept in the chosen folder's `.cache`
+for reuse. Images are verified again before the build starts and as they are
+staged. The build worker requires local images and does not silently fetch
+missing bloat after step 2. The Ace 6T ODM attachment is
 losslessly gzip-compressed to fit GitHub's 2 GiB release-asset limit; the builder
 restores the original `.img` automatically.
 
@@ -102,8 +105,10 @@ python3 flasher_builder/backend.py --self-test --output /tmp/flasher-builder-tes
 A normal command-line build is also supported:
 
 ```sh
+python3 flasher_builder/backend.py --download-bloat --device 'Oneplus 13' \
+  --kind 'SuperHybrid Flasher' --region GLO --bloat-dir /path/to/bloat
 python3 flasher_builder/backend.py --device 'Oneplus 13' \
-  --kind 'SuperHybrid Flasher' --region GLO \
+  --kind 'SuperHybrid Flasher' --region GLO --bloat-dir /path/to/bloat \
   --ota /path/to/FULL-OTA.zip --output /path/to/builds
 ```
 

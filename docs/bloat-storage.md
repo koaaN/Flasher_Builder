@@ -51,3 +51,13 @@ Download bloat button for the current device/flasher/region. No OTA input is
 required. SHA-256 checks run in the background to show Already downloaded or a
 missing-file count. Builds reuse this folder's verified raw images. The chosen
 folder's hidden `.cache` holds transport objects for repairs.
+
+## Required local prerequisite
+
+Bloat is step 2, before OTA selection. Continue to OTA, the OTA controls, and
+Build package stay disabled until every required image is locally present and
+verified for the current device/flasher/region/folder. Changing selection or
+losing a required file locks those controls again. The worker independently
+verifies local images before it copies or downloads the OTA, and local-only
+staging rejects missing images without falling back to a release download.
+The explicit bloat download action remains available without an OTA.

@@ -97,6 +97,16 @@ class ReleaseAssetTests(unittest.TestCase):
                 assets.materialize(root / 'job', root / 'empty-cache', manifest, '13', 'SuperHybrid Flasher', 'CN', source=folder)
             self.assertEqual((root / 'job/bloat/13/CN_BLOAT/my_preload.img').read_bytes(), raw)
 
+    def test_local_only_staging_never_falls_back_to_cached_downloads(self):
+        manifest, obj, transport = fixture(b'Q' * 4096)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp); cache = root / 'cache'; cache.mkdir()
+            (cache / (obj['sha256'] + '.img')).write_bytes(transport)
+            with patch.object(assets.subprocess, 'run', side_effect=AssertionError('Unexpected download')):
+                with self.assertRaisesRegex(assets.AssetError, 'Complete step 2'):
+                    assets.materialize(root / 'job', cache, manifest, '13', 'SuperHybrid Flasher', 'CN', source=root / 'missing', local_only=True)
+            self.assertFalse((root / 'job/bloat/13/CN_BLOAT/my_preload.img').exists())
+
     def test_manifest_rejects_path_traversal(self):
         manifest, obj, _ = fixture(b'\0' * 4096)
         manifest['files'] = {'bloat/13/../../escape.img': obj['raw_sha256']}

@@ -54,6 +54,9 @@ class BloatGuiTests(unittest.TestCase):
     def test_download_button_needs_no_ota_and_switches_to_already_downloaded(self):
         self.assertEqual(self.window.bloat_status.text(), 'Not downloaded')
         self.assertTrue(self.window.bloat_download.isEnabled())
+        self.assertFalse(self.window.bloat_continue.isEnabled())
+        self.assertFalse(self.window.ota_card.isEnabled())
+        self.assertFalse(self.window.start_button.isEnabled())
         self.assertEqual(self.window.fields['ota'].text(), '')
         target = self.folder / '13/GLO_BLOAT/my_preload.img'
         code = ('from pathlib import Path; p=Path(' + repr(str(target)) + '); '
@@ -65,11 +68,17 @@ class BloatGuiTests(unittest.TestCase):
             self.wait_for(lambda: not self.window.busy and bool(self.window.bloat_data and self.window.bloat_data.get('ready')))
         self.assertEqual(self.window.bloat_status.text(), 'Already downloaded')
         self.assertFalse(self.window.bloat_download.isEnabled())
+        self.assertTrue(self.window.bloat_continue.isEnabled())
+        self.assertTrue(self.window.ota_card.isEnabled())
+        self.assertTrue(self.window.start_button.isEnabled())
         saved = json.loads(self.window.settings.read_text())
         self.assertEqual(saved['bloat_dir'], str(self.folder))
         target.unlink(); self.window.refresh_bloat_status()
         self.wait_for(lambda: self.window.bloat_data is not None and not self.window.bloat_data.get('ready') and self.window.bloat_active_token is None)
         self.assertTrue(self.window.bloat_download.isEnabled())
+        self.assertFalse(self.window.bloat_continue.isEnabled())
+        self.assertFalse(self.window.ota_card.isEnabled())
+        self.assertFalse(self.window.start_button.isEnabled())
 
     def test_folder_picker_updates_status_and_saved_destination(self):
         folder = self.root / 'another folder'; target = folder / '13/GLO_BLOAT/my_preload.img'
@@ -82,6 +91,29 @@ class BloatGuiTests(unittest.TestCase):
         self.window.set_region('EU')
         self.wait_for(lambda: self.window.bloat_data is not None and self.window.bloat_active_token is None)
         self.assertEqual(self.window.bloat_status.text(), 'No extra bloat needed')
+
+    def test_build_cannot_bypass_missing_step_two_files(self):
+        self.window.fields['ota'].setText('https://example.invalid/full.zip')
+        with patch('flasher_builder.gui.QMessageBox.warning') as warning, patch.object(Runtime, 'command') as command:
+            self.window.start('build')
+        warning.assert_called_once()
+        self.assertEqual(warning.call_args.args[1], 'Bloat files required')
+        command.assert_not_called()
+        self.assertFalse(self.window.busy)
+
+    def test_region_change_locks_step_three_until_its_files_exist(self):
+        sha = next(iter(self.manifest['assets']))
+        self.manifest['files']['bloat/13/EU_BLOAT/my_preload.img'] = sha
+        target = self.folder / '13/GLO_BLOAT/my_preload.img'
+        target.parent.mkdir(parents=True); target.write_bytes(self.raw)
+        self.window.refresh_bloat_status(force=True)
+        self.wait_for(lambda: self.window.local_bloat_ready())
+        self.assertTrue(self.window.ota_card.isEnabled())
+        self.window.set_region('EU')
+        self.assertFalse(self.window.ota_card.isEnabled())
+        self.assertFalse(self.window.bloat_continue.isEnabled())
+        self.wait_for(lambda: self.window.bloat_data is not None and self.window.bloat_active_token is None)
+        self.assertFalse(self.window.start_button.isEnabled())
 
     def test_wsl_download_command_maps_destination_without_ota(self):
         with patch('flasher_builder.runtime.sys.platform', 'win32'):

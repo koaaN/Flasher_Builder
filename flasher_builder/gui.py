@@ -442,7 +442,7 @@ class App(QMainWindow):
         self.splitter.setSizes([600, 195])
         body.addWidget(self.splitter, 1)
         footer = QHBoxLayout()
-        footer.addWidget(label('FULL OTA → EXTRACT → BUILD → PACKAGE', 'eyebrow'))
+        footer.addWidget(label('CONFIGURE → BLOAT FILES → OTA → BUILD', 'eyebrow'))
         footer.addStretch()
         footer.addWidget(label('Qt 6  /  Local workspace', 'muted'))
         body.addLayout(footer)
@@ -450,6 +450,7 @@ class App(QMainWindow):
 
     def build_page(self):
         scroll = QScrollArea(); scroll.setWidgetResizable(True)
+        self.build_scroll = scroll
         panel = QWidget(); scroll.setWidget(panel)
         layout = QHBoxLayout(panel); layout.setContentsMargins(0, 0, 0, 0); layout.setSpacing(20)
         left = QVBoxLayout(); left.setSpacing(14)
@@ -480,8 +481,10 @@ class App(QMainWindow):
         form.addWidget(self.selection_info)
         left.addWidget(configure)
         source_card, source_layout = card()
+        self.ota_card = source_card
+        self.ota_card.setEnabled(False)
         source_head = QHBoxLayout()
-        source_head.addWidget(label('02', 'sectionNumber'))
+        source_head.addWidget(label('03', 'sectionNumber'))
         source_head.addWidget(label('OTA source', 'cardTitle'))
         source_head.addStretch()
         self.source_group = QButtonGroup(self)
@@ -491,6 +494,8 @@ class App(QMainWindow):
             b.setCheckable(True); self.source_group.addButton(b); source_head.addWidget(b); self.inputs.append(b)
         self.file_tab.setChecked(True)
         source_layout.addLayout(source_head)
+        self.ota_gate_hint = label('Complete step 2 to unlock OTA selection.', 'hint', True)
+        source_layout.addWidget(self.ota_gate_hint)
         self.fields['ota'], self.browse_ota = self.source_input(source_layout, 'Choose a full OTA .zip file', 'ota')
         self.source_hint = label('Use a full OTA package. Incremental updates are not supported.', 'hint', True)
         source_layout.addWidget(self.source_hint)
@@ -532,13 +537,14 @@ class App(QMainWindow):
         line = QFrame(); line.setObjectName('line'); summary_layout.addWidget(line)
         self.space = label('', 'hint', True); summary_layout.addWidget(self.space)
         right.addWidget(summary)
-        notes, nl = card(); notes.setFixedWidth(276); nl.setSpacing(8)
+        notes, nl = card(); nl.setSpacing(8); nl.setContentsMargins(24, 14, 24, 14)
         heading = QHBoxLayout()
+        heading.addWidget(label('02', 'sectionNumber'))
         heading.addWidget(label('Bloat files', 'cardTitle')); heading.addStretch()
         heading.addWidget(button('', 'clock', 'quiet', lambda: self.refresh_bloat_status(force=True)))
+        self.bloat_status = label('Checking local files…', 'hint')
+        heading.addWidget(self.bloat_status)
         nl.addLayout(heading)
-        self.bloat_status = label('Checking local files…', 'hint', True)
-        nl.addWidget(self.bloat_status)
         self.bloat_info = label('For the selected device and region', 'hint', True)
         nl.addWidget(self.bloat_info)
         folder_row = QHBoxLayout(); folder_row.setSpacing(6)
@@ -548,17 +554,24 @@ class App(QMainWindow):
         self.fields['bloat_dir'].setStyleSheet('font-size: 10px; padding: 7px;')
         self.fields['bloat_dir'].textChanged.connect(self.refresh_bloat_status)
         folder_row.addWidget(self.fields['bloat_dir'], 1)
-        self.bloat_browse = button('', 'folder', callback=self.choose_bloat_folder)
+        self.bloat_browse = button('Choose folder', 'folder', callback=self.choose_bloat_folder)
         self.bloat_browse.setToolTip('Choose bloat download folder')
         self.bloat_browse.setAccessibleName('Choose bloat download folder')
-        self.bloat_browse.setFixedWidth(36)
         folder_row.addWidget(self.bloat_browse); nl.addLayout(folder_row)
         self.inputs.extend((self.fields['bloat_dir'], self.bloat_browse))
         self.bloat_download = button('Download bloat', 'download', callback=lambda: self.start('bloat'))
-        self.bloat_download.setEnabled(False); nl.addWidget(self.bloat_download)
-        self.bloat_open = button('Open bloat folder', 'folder', 'quiet', self.open_bloat_folder)
-        nl.addWidget(self.bloat_open)
-        right.insertWidget(0, notes)
+        self.bloat_download.setEnabled(False)
+        bloat_actions = QHBoxLayout()
+        bloat_actions.addWidget(self.bloat_download)
+        self.bloat_open = button('Open folder', 'folder', 'quiet', self.open_bloat_folder)
+        bloat_actions.addWidget(self.bloat_open)
+        bloat_actions.addStretch()
+        self.bloat_continue = button('Continue to OTA', 'arrow', 'primary',
+            lambda: self.build_scroll.ensureWidgetVisible(self.ota_card, 0, 20))
+        self.bloat_continue.setEnabled(False)
+        bloat_actions.addWidget(self.bloat_continue)
+        nl.addLayout(bloat_actions)
+        left.insertWidget(1, notes)
         right.addStretch()
         layout.addLayout(right)
         self.fields['device'].addItems(list(self.catalog.devices))
@@ -694,8 +707,8 @@ class App(QMainWindow):
         except BuildError as e:
             text = str(e); self.selection_valid = False
         self.selection_info.setText(text)
-        self.start_button.setEnabled(self.selection_valid and not self.busy)
         self.refresh_bloat_status()
+        self.update_build_gate()
         self.os_badge.setText('COLOR OS' if self.region == 'CN' else 'OXYGEN OS')
         self.summary_device.setText(values['device'].replace('Oneplus', 'OnePlus'))
         self.summary_kind.setText(values['kind'])
@@ -710,6 +723,22 @@ class App(QMainWindow):
         except OSError:
             self.space.setText('Choose an accessible output folder.')
 
+    def local_bloat_ready(self):
+        values = self.values()
+        key = tuple(values[k] for k in ('device', 'kind', 'region', 'bloat_dir'))
+        data = self.bloat_data
+        return bool(self.selection_valid and key == self.bloat_probe_key and data is not None
+                    and 'error' not in data and (data.get('ready') or data.get('total') == 0))
+
+    def update_build_gate(self):
+        ready = self.local_bloat_ready()
+        enabled = ready and not self.busy
+        self.ota_card.setEnabled(enabled)
+        self.start_button.setEnabled(enabled)
+        self.bloat_continue.setEnabled(enabled)
+        self.ota_gate_hint.setVisible(not ready)
+        self.start_button.setToolTip('Build the package' if ready else 'Complete step 2: required bloat files must be verified locally.')
+
     def refresh_bloat_status(self, *args, force=False):
         if self.busy or 'bloat_dir' not in self.fields or not hasattr(self, 'region'):
             return
@@ -720,6 +749,7 @@ class App(QMainWindow):
             self.bloat_check_timer.stop()
             self.bloat_status.setText('Selection unavailable')
             self.bloat_download.setEnabled(False)
+            self.update_build_gate()
             return
         if key == self.bloat_probe_key and self.bloat_active_token == self.bloat_scan_token and not force:
             return
@@ -736,6 +766,7 @@ class App(QMainWindow):
             self.bloat_download.setEnabled(False)
         self.fields['bloat_dir'].setToolTip(values['bloat_dir'])
         self.bloat_check_timer.start(150)
+        self.update_build_gate()
 
     def scan_bloat_status(self):
         if self.busy:
@@ -766,6 +797,7 @@ class App(QMainWindow):
             self.bloat_status.setStyleSheet('color: #b35454;')
             self.bloat_info.setText(data['error'])
             self.bloat_download.setEnabled(False)
+            self.update_build_gate()
             return
         size = data['bytes']
         size_text = f'{size / 1024**3:.2f} GB' if size >= 1024**3 else f'{size / 1024**2:.1f} MB'
@@ -787,6 +819,7 @@ class App(QMainWindow):
         self.bloat_status.setStyleSheet('color: #347856;' if data['ready'] else 'color: #7d8b9e;')
         self.bloat_download.setIcon(icon('check' if data['ready'] else 'download'))
         self.bloat_download.setEnabled(bool(data['total']) and not data['ready'] and not self.busy)
+        self.update_build_gate()
 
     def choose_bloat_folder(self):
         folder = QFileDialog.getExistingDirectory(self, 'Choose bloat download folder', self.fields['bloat_dir'].text())
@@ -832,6 +865,9 @@ class App(QMainWindow):
     def start(self, action):
         if self.busy: return
         values = self.values()
+        if action == 'build' and not self.local_bloat_ready():
+            QMessageBox.warning(self, 'Bloat files required', 'Complete step 2 first: download the required bloat files or choose a folder that already contains them.')
+            return
         if action == 'build' and not values['ota']:
             QMessageBox.warning(self, 'Full OTA required', 'Choose a full OTA ZIP or paste its download URL.'); return
         if action == 'build' and not self.base_panel.isHidden() and not values['base']:
@@ -872,7 +908,7 @@ class App(QMainWindow):
 
     def set_busy(self, busy):
         for widget in self.inputs: widget.setEnabled(not busy)
-        self.start_button.setEnabled(not busy and self.selection_valid)
+        self.update_build_gate()
         self.check_button.setEnabled(not busy); self.test_button.setEnabled(not busy)
         self.cancel_button.setEnabled(busy and self.action != 'check')
         self.cancel_button.setText('Cancel download' if self.action == 'bloat' else 'Cancel build')
