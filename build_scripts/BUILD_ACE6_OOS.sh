@@ -39,16 +39,19 @@ extract_ota() {
   if [[ "$name" == "TARGET" ]]; then
     (
       cd "$dir"
-      "$otaripper" "$name.zip" --output-dir "$dir/IMAGES" --partitions \
+      "$otaripper" "$name.zip" --no-open --output-dir "$dir/IMAGES" --partitions \
         my_bigball,my_carrier,my_engineering,my_heytap,my_manifest,my_product,my_region,my_stock,system,system_ext,product \
         >&2
     )
   else
-    ( cd "$dir" && "$otaripper" "$name.zip" --output-dir "$dir/IMAGES" >&2 )
+    ( cd "$dir" && "$otaripper" "$name.zip" --no-open --output-dir "$dir/IMAGES" >&2 )
   fi
 
   [[ -d "$dir/IMAGES" ]] || { echo "ERROR: No extracted images for $name" >&2; exit 1; }
-  printf '%s\n' "$dir/IMAGES"
+  local image_dirs=()
+  mapfile -t image_dirs < <(find "$dir/IMAGES" -type f -name '*.img' -printf '%h\n' | sort -u)
+  [[ "${#image_dirs[@]}" -eq 1 ]] || { echo "ERROR: No unique extracted image directory for $name" >&2; exit 1; }
+  printf '%s\n' "${image_dirs[0]}"
 }
 
 echo "Extracting Ace 6 BASE OTA"

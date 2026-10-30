@@ -70,7 +70,10 @@ rsync -a "$reg_src/" "$reg_dest/"
 new_folder="$input_dir/extracted_images"
 mkdir -p "$new_folder"
 echo "Running otaripper"
-"$otaripper_bin" --output-dir "$new_folder" "$input_file"
+"$otaripper_bin" --no-open --output-dir "$new_folder" "$input_file"
+mapfile -t image_dirs < <(find "$new_folder" -type f -name '*.img' -printf '%h\n' | sort -u)
+[[ "${#image_dirs[@]}" -eq 1 ]] || { echo "ERROR: OTA extraction has no unique image directory"; exit 1; }
+new_folder="${image_dirs[0]}"
 [[ -f "$new_folder/boot.img" ]] || { echo "ERROR: Full OTA boot.img missing"; exit 1; }
 
 #-------------------------------------------
