@@ -38,4 +38,3 @@ class Runtime:
             if source:
                 cmd += ['--' + key, source if is_url(source) else self.path(source)]
         return cmd
-
