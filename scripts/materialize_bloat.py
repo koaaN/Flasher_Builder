@@ -17,6 +17,7 @@ import shutil
 import signal
 import subprocess
 import sys
+import time
 import uuid
 
 CANCEL_FILE = None
@@ -203,7 +204,10 @@ def inspect_downloads(manifest, destination, device, kind, region, verified=None
         if not path.is_file() or stat.st_size != asset['raw_bytes']:
             verified.pop(key, None)
             continue
-        if verified.get(key) != fingerprint:
+        # Some filesystems have coarse timestamp resolution. A same-size edit
+        # within the current timestamp tick must not reuse a previous hash.
+        stable_age = time.time_ns() - max(stat.st_mtime_ns, stat.st_ctime_ns)
+        if verified.get(key) != fingerprint or stable_age < 2_000_000_000:
             h = hashlib.sha256()
             with path.open('rb') as image:
                 while chunk := image.read(4 * 1024 ** 2):

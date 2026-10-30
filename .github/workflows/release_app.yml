@@ -44,6 +44,7 @@ jobs:
       - name: Fetch pinned native tools
         run: python scripts/fetch_tools.py --platform all
       - name: Run regression tests
+        timeout-minutes: 5
         run: python -m unittest discover -s tests -v
       - name: Exercise native extraction and builders
         run: python flasher-worker.py --self-test --output runner-tests
