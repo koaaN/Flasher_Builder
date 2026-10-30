@@ -26,6 +26,12 @@ copy_bloat_from_folder () {
       cp -f "$src/$f" "$dest/"
       continue
     fi
+    if [ -f "$src/$f.gz" ]; then
+      echo "Decompressing $f.gz"
+      gzip -dc "$src/$f.gz" > "$dest/$f.part"
+      mv -f "$dest/$f.part" "$dest/$f"
+      continue
+    fi
     local stub="$src/${f%.img}"
     [ -f "$stub" ] || continue
     local url; url="$(tr -d '\r' < "$stub" | xargs || true)"
@@ -84,8 +90,12 @@ copy_or_download () {
   local dir="$1" base="$2" dest="$3"
   if [ -f "$dir/${base}.img" ]; then
     cp -f "$dir/${base}.img" "$dest"
+  elif [ -f "$dir/${base}.img.gz" ]; then
+    echo "Decompressing ${base}.img.gz"
+    gzip -dc "$dir/${base}.img.gz" > "$dest.part"
+    mv -f "$dest.part" "$dest"
   else
-    local stub="$dir/${base}"
+    local stub="$dir/$base"
     [ -f "$stub" ] || return
     local url; url="$(tr -d '\r' < "$stub" | xargs || true)"
     [ -n "$url" ] && echo "Downloading ${base}.img from $url" && curl -L --fail --retry 3 --retry-delay 5 -o "$dest" "$url" || echo "WARN: download failed for ${base}.img"
