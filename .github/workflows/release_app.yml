@@ -1,0 +1,87 @@
+name: Native desktop releases
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release version (v1.0.0)
+        required: true
+        default: v1.0.0
+permissions:
+  contents: read
+concurrency:
+  group: native-desktop-release
+  cancel-in-progress: false
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            platform: linux
+            archive: FlasherBuilder-linux-x86_64.tar.gz
+          - os: windows-2022
+            platform: windows
+            archive: FlasherBuilder-windows-x86_64.zip
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    env:
+      QT_QPA_PLATFORM: offscreen
+      PYTHONUTF8: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install GUI and packaging dependencies
+        run: python -m pip install -r requirements.txt pyinstaller==6.17.0
+      - name: Install Qt runtime libraries on Linux
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libegl1 libopengl0 libxkbcommon0
+      - name: Fetch pinned native tools
+        run: python scripts/fetch_tools.py --platform all
+      - name: Run regression tests
+        run: python -m unittest discover -s tests -v
+      - name: Exercise native extraction and builders
+        run: python flasher-worker.py --self-test --output runner-tests
+      - name: Package native GUI and worker
+        run: python scripts/package_app.py --native
+      - name: Test the extracted package
+        run: python scripts/verify_package.py dist/${{ matrix.archive }} --report dist/validation-${{ matrix.platform }}.json
+      - name: Keep release files
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.platform }}
+          path: |
+            dist/${{ matrix.archive }}
+            dist/validation-${{ matrix.platform }}.json
+            dist/validation-${{ matrix.platform }}.log
+          if-no-files-found: error
+      - name: Keep source package
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-source
+          path: dist/FlasherBuilder-source-linux-windows.zip
+          if-no-files-found: error
+  publish:
+    needs: build
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: desktop-*
+          path: release-files
+          merge-multiple: true
+      - name: Publish verified desktop release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          RELEASE_COMMIT: ${{ github.sha }}
+        run: python3 scripts/publish_app_release.py --directory release-files --tag "$RELEASE_TAG" --commit "$RELEASE_COMMIT"

@@ -1,31 +1,21 @@
-"""Launch the same build worker locally on Linux or through WSL on Windows."""
-import sys
-import subprocess
+"""Launch the native worker on both Linux and Windows."""
 from pathlib import Path
-from .backend import ROOT, BuildError, clean_source, is_url
+import sys
+from .backend import ROOT, clean_source, is_url
+from .host import worker_command
 
 
 class Runtime:
     def __init__(self, distro=''):
-        self.windows = sys.platform == 'win32'
-        self.prefix = ['wsl.exe'] + (['--distribution', distro] if distro else []) + ['--exec'] if self.windows else []
+        # Retain the argument for settings from releases that used WSL.
+        self.prefix = []
 
     def path(self, value):
-        if not self.windows:
-            return str(Path(value).expanduser().resolve())
-        try:
-            result = subprocess.run(self.prefix + ['wslpath', '-a', '-u', str(Path(value).resolve())],
-                                    capture_output=True, text=True, encoding='utf-8', errors='replace',
-                                    timeout=30, creationflags=subprocess.CREATE_NO_WINDOW)
-        except (OSError, subprocess.TimeoutExpired) as e:
-            raise BuildError('WSL is unavailable. Install Ubuntu with: wsl --install -d Ubuntu') from e
-        if result.returncode:
-            raise BuildError('WSL path conversion failed. Start your WSL distribution and finish its setup.\n' + result.stderr.strip())
-        return result.stdout.strip()
+        return str(Path(value).expanduser().resolve())
 
     def command(self, values, action, cancel):
         root = self.path(ROOT)
-        cmd = self.prefix + ['python3', '-u', root + '/flasher_builder/backend.py', '--repo', root]
+        cmd = worker_command(ROOT) + ['--repo', root]
         if action == 'check':
             return cmd + ['--check']
         if action == 'bloat':

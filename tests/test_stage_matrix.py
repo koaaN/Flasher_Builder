@@ -12,6 +12,7 @@ from flasher_builder.backend import Catalog, ROOT
 
 
 class StagingMatrixTests(unittest.TestCase):
+    @unittest.skipUnless(os.name == 'posix', 'Legacy Actions Bash staging')
     @unittest.skipUnless((ROOT / 'bloat/assets-manifest.json').is_file(), 'Release manifest not yet installed')
     def test_all_workflow_combinations_stage_from_release_cache(self):
         actual_manifest = json.loads((ROOT / 'bloat/assets-manifest.json').read_text())

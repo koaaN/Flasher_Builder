@@ -1,0 +1,42 @@
+[
+  {
+    "platform": "linux",
+    "path": "otaripper/otaripper",
+    "url": "https://github.com/syedinsaf/otaripper/releases/download/v3.5.0/otaripper-3.5.0-linux-static-x86_64.tar.gz",
+    "member": "./otaripper-lite",
+    "archive_sha256": "562602e84720bf1358cb04bdce65899385eca0ba302813181c47c8e8925387b8",
+    "sha256": "18ebe677477e79292b4d7d16859dff865cb0062ed68c14570dcfa21b1b9e4031"
+  },
+  {
+    "platform": "windows",
+    "path": "otaripper/otaripper.exe",
+    "url": "https://github.com/syedinsaf/otaripper/releases/download/v3.5.0/otaripper-3.5.0-windows-msvc-x86_64.zip",
+    "member": "otaripper-lite.exe",
+    "archive_sha256": "fb29f33f80f5c89dcccf0104cf20a5bff3ac4041d5103813e770da6653645208",
+    "sha256": "aab61f370d9dab9a74fafa1811ff9b28db049463e11cc7cc986aebb420d70d4f"
+  },
+  {
+    "platform": "windows",
+    "path": "lpmake/lpmake.exe",
+    "url": "https://raw.githubusercontent.com/Rprop/aosp15_partition_tools/5e92a5d504de33414318ced8bad5507440bb8c30/windows_x86/lpmake.exe",
+    "member": null,
+    "archive_sha256": "602d59d2670f6dccfef81d854444aafe2cac7995d07e22158271bef65accaf3d",
+    "sha256": "602d59d2670f6dccfef81d854444aafe2cac7995d07e22158271bef65accaf3d"
+  },
+  {
+    "platform": "linux",
+    "path": "tools/github/gh",
+    "url": "https://github.com/cli/cli/releases/download/v2.103.3/gh_2.103.3_linux_amd64.tar.gz",
+    "member": "gh_2.103.3_linux_amd64/bin/gh",
+    "archive_sha256": "4c806978ffce1cec70853302a56d70ac6da4f19bae7adca4e1a8ab00633dd91d",
+    "sha256": "b768184570b12536be4ac1528893f6340d1c6a7b40b56ad45bca9cd0e87ad34d"
+  },
+  {
+    "platform": "windows",
+    "path": "tools/github/gh.exe",
+    "url": "https://github.com/cli/cli/releases/download/v2.103.3/gh_2.103.3_windows_amd64.zip",
+    "member": "bin/gh.exe",
+    "archive_sha256": "98d0cfa794721665d7973dd728c78aff7bd836d58f10f6d7a03568eccb0a22e0",
+    "sha256": "d303d8ac3f5e9438bf7c977b64dd6425513eae46218f8881d30694f28c1d0dfd"
+  }
+]

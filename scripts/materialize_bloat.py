@@ -19,6 +19,13 @@ import subprocess
 import sys
 import uuid
 
+CANCEL_FILE = None
+
+
+def check_cancel():
+    if CANCEL_FILE is not None and CANCEL_FILE.exists():
+        raise InterruptedError('Bloat download cancelled')
+
 
 class AssetError(Exception):
     pass
@@ -28,6 +35,7 @@ def sha256(path):
     h = hashlib.sha256()
     with path.open('rb') as f:
         while chunk := f.read(4 * 1024 ** 2):
+            check_cancel()
             h.update(chunk)
     return h.hexdigest()
 
@@ -85,19 +93,34 @@ def download_asset(repository, asset, cache):
         print('  Using verified cached asset: ' + asset['asset_name'], flush=True)
         return path
     if not shutil.which('gh'):
-        raise AssetError('GitHub CLI is required to fetch private bloat assets. Install gh in Linux/WSL and run gh auth login.')
+        raise AssetError('GitHub CLI is required to fetch private bloat assets. Run the bundled tools/github/gh auth login (gh.exe on Windows).')
     if shutil.disk_usage(cache).free < asset['bytes'] + 512 * 1024 ** 2:
         raise AssetError('Not enough disk space for the bloat asset cache')
     partial = path.with_name(path.name + '.part-' + uuid.uuid4().hex)
     print('  Downloading private release asset: ' + asset['asset_name'], flush=True)
     try:
         with partial.open('wb') as output:
-            result = subprocess.run(['gh', 'api', f'repos/{repository}/releases/assets/{asset["asset_id"]}',
+            process = subprocess.Popen(['gh', 'api', f'repos/{repository}/releases/assets/{asset["asset_id"]}',
                                      '-H', 'Accept: application/octet-stream'], stdout=output, stderr=subprocess.PIPE,
-                                    env=os.environ | {'GH_PROMPT_DISABLED': '1'})
-        if result.returncode:
+                                    env=os.environ | {'GH_PROMPT_DISABLED': '1'},
+                                    **({'creationflags': subprocess.CREATE_NO_WINDOW} if os.name == 'nt' else {}))
+            try:
+                while True:
+                    check_cancel()
+                    try:
+                        _, errors = process.communicate(timeout=.15)
+                        break
+                    except subprocess.TimeoutExpired:
+                        pass
+            finally:
+                if process.poll() is None:
+                    process.terminate()
+                    try: process.wait(timeout=2)
+                    except subprocess.TimeoutExpired: process.kill(); process.wait()
+                process.stderr.close()
+        if process.returncode:
             raise AssetError('Private release download failed. Check gh auth login in the build environment.\n'
-                             + result.stderr.decode('utf-8', errors='replace').strip())
+                             + errors.decode('utf-8', errors='replace').strip())
         if not matches(partial, asset['bytes'], asset['sha256']):
             raise AssetError('Release asset size/SHA-256 mismatch: ' + asset['asset_name'])
         partial.replace(path)
@@ -111,6 +134,7 @@ def materialize(root, cache, manifest, device, kind, region, destination=None, s
     print(f'Bloat release: {manifest["repository"]} / {manifest["tag"]} • {len(paths)} selected image path(s)', flush=True)
     objects = {}
     for relative in paths:
+        check_cancel()
         asset = manifest['assets'][manifest['files'][relative]]
         bloat_root = (destination or (root / 'bloat')).resolve()
         target = (bloat_root / PurePosixPath(relative).relative_to('bloat')).resolve()
@@ -138,6 +162,7 @@ def materialize(root, cache, manifest, device, kind, region, destination=None, s
             opener = gzip.open if local is None and asset['encoding'] == 'gzip' else open
             with opener(local or objects[key], 'rb') as src, partial.open('wb') as dst:
                 while chunk := src.read(4 * 1024 ** 2):
+                    check_cancel()
                     size += len(chunk)
                     if size > asset['raw_bytes']:
                         raise AssetError('Decompressed bloat image exceeds its declared size')
@@ -198,6 +223,7 @@ def inspect_downloads(manifest, destination, device, kind, region, verified=None
 
 
 def main():
+    global CANCEL_FILE
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--root', type=Path, required=True)
     parser.add_argument('--cache', type=Path, required=True)
@@ -205,16 +231,19 @@ def main():
     parser.add_argument('--source', type=Path)
     parser.add_argument('--check-only', action='store_true')
     parser.add_argument('--local-only', action='store_true')
+    parser.add_argument('--cancel', type=Path)
     parser.add_argument('--device', required=True)
     parser.add_argument('--kind', required=True, choices=['Super Flasher', 'SuperHybrid Flasher', 'Regional Flasher', 'RegionalHybrid Flasher'])
     parser.add_argument('--region', required=True, choices=['GLO', 'EU', 'IN', 'NA', 'CN'])
     args = parser.parse_args()
+    CANCEL_FILE = args.cancel
     try:
         root = args.root.resolve()
         manifest = load_manifest(root / 'bloat/assets-manifest.json')
         if args.check_only:
             folder = (args.source or args.destination or (root / 'bloat')).resolve()
-            status = inspect_downloads(manifest, folder, args.device, args.kind, args.region)
+            status = inspect_downloads(manifest, folder, args.device, args.kind, args.region,
+                                       cancelled=lambda: check_cancel() or False)
             if status['total'] and not status['ready']:
                 raise AssetError(f'Local bloat files required: {status["downloaded"]}/{status["total"]} verified. Complete step 2 before building.')
             print(f'Local bloat files verified: {status["total"]}', flush=True)

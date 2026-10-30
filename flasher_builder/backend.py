@@ -1,7 +1,7 @@
-"""Linux build worker; also invoked by the Windows GUI through WSL.
+"""Native Linux and Windows build worker.
 
 No GitHub runner or device connection is required. Private release assets
-use GitHub CLI authentication in the Linux build environment.
+use GitHub CLI authentication on the current system.
 """
 from __future__ import annotations
 
@@ -25,8 +25,11 @@ import zipfile
 
 if __package__:
     from . import ota_catalog
+    from .host import tool, helper_command, configure_path
 else:
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
     import ota_catalog
+    from host import tool, helper_command, configure_path
 
 ROOT = Path(sys.executable).resolve().parent if getattr(sys, 'frozen', False) else Path(__file__).resolve().parent.parent
 GIB = 1024 ** 3
@@ -134,9 +137,10 @@ class Worker:
 
     def run(self, args, cwd=None, env=None):
         self.check()
+        options = {'creationflags': subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW} if os.name == 'nt' else {'start_new_session': True}
         proc = subprocess.Popen([str(a) for a in args], cwd=cwd, env=env, stdout=subprocess.PIPE,
                                 stderr=subprocess.STDOUT, text=True, encoding='utf-8', errors='replace',
-                                start_new_session=True, bufsize=1)
+                                bufsize=1, **options)
         lines = queue.Queue()
         def reader():
             for line in proc.stdout:
@@ -160,12 +164,23 @@ class Worker:
                 raise BuildError(f'{Path(str(args[0])).name} failed (exit {proc.returncode}). See the log above.')
         finally:
             if proc.poll() is None:
-                os.killpg(proc.pid, signal.SIGTERM)
-                try:
-                    proc.wait(timeout=3)
-                except subprocess.TimeoutExpired:
-                    os.killpg(proc.pid, signal.SIGKILL)
-                    proc.wait()
+                if os.name == 'nt':
+                    # Helpers observe the same cancellation marker and clean up.
+                    try:
+                        proc.wait(timeout=1)
+                    except subprocess.TimeoutExpired:
+                        subprocess.run(['taskkill', '/PID', str(proc.pid), '/T', '/F'],
+                                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                       creationflags=subprocess.CREATE_NO_WINDOW)
+                        if proc.poll() is None: proc.kill()
+                        proc.wait()
+                else:
+                    os.killpg(proc.pid, signal.SIGTERM)
+                    try:
+                        proc.wait(timeout=3)
+                    except subprocess.TimeoutExpired:
+                        os.killpg(proc.pid, signal.SIGKILL)
+                        proc.wait()
             proc.stdout.close()
             thread.join(timeout=1)
 
@@ -204,16 +219,17 @@ class Worker:
 
 
 def check_environment(root=ROOT):
-    if sys.platform != 'linux' or platform.machine().lower() not in ('x86_64', 'amd64'):
-        raise BuildError('The build tools require x86-64 Linux. On Windows, install an x86-64 WSL Ubuntu distribution.')
-    required = ('bash', 'curl', 'rsync', 'python3', 'find', 'realpath', 'stat', 'od', 'awk', 'xargs', 'tr')
+    if sys.platform not in ('linux', 'win32') or platform.machine().lower() not in ('x86_64', 'amd64'):
+        raise BuildError('This package requires x86-64 Linux or Windows.')
+    configure_path(root)
+    required = ('curl',)
     missing = [tool for tool in required if not shutil.which(tool)]
     if missing:
-        raise BuildError('Missing build tools: ' + ', '.join(missing) + '. On Ubuntu run: sudo apt install python3 curl rsync coreutils findutils gawk gh')
-    for rel in ('otaripper/otaripper', 'lpmake/lpmake', 'scripts/stage_files.sh', 'build_tools_assets/avbtool.py'):
-        if not (Path(root) / rel).is_file():
+        raise BuildError('Missing download tool: curl. Install curl and run Check setup again.')
+    for rel in (tool(root, 'otaripper'), tool(root, 'lpmake'), Path(root) / 'build_tools_assets/avbtool.py'):
+        if not Path(rel).is_file():
             raise BuildError(f'Missing project asset: {rel}. Keep the full project beside the launcher.')
-    print(f'Backend: Linux {platform.machine()} • Python {platform.python_version()}', flush=True)
+    print(f'Backend: {platform.system()} {platform.machine()} • Python {platform.python_version()}', flush=True)
     print('Required tools and bundled binaries found.', flush=True)
     print(f'Free space in project: {shutil.disk_usage(root).free / GIB:.1f} GiB', flush=True)
 
@@ -274,9 +290,10 @@ def package(worker, result, dest):
 def require_local_bloat(args, repo, dev):
     if (repo / 'bloat/assets-manifest.json').is_file():
         source = Path(getattr(args, 'bloat_dir', '') or os.environ.get('BLOAT_SOURCE_DIR', str(repo / 'bloat'))).expanduser().resolve()
-        Worker(args.cancel).run(['python3', repo / 'scripts/materialize_bloat.py',
+        Worker(args.cancel).run(helper_command(ROOT, 'materialize',
             '--root', repo, '--source', source, '--cache', source / '.cache', '--check-only',
-            '--device', dev, '--kind', args.kind, '--region', args.region])
+            '--device', dev, '--kind', args.kind, '--region', args.region,
+            *(['--cancel', args.cancel] if args.cancel else [])))
 
 
 def selected_release(args, role):
@@ -395,24 +412,15 @@ def build(args):
             print('STEP 2/5 • Stage flasher and device assets', flush=True)
             assets = job / 'assets'
             normalize_assets(repo, assets, dev, template)
-            env = os.environ.copy()
-            env.update(DEV=dev, FTYPE=args.kind, REGION=args.region, BUILDER_SH=builder,
-                       GITHUB_WORKSPACE=str(assets), OUT_DIR=str(job / 'stage'),
-                       GITHUB_ENV=str(job / 'build.env'), OTA_PATH=str(download / 'OTA.zip'),
-                       OTA_DIR=str(download), SUPER_SIZE=str(catalog.sizes.get(dev, 0)),
-                       BASE_OTA_PATH=str(download / 'BASE.zip'), PYTHONUNBUFFERED='1',
-                       BLOAT_CACHE_DIR=str(Path(os.environ.get('BLOAT_CACHE_DIR', str(repo / '.bloat-cache'))).expanduser().resolve()),
-                       BLOAT_SOURCE_DIR=os.environ.get('BLOAT_SOURCE_DIR', str(repo / 'bloat')),
-                       BLOAT_REQUIRE_LOCAL='1')
-            if getattr(args, 'bloat_dir', ''):
-                source = Path(args.bloat_dir).expanduser().resolve()
-                env['BLOAT_SOURCE_DIR'] = str(source)
-                env['BLOAT_CACHE_DIR'] = str(Path(os.environ.get('BLOAT_CACHE_DIR', str(source / '.cache'))).expanduser().resolve())
-            worker.run(['bash', assets / 'scripts/stage_files.sh'], cwd=assets, env=env)
+            if __package__:
+                from .native_pipeline import stage, build_images
+            else:
+                from native_pipeline import stage, build_images
+            source = Path(getattr(args, 'bloat_dir', '') or os.environ.get('BLOAT_SOURCE_DIR', str(repo / 'bloat'))).expanduser().resolve()
+            result = stage(worker, assets, job / 'stage', dev, args.kind, args.region, source)
             print('STEP 3/5 • Extract partitions and build flasher', flush=True)
-            worker.run(['bash', job / 'stage' / builder, download / 'OTA.zip'], cwd=download, env=env)
-            name = args.kind + (' CN' if args.region == 'CN' else '')
-            result = download / name
+            result = build_images(worker, assets, result, download, dev, args.kind, args.region,
+                                  catalog.sizes.get(dev, 0), builder)
             if not result.is_dir():
                 raise BuildError(f'Builder did not create the expected output: {result}')
             boot_dir = result / ('COS_FILES_HERE' if args.region == 'CN' else 'OOS_FILES_HERE')
@@ -454,9 +462,10 @@ def download_bloat(args):
     print(f'Bloat folder: {destination}', flush=True)
     print('STEP 2/5 • Download and verify bloat', flush=True)
     try:
-        Worker(args.cancel).run(['python3', repo / 'scripts/materialize_bloat.py',
+        Worker(args.cancel).run(helper_command(ROOT, 'materialize',
             '--root', repo, '--destination', destination, '--cache', cache,
-            '--device', dev, '--kind', args.kind, '--region', args.region])
+            '--device', dev, '--kind', args.kind, '--region', args.region,
+            *(['--cancel', args.cancel] if args.cancel else [])))
     except Cancelled:
         raise Cancelled('Bloat download cancelled. Completed images have been kept in the chosen folder.')
     print('STEP 5/5 • Bloat files ready', flush=True)
@@ -496,7 +505,10 @@ def main():
                 raise BuildError('Choose an OTA download destination.')
             download_ota(args)
         elif args.self_test:
-            from selftest import run_self_test
+            if __package__:
+                from .selftest import run_self_test
+            else:
+                from selftest import run_self_test
             run_self_test(args)
         else:
             build(args)

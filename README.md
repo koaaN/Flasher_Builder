@@ -2,44 +2,44 @@
 
 A local desktop GUI for this repository's firmware build workflow. Select the device, flasher type and region, choose a **full OTA ZIP** or paste its download URL, and click **Build package**. The GUI supports the same 61 combinations as `.github/workflows/build_tools.yml` and filters the choices as you select a device.
 
-## Linux
+## Linux and Windows releases
 
-Use an x86-64 Linux PC. For the source version, install Python 3.10 or newer and install the Qt 6 interface dependency. Ubuntu/Debian setup:
+Download the matching package from the private repository's [Releases](https://github.com/koaaN/Flasher_Builder/releases):
+
+- **Windows 10/11 x64:** extract `FlasherBuilder-windows-x86_64.zip` and run `FlasherBuilder.exe`.
+- **Linux x86-64:** extract `FlasherBuilder-linux-x86_64.tar.gz` and run `./FlasherBuilder`.
+
+Extract the whole archive and keep the worker and project folders beside the GUI.
+Both packages include Python, Qt, native otaripper-lite **3.5.0**, lpmake and GitHub
+CLI. Windows does not need WSL, Git Bash, or a separate Python installation.
+Linux requires curl and Qt runtime libraries; on Ubuntu/Debian:
 
 ```sh
-sudo apt install python3 python3-pip curl rsync coreutils findutils gawk gh
-python3 -m pip install -r requirements.txt
-gh auth login
-./start-linux.sh
+sudo apt install curl libegl1 libopengl0 libxkbcommon0
 ```
 
-If downloaded file permissions have been removed, run `bash start-linux.sh`. The native Linux distribution also contains a `FlasherBuilder` executable; it includes Python and Qt 6. Keep it beside the bundled project folders. Build tools such as curl and rsync are still required.
+Private bloat downloads require a GitHub login with access to this repository.
+From the extracted folder, run `tools/github/gh.exe auth login` on Windows or
+`./tools/github/gh auth login` on Linux. An existing GitHub CLI login works too.
+No account token is shipped or saved in application preferences. Already verified
+local bloat can be used without GitHub access. Windows uses its built-in curl.
 
-## Windows
+Click **Check setup**, then **Run pipeline self-test** to verify the native tools.
+Test packages contain synthetic data and must never be flashed.
 
-The GUI runs natively on Windows. The bundled `otaripper` and `lpmake` binaries run in **x86-64 WSL Linux**. Git Bash alone cannot execute these Linux binaries.
+## Running from source
 
-1. Install Python 3.10 or newer from [python.org](https://www.python.org/downloads/windows/), and run `py -3 -m pip install -r requirements.txt` from the project folder.
-2. Install WSL Ubuntu from an Administrator PowerShell:
+Install Python 3.10 or newer and run these commands from the project folder:
 
-   ```powershell
-   wsl --install -d Ubuntu
-   ```
+```sh
+python -m pip install -r requirements.txt
+python scripts/fetch_tools.py --platform all
+python flasher-builder.py
+```
 
-3. Restart if requested, open Ubuntu and finish creating its user. Inside Ubuntu run:
-
-   ```sh
-   sudo apt update
-   sudo apt install python3 curl rsync coreutils findutils gawk gh
-   gh auth login
-   ```
-
-4. Extract the whole project to a writable folder, then double-click `start-windows.bat`.
-5. Click **Check setup**. Leave the WSL distribution field blank for your default distribution, or enter its name from `wsl --list --quiet`.
-
-Paths are converted through `wslpath`; local paths and URLs are passed as arguments without shell interpolation. Choose a Windows-visible output folder with enough space. See Microsoft's [WSL installation guide](https://learn.microsoft.com/en-us/windows/wsl/install) and [command reference](https://learn.microsoft.com/en-us/windows/wsl/basic-commands).
-
-A native Windows executable can also be built on Windows using the packaging command below. It removes the GUI's Windows Python requirement; Python inside WSL remains necessary.
+On Windows, `py -3` can replace `python`. On Linux, use `python3`. The source
+launchers `start-linux.sh` and `start-windows.bat` are also provided. Paths and
+URLs are passed as argument arrays, without shell interpolation.
 
 ## Building a package
 
@@ -47,12 +47,12 @@ A native Windows executable can also be built on Windows using the packaging com
 - Complete **step 2 — Bloat files**: choose a folder containing the required images or click **Download bloat**. The app verifies their sizes and SHA-256 hashes. **Continue to OTA**, step 3, and **Build package** stay locked until the selected build's files are verified locally.
 - In **step 3**, use **Version catalog**, choose a full OTA ZIP, or enter an HTTP(S) URL. Placeholder and incremental OTA files are rejected.
 - **Ace 6 / SuperHybrid / IN** additionally requires the Ace 6 ColorOS **BASE** OTA. Its primary OTA must be the OnePlus 15R India OxygenOS **TARGET** OTA.
-- Choose the output folder and click **Build package**. The log reports download, staging, extraction, packing and compression. **Cancel** stops the worker's current subprocess group, including through WSL.
+- Choose the output folder and click **Build package**. The log reports download, staging, extraction, packing and compression. **Cancel** stops the active native tools and their child processes.
 - **Open output** opens the latest result folder. Each job has a unique name and contains the final ZIP, `.zip.sha256`, `build.json`, and `build.log`. Temporary work files are removed after a successful build. Failed or cancelled jobs retain partial work for inspection; those job folders can be deleted when no longer needed.
 
 Budget roughly **40–80 GB free** for full firmware builds, depending on device, OTA compression and the number of inputs. The worker checks available space before extraction, but actual requirements vary. The GUI logs the OTA's declared device identifier; choose firmware appropriate for the selected device. A successful package build does not establish compatibility with a physical phone.
 
-This application builds local ZIPs. SFTP uploads and Telegram announcements remain in the original GitHub Actions workflow. No runner registration is needed. Private release downloads use the GitHub CLI login in the Linux build environment; run `gh auth login` on Linux or inside WSL on Windows. No token is saved in the application settings.
+This application builds local ZIPs. SFTP uploads and Telegram announcements remain in the original GitHub Actions workflow. No runner registration is needed. Private release downloads use the GitHub CLI login in the native build environment; run the bundled `gh auth login` on the current system. No token is saved in the application settings.
 
 ### OTA version catalog
 
@@ -101,13 +101,13 @@ compressed images. Builds reuse the images from the chosen folder automatically.
 Step 2 fetches only the images needed by the selected device, region and
 flasher type. Downloads are verified and kept in the chosen folder's `.cache`
 for reuse. Images are verified again before the build starts and as they are
-staged. The build worker requires local images and does not silently fetch
+staged. The native build worker requires local images and does not silently fetch
 missing bloat after step 2. The Ace 6T ODM attachment is
 losslessly gzip-compressed to fit GitHub's 2 GiB release-asset limit; the builder
 restores the original `.img` automatically.
 
 The repository remains private. GitHub CLI authentication must have read access
-to `koaaN/Flasher_Builder`. Set `BLOAT_CACHE_DIR` in the Linux build environment to use a different
+to `koaaN/Flasher_Builder`. Set `BLOAT_CACHE_DIR` in the build environment to use a different
 cache location. The cache can be removed when no build is running; the next
 build downloads the required assets again. Cached assets can be reused offline.
 This asset release uses release attachments, not Git LFS or expiring Actions
@@ -136,13 +136,14 @@ python3 flasher_builder/backend.py --device 'Oneplus 13' \
   --ota /path/to/FULL-OTA.zip --output /path/to/builds
 ```
 
-The original scripts now extract to explicit directories, normalize script line endings in per-job copies, stop when an asset download fails, and reject super images missing core partitions. Local builds never execute the workflow's runner-workspace cleanup step.
+The GitHub Actions scripts extract to explicit directories, normalize script line endings in per-job copies, stop when an asset download fails, and reject super images missing core partitions. Local builds never execute the workflow's runner-workspace cleanup step.
 
 ## Distribution builds
 
 The UI uses PySide6 (Qt 6). The build worker uses Python's standard library. Build history, environment checks, resizable logs and package summaries are built into the desktop interface. Create a portable source ZIP with:
 
 ```sh
+python3 scripts/fetch_tools.py --platform all
 python3 scripts/package_app.py
 ```
 
@@ -150,7 +151,20 @@ To also create a native executable distribution, run on the target OS:
 
 ```sh
 python3 -m pip install -r requirements.txt pyinstaller
+python3 scripts/fetch_tools.py --platform all
 python3 scripts/package_app.py --native
 ```
 
-On Windows, use `py -3` instead of `python3`. Native packages include project assets and the worker sources; do not distribute the executable by itself. Windows executables must be built on Windows. The Linux executable's glibc requirements depend on its build host.
+On Windows, use `py -3` instead of `python3`. Native packages include project assets and a separate bundled console worker; do not distribute the executable by itself. Windows executables must be built on Windows. The Linux executable's glibc requirements depend on its build host.
+
+
+The **Native desktop releases** GitHub Actions workflow builds on Ubuntu 22.04
+and Windows Server 2022, runs regression tests, exercises real native tools, then
+runs the extracted GUI's frozen pipeline self-test. It publishes both platform
+archives, a source ZIP, validation receipts and SHA256SUMS only after both jobs
+pass. Dispatch it with a new version such as `v1.0.0`.
+
+The desktop pipeline stages files, selects partitions and constructs lpmake
+arguments in Python. The original shell scripts remain for the separate firmware
+GitHub Actions workflow. See [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) for
+tool origins, versions and licenses.

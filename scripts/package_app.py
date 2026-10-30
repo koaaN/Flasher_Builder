@@ -12,8 +12,8 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parent.parent
 DIRECTORIES = ('.github', 'flasher_builder', 'build_scripts', 'scripts', 'build_tools_assets',
-               'Platform-Tools', 'bloat', 'flasher_scripts', 'lpmake', 'otaripper', 'tests')
-FILES = ('requirements.txt', 'README.md', 'flasher-builder.py', 'start-linux.sh', 'start-windows.bat')
+               'Platform-Tools', 'bloat', 'flasher_scripts', 'lpmake', 'otaripper', 'tests', 'tools')
+FILES = ('requirements.txt', 'README.md', 'THIRD-PARTY-NOTICES.md', 'flasher-builder.py', 'flasher-worker.py', 'start-linux.sh', 'start-windows.bat')
 
 
 def copy_project(destination):
@@ -50,10 +50,16 @@ def main():
         make_zip(project, source_zip)
         print(f'Created {source_zip}', flush=True)
         if args.native:
-            subprocess.run([sys.executable, '-m', 'PyInstaller', '--noconfirm', '--clean', '--onefile',
-                            '--windowed', '--exclude-module', 'PyQt6', '--exclude-module', 'PyQt5', '--exclude-module', 'PySide2', '--name', 'FlasherBuilder', '--distpath', str(project),
+            suffix = '.exe' if sys.platform == 'win32' else ''
+            for name in ('otaripper', 'lpmake'):
+                other = project / name / (name if suffix else name + '.exe')
+                other.unlink(missing_ok=True)
+            (project / 'tools/github' / ('gh' if suffix else 'gh.exe')).unlink(missing_ok=True)
+            for name, entry, windowed in [('FlasherBuilderWorker', 'flasher-worker.py', False), ('FlasherBuilder', 'flasher-builder.py', True)]:
+                subprocess.run([sys.executable, '-m', 'PyInstaller', '--noconfirm', '--clean', '--onefile',
+                            '--windowed' if windowed else '--console', '--exclude-module', 'PyQt6', '--exclude-module', 'PyQt5', '--exclude-module', 'PySide2', '--name', name, '--distpath', str(project),
                             '--workpath', str(temp / 'work'), '--specpath', str(temp),
-                            str(ROOT / 'flasher-builder.py')], cwd=ROOT, check=True)
+                            str(ROOT / entry)], cwd=ROOT, check=True)
             if sys.platform == 'win32':
                 destination = dist / 'FlasherBuilder-windows-x86_64.zip'
                 make_zip(project, destination)

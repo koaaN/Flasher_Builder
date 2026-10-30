@@ -56,16 +56,18 @@ class BuilderTests(unittest.TestCase):
         self.assertEqual(command[command.index('--ota') + 1], malicious)
         self.assertEqual(command[command.index('--output') + 1], '/tmp/build dir')
 
-    def test_windows_wsl_command_maps_paths_and_preserves_url(self):
+    def test_windows_native_command_preserves_paths_and_url(self):
         with patch('flasher_builder.runtime.sys.platform', 'win32'):
             runtime = Runtime('Ubuntu Test')
-        self.assertEqual(runtime.prefix, ['wsl.exe', '--distribution', 'Ubuntu Test', '--exec'])
+        self.assertEqual(runtime.prefix, [])
         values = dict(output='Output Folder', device='Oneplus Ace 6', kind='SuperHybrid Flasher', region='IN', ota='https://host/ota?a=1&b=2', base='base OTA.zip')
         with patch.object(runtime, 'path', side_effect=lambda p: '/mapped/' + str(p)):
             command = runtime.command(values, 'build', 'cancel file')
         self.assertEqual(command[command.index('--base') + 1], '/mapped/base OTA.zip')
         self.assertEqual(command[command.index('--ota') + 1], values['ota'])
-        self.assertEqual(command[:6], ['wsl.exe', '--distribution', 'Ubuntu Test', '--exec', 'python3', '-u'])
+        self.assertNotIn('wsl.exe', command)
+        self.assertEqual(command[:2], [sys.executable, '-u'])
+        self.assertTrue(command[2].endswith('flasher-worker.py'))
 
     def test_release_jobs_copy_manifest_without_other_region_images(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -87,6 +89,7 @@ class BuilderTests(unittest.TestCase):
         with self.assertRaisesRegex(BuildError, 'exit 7'):
             Worker().run([sys.executable, '-c', 'raise SystemExit(7)'])
 
+    @unittest.skipUnless(os.name == 'posix', 'POSIX process-group check')
     def test_cancellation_stops_process_group(self):
         with tempfile.TemporaryDirectory() as folder:
             marker = Path(folder) / 'cancel'
@@ -105,6 +108,7 @@ class BuilderTests(unittest.TestCase):
             finally:
                 trigger.cancel()
 
+    @unittest.skipUnless(os.name == 'posix', 'Legacy Actions Bash helper')
     def test_failed_asset_download_aborts_staging(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)

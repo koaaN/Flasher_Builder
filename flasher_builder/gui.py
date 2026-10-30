@@ -421,7 +421,7 @@ class App(QMainWindow):
         engine = QFrame(); engine.setObjectName('engineCard')
         el = QVBoxLayout(engine); el.setContentsMargins(13, 14, 13, 14); el.setSpacing(6)
         el.addWidget(label('●  LOCAL ENGINE', 'engineTitle'))
-        el.addWidget(label('Windows + WSL' if sys.platform == 'win32' else 'Linux · x86_64'))
+        el.addWidget(label('Windows · x86_64' if sys.platform == 'win32' else 'Linux · x86_64'))
         el.addWidget(label('Files stay on this PC'))
         side.addWidget(engine)
         side.addSpacing(9)
@@ -650,16 +650,11 @@ class App(QMainWindow):
         layout.addWidget(label('Build environment', 'cardTitle'))
         layout.addWidget(label('Check the local tools before starting a firmware build.', 'muted'))
         details = QGridLayout(); details.setVerticalSpacing(22); details.setColumnStretch(1, 1)
-        for row, (title, value) in enumerate((('BUILD BACKEND', 'WSL Linux' if sys.platform == 'win32' else 'Native Linux'), ('ARCHITECTURE', platform.machine()), ('BUILD TOOLS', 'otaripper  /  lpmake  /  avbtool'), ('WORKFLOW CATALOG', f'{len(self.catalog.builders)} supported device, flasher and region combinations'))):
+        for row, (title, value) in enumerate((('BUILD BACKEND', 'Native Windows' if sys.platform == 'win32' else 'Native Linux'), ('ARCHITECTURE', platform.machine()), ('BUILD TOOLS', 'otaripper  /  lpmake  /  avbtool'), ('WORKFLOW CATALOG', f'{len(self.catalog.builders)} supported device, flasher and region combinations'))):
             details.addWidget(label(title, 'fieldLabel'), row, 0)
             details.addWidget(label(value, 'summaryValue', True), row, 1)
         layout.addLayout(details)
-        self.fields['distro'] = QLineEdit(); self.fields['distro'].setPlaceholderText('Default WSL distribution')
-        self.inputs.append(self.fields['distro'])
-        if sys.platform == 'win32':
-            layout.addWidget(label('WSL DISTRIBUTION', 'fieldLabel')); layout.addWidget(self.fields['distro'])
-        else:
-            self.fields['distro'].hide()
+        self.fields['distro'] = QLineEdit(); self.fields['distro'].hide()  # Old settings compatibility.
         line = QFrame(); line.setObjectName('line'); layout.addWidget(line)
         actions = QHBoxLayout()
         self.check_button = button('Check setup', 'check', 'primary', lambda: self.start('check'))
@@ -760,7 +755,7 @@ class App(QMainWindow):
         self.summary_device.setText(values['device'].replace('Oneplus', 'OnePlus'))
         self.summary_kind.setText(values['kind'])
         for key, value in dict(os='ColorOS' if self.region == 'CN' else 'OxygenOS', region='Global' if self.region == 'GLO' else self.region,
-                               format='ZIP + SHA-256', engine='WSL Linux' if sys.platform == 'win32' else 'Native Linux').items():
+                               format='ZIP + SHA-256', engine='Native Windows' if sys.platform == 'win32' else 'Native Linux').items():
             self.summary_values[key].setText(value)
         try:
             p = Path(values['output']).expanduser().resolve()

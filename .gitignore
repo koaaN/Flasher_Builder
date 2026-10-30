@@ -19,3 +19,5 @@ test-results/
 bloat/.cache/
 bloat/.cancel-*
 .ota-catalog/
+/tools/github/gh
+/tools/github/gh.exe
