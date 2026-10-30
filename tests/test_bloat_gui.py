@@ -72,7 +72,7 @@ class BloatGuiTests(unittest.TestCase):
         self.assertTrue(self.window.ota_card.isEnabled())
         self.assertTrue(self.window.start_button.isEnabled())
         saved = json.loads(self.window.settings.read_text())
-        self.assertEqual(saved['bloat_dir'], str(self.folder))
+        self.assertEqual(Path(saved['bloat_dir']).resolve(), self.folder.resolve())
         target.unlink(); self.window.refresh_bloat_status()
         self.wait_for(lambda: self.window.bloat_data is not None and not self.window.bloat_data.get('ready') and self.window.bloat_active_token is None)
         self.assertTrue(self.window.bloat_download.isEnabled())

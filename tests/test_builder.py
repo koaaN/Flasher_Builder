@@ -54,7 +54,7 @@ class BuilderTests(unittest.TestCase):
         values = dict(output='/tmp/build dir', device='Oneplus 13', kind='SuperHybrid Flasher', region='GLO', ota=malicious, base='')
         command = Runtime().command(values, 'build', '/tmp/cancel marker')
         self.assertEqual(command[command.index('--ota') + 1], malicious)
-        self.assertEqual(command[command.index('--output') + 1], '/tmp/build dir')
+        self.assertEqual(command[command.index('--output') + 1], str(Path(values['output']).resolve()))
 
     def test_windows_native_command_preserves_paths_and_url(self):
         with patch('flasher_builder.runtime.sys.platform', 'win32'):
