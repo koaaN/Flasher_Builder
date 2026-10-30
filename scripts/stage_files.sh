@@ -119,7 +119,9 @@ root="$GITHUB_WORKSPACE"
 # Fetch only this build's verified private-release assets. A source checkout
 # without a manifest keeps the original local-file/URL behavior.
 if [[ -f "$root/bloat/assets-manifest.json" ]]; then
-  python3 "$root/scripts/materialize_bloat.py"     --root "$root" --cache "${BLOAT_CACHE_DIR:-$root/.bloat-cache}"     --device "$dev" --kind "$ftype" --region "$region"
+  bloat_args=(--root "$root" --cache "${BLOAT_CACHE_DIR:-$root/.bloat-cache}" --device "$dev" --kind "$ftype" --region "$region")
+  [[ -n "${BLOAT_SOURCE_DIR:-}" ]] && bloat_args+=(--source "$BLOAT_SOURCE_DIR")
+  python3 "$root/scripts/materialize_bloat.py" "${bloat_args[@]}"
 fi
 
 echo "DEVICE='$dev' • FLASHER TYPE='$ftype' • REGION='$region'"

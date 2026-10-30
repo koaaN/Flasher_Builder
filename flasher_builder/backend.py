@@ -201,6 +201,8 @@ def normalize_assets(repo, target, dev, template):
     for directory in ('build_scripts', 'scripts', 'otaripper', 'lpmake', 'build_tools_assets', 'Platform-Tools'):
         shutil.copytree(repo / directory, target / directory)
     for directory in ('bloat', 'flasher_scripts'):
+        if directory == 'bloat' and (repo / 'bloat/assets-manifest.json').is_file():
+            continue
         src = repo / directory / dev
         if src.exists():
             shutil.copytree(src, target / directory / dev)
@@ -299,7 +301,12 @@ def build(args):
                        GITHUB_ENV=str(job / 'build.env'), OTA_PATH=str(download / 'OTA.zip'),
                        OTA_DIR=str(download), SUPER_SIZE=str(catalog.sizes.get(dev, 0)),
                        BASE_OTA_PATH=str(download / 'BASE.zip'), PYTHONUNBUFFERED='1',
-                       BLOAT_CACHE_DIR=str(Path(os.environ.get('BLOAT_CACHE_DIR', str(repo / '.bloat-cache'))).expanduser().resolve()))
+                       BLOAT_CACHE_DIR=str(Path(os.environ.get('BLOAT_CACHE_DIR', str(repo / '.bloat-cache'))).expanduser().resolve()),
+                       BLOAT_SOURCE_DIR=os.environ.get('BLOAT_SOURCE_DIR', str(repo / 'bloat')))
+            if getattr(args, 'bloat_dir', ''):
+                source = Path(args.bloat_dir).expanduser().resolve()
+                env['BLOAT_SOURCE_DIR'] = str(source)
+                env['BLOAT_CACHE_DIR'] = str(Path(os.environ.get('BLOAT_CACHE_DIR', str(source / '.cache'))).expanduser().resolve())
             worker.run(['bash', assets / 'scripts/stage_files.sh'], cwd=assets, env=env)
             print('STEP 3/5 • Extract partitions and build flasher', flush=True)
             worker.run(['bash', job / 'stage' / builder, download / 'OTA.zip'], cwd=download, env=env)
@@ -335,11 +342,33 @@ def build(args):
             sys.stdout, sys.stderr = old_out, old_err
 
 
+
+def download_bloat(args):
+    repo = Path(args.repo).resolve()
+    dev, _, _ = Catalog(repo).selection(args.device, args.kind, args.region)
+    destination = Path(args.bloat_dir).expanduser().resolve()
+    destination.mkdir(parents=True, exist_ok=True)
+    cache = Path(os.environ.get('BLOAT_CACHE_DIR', str(destination / '.cache'))).expanduser().resolve()
+    print('STEP 1/5 • Check selected bloat files', flush=True)
+    print(f'Bloat folder: {destination}', flush=True)
+    print('STEP 2/5 • Download and verify bloat', flush=True)
+    try:
+        Worker(args.cancel).run(['python3', repo / 'scripts/materialize_bloat.py',
+            '--root', repo, '--destination', destination, '--cache', cache,
+            '--device', dev, '--kind', args.kind, '--region', args.region])
+    except Cancelled:
+        raise Cancelled('Bloat download cancelled. Completed images have been kept in the chosen folder.')
+    print('STEP 5/5 • Bloat files ready', flush=True)
+    print('@@BLOAT_RESULT ' + json.dumps({'folder': str(destination)}), flush=True)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--repo', default=str(ROOT))
     parser.add_argument('--check', action='store_true')
     parser.add_argument('--self-test', action='store_true')
+    parser.add_argument('--download-bloat', action='store_true')
+    parser.add_argument('--bloat-dir', default='')
     parser.add_argument('--device', default='Oneplus 13')
     parser.add_argument('--kind', default='SuperHybrid Flasher')
     parser.add_argument('--region', default='GLO')
@@ -352,6 +381,10 @@ def main():
         if args.check:
             check_environment(Path(args.repo))
             print(f'{len(Catalog(args.repo).builders)} supported workflow combinations.', flush=True)
+        elif args.download_bloat:
+            if not args.bloat_dir:
+                raise BuildError('Choose a bloat download folder.')
+            download_bloat(args)
         elif args.self_test:
             from selftest import run_self_test
             run_self_test(args)

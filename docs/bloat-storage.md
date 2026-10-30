@@ -43,3 +43,11 @@ private. No paid Git LFS asset uploads are used.
 References:
 - https://docs.github.com/en/repositories/releasing-projects-on-github/about-releases
 - https://docs.github.com/en/repositories/releasing-projects-on-github/managing-releases-in-a-repository
+
+## Download before building
+
+The Bloat files panel in the GUI provides a remembered folder picker and a
+Download bloat button for the current device/flasher/region. No OTA input is
+required. SHA-256 checks run in the background to show Already downloaded or a
+missing-file count. Builds reuse this folder's verified raw images. The chosen
+folder's hidden `.cache` holds transport objects for repairs.

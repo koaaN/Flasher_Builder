@@ -69,6 +69,34 @@ class ReleaseAssetTests(unittest.TestCase):
             self.assertEqual(target.read_bytes(), b'existing custom image')
             self.assertFalse(list((root / 'cache').glob('*.part-*')))
 
+    def test_download_status_detects_missing_complete_and_corrupt_images(self):
+        raw = b'A' * 4096
+        manifest, obj, _ = fixture(raw)
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = Path(tmp); verified = {}
+            status = assets.inspect_downloads(manifest, folder, '13', 'SuperHybrid Flasher', 'CN', verified)
+            self.assertFalse(status['ready'])
+            target = folder / '13/CN_BLOAT/my_preload.img'; target.parent.mkdir(parents=True)
+            target.write_bytes(raw)
+            self.assertTrue(assets.inspect_downloads(manifest, folder, '13', 'SuperHybrid Flasher', 'CN', verified)['ready'])
+            target.write_bytes(b'B' * len(raw))
+            self.assertFalse(assets.inspect_downloads(manifest, folder, '13', 'SuperHybrid Flasher', 'CN', verified)['ready'])
+            target.unlink()
+            self.assertEqual(assets.inspect_downloads(manifest, folder, '13', 'SuperHybrid Flasher', 'CN', verified)['downloaded'], 0)
+
+    def test_chosen_folder_is_reused_by_build_staging_without_download(self):
+        raw = b'C' * 4096
+        manifest, obj, transport = fixture(raw)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp); folder = root / 'chosen'; cache = root / 'cache'; cache.mkdir()
+            (cache / (obj['sha256'] + '.img')).write_bytes(transport)
+            assets.materialize(root, cache, manifest, '13', 'SuperHybrid Flasher', 'CN', destination=folder)
+            chosen = folder / '13/CN_BLOAT/my_preload.img'
+            self.assertEqual(chosen.read_bytes(), raw)
+            with patch.object(assets.subprocess, 'run', side_effect=AssertionError('Unexpected download')):
+                assets.materialize(root / 'job', root / 'empty-cache', manifest, '13', 'SuperHybrid Flasher', 'CN', source=folder)
+            self.assertEqual((root / 'job/bloat/13/CN_BLOAT/my_preload.img').read_bytes(), raw)
+
     def test_manifest_rejects_path_traversal(self):
         manifest, obj, _ = fixture(b'\0' * 4096)
         manifest['files'] = {'bloat/13/../../escape.img': obj['raw_sha256']}

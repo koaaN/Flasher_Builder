@@ -12,7 +12,7 @@ import unittest
 from unittest.mock import patch
 import zipfile
 
-from flasher_builder.backend import BuildError, Cancelled, Catalog, ROOT, Worker, clean_source, validate_ota
+from flasher_builder.backend import BuildError, Cancelled, Catalog, ROOT, Worker, clean_source, validate_ota, normalize_assets
 from flasher_builder.runtime import Runtime
 from flasher_builder.selftest import make_ota
 
@@ -66,6 +66,22 @@ class BuilderTests(unittest.TestCase):
         self.assertEqual(command[command.index('--base') + 1], '/mapped/base OTA.zip')
         self.assertEqual(command[command.index('--ota') + 1], values['ota'])
         self.assertEqual(command[:6], ['wsl.exe', '--distribution', 'Ubuntu Test', '--exec', 'python3', '-u'])
+
+    def test_release_jobs_copy_manifest_without_other_region_images(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp); repo = root / 'repo'; repo.mkdir()
+            for name in ('build_scripts', 'scripts', 'otaripper', 'lpmake', 'build_tools_assets', 'Platform-Tools'):
+                (repo / name).mkdir()
+            template = repo / 'flasher_scripts/13/oos/super'; template.mkdir(parents=True)
+            (template / 'template.txt').write_text('template')
+            (repo / 'bloat/13/CN_BLOAT').mkdir(parents=True)
+            (repo / 'bloat/13/CN_BLOAT/unneeded.img').write_bytes(b'unneeded region image')
+            (repo / 'bloat/assets-manifest.json').write_text('{}')
+            target = root / 'job'
+            normalize_assets(repo, target, '13', template)
+            self.assertTrue((target / 'bloat/assets-manifest.json').is_file())
+            self.assertFalse((target / 'bloat/13').exists())
+            self.assertTrue((target / 'flasher_scripts/13/oos/super/template.txt').is_file())
 
     def test_child_failure_surfaces(self):
         with self.assertRaisesRegex(BuildError, 'exit 7'):

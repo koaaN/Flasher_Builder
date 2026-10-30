@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (QApplication, QButtonGroup, QComboBox, QFileDialo
 
 from .backend import ROOT, BuildError, Catalog
 from .runtime import Runtime
+from scripts.materialize_bloat import load_manifest, inspect_downloads
 
 
 ICONS = {
@@ -31,6 +32,7 @@ ICONS = {
     'settings': '<path d="M4 6h16M4 12h16M4 18h16"/><circle cx="9" cy="6" r="2"/><circle cx="15" cy="12" r="2"/><circle cx="9" cy="18" r="2"/>',
     'folder': '<path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v10H3V7Z"/>',
     'arrow': '<path d="M5 12h14m-5-5 5 5-5 5"/>',
+    'download': '<path d="M12 3v12m-4-4 4 4 4-4M4 16v5h16v-5"/>',
     'upload': '<path d="M12 16V4m-4 4 4-4 4 4M4 15v5h16v-5"/>',
     'check': '<path d="m5 12 4 4L19 6"/>',
     'monitor': '<rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8m-4-4v4"/>',
@@ -355,11 +357,22 @@ class App(QMainWindow):
             pass
         self.inputs = []
         self.fields = {}
+        self.bloat_verified = {}
+        self.bloat_scan_token = 0
+        self.bloat_probe_key = None
+        self.bloat_data = None
+        self.bloat_active_token = None
+        self.bloat_check_timer = QTimer(self)
+        self.bloat_check_timer.setSingleShot(True)
+        self.bloat_check_timer.timeout.connect(self.scan_bloat_status)
         self.build_layout()
         self.restore()
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.poll)
         self.timer.start(100)
+        self.bloat_watch_timer = QTimer(self)
+        self.bloat_watch_timer.timeout.connect(self.refresh_bloat_status)
+        self.bloat_watch_timer.start(3000)
 
     def build_layout(self):
         shell = QWidget()
@@ -506,10 +519,8 @@ class App(QMainWindow):
         left.addStretch()
         layout.addLayout(left, 1)
         right = QVBoxLayout(); right.setSpacing(14)
-        summary, summary_layout = card(); summary.setFixedWidth(276)
+        summary, summary_layout = card(); summary.setFixedWidth(276); summary_layout.setSpacing(8)
         summary_layout.addWidget(label('YOUR PACKAGE', 'eyebrow'))
-        emblem = QLabel(); emblem.setPixmap(icon('layers', '#3971dc', 38).pixmap(38, 38))
-        summary_layout.addWidget(emblem)
         self.summary_device = label('OnePlus 13', 'summaryDevice', True); summary_layout.addWidget(self.summary_device)
         self.summary_kind = label('SuperHybrid Flasher', 'muted', True); summary_layout.addWidget(self.summary_kind)
         line = QFrame(); line.setObjectName('line'); summary_layout.addWidget(line)
@@ -521,10 +532,33 @@ class App(QMainWindow):
         line = QFrame(); line.setObjectName('line'); summary_layout.addWidget(line)
         self.space = label('', 'hint', True); summary_layout.addWidget(self.space)
         right.addWidget(summary)
-        notes, nl = card(); notes.setFixedWidth(276)
-        nl.addWidget(label('Before you build', 'cardTitle'))
-        nl.addWidget(label('01   Use a full OTA for your device.\n\n02   Allow 40–80 GB of free space.\n\n03   Find your ZIP and checksum in\n       the output folder.', 'hint', True))
-        right.addWidget(notes)
+        notes, nl = card(); notes.setFixedWidth(276); nl.setSpacing(8)
+        heading = QHBoxLayout()
+        heading.addWidget(label('Bloat files', 'cardTitle')); heading.addStretch()
+        heading.addWidget(button('', 'clock', 'quiet', lambda: self.refresh_bloat_status(force=True)))
+        nl.addLayout(heading)
+        self.bloat_status = label('Checking local files…', 'hint', True)
+        nl.addWidget(self.bloat_status)
+        self.bloat_info = label('For the selected device and region', 'hint', True)
+        nl.addWidget(self.bloat_info)
+        folder_row = QHBoxLayout(); folder_row.setSpacing(6)
+        self.fields['bloat_dir'] = QLineEdit(str(ROOT / 'bloat'))
+        self.fields['bloat_dir'].setReadOnly(True)
+        self.fields['bloat_dir'].setAccessibleName('Bloat download folder')
+        self.fields['bloat_dir'].setStyleSheet('font-size: 10px; padding: 7px;')
+        self.fields['bloat_dir'].textChanged.connect(self.refresh_bloat_status)
+        folder_row.addWidget(self.fields['bloat_dir'], 1)
+        self.bloat_browse = button('', 'folder', callback=self.choose_bloat_folder)
+        self.bloat_browse.setToolTip('Choose bloat download folder')
+        self.bloat_browse.setAccessibleName('Choose bloat download folder')
+        self.bloat_browse.setFixedWidth(36)
+        folder_row.addWidget(self.bloat_browse); nl.addLayout(folder_row)
+        self.inputs.extend((self.fields['bloat_dir'], self.bloat_browse))
+        self.bloat_download = button('Download bloat', 'download', callback=lambda: self.start('bloat'))
+        self.bloat_download.setEnabled(False); nl.addWidget(self.bloat_download)
+        self.bloat_open = button('Open bloat folder', 'folder', 'quiet', self.open_bloat_folder)
+        nl.addWidget(self.bloat_open)
+        right.insertWidget(0, notes)
         right.addStretch()
         layout.addLayout(right)
         self.fields['device'].addItems(list(self.catalog.devices))
@@ -611,7 +645,7 @@ class App(QMainWindow):
         return area
 
     def restore(self):
-        for key in ('output', 'distro'):
+        for key in ('output', 'distro', 'bloat_dir'):
             value = self.saved.get(key)
             if isinstance(value, str): self.fields[key].setText(value)
         device = self.saved.get('device', 'Oneplus 13')
@@ -661,6 +695,7 @@ class App(QMainWindow):
             text = str(e); self.selection_valid = False
         self.selection_info.setText(text)
         self.start_button.setEnabled(self.selection_valid and not self.busy)
+        self.refresh_bloat_status()
         self.os_badge.setText('COLOR OS' if self.region == 'CN' else 'OXYGEN OS')
         self.summary_device.setText(values['device'].replace('Oneplus', 'OnePlus'))
         self.summary_kind.setText(values['kind'])
@@ -674,6 +709,102 @@ class App(QMainWindow):
             self.space.setText(f'{free:.1f} GB available on output drive\n' + ('Choose a larger drive for full builds.' if free < 40 else 'Ready for your next build.'))
         except OSError:
             self.space.setText('Choose an accessible output folder.')
+
+    def refresh_bloat_status(self, *args, force=False):
+        if self.busy or 'bloat_dir' not in self.fields or not hasattr(self, 'region'):
+            return
+        values = self.values()
+        key = tuple(values[k] for k in ('device', 'kind', 'region', 'bloat_dir'))
+        if not self.selection_valid:
+            self.bloat_scan_token += 1
+            self.bloat_check_timer.stop()
+            self.bloat_status.setText('Selection unavailable')
+            self.bloat_download.setEnabled(False)
+            return
+        if key == self.bloat_probe_key and self.bloat_active_token == self.bloat_scan_token and not force:
+            return
+        if force:
+            self.bloat_verified.clear()
+        changed = key != self.bloat_probe_key or self.bloat_data is None or force
+        self.bloat_probe_key = key
+        self.bloat_scan_token += 1
+        if changed:
+            self.bloat_data = None
+            self.bloat_status.setText('Checking local files…')
+            self.bloat_status.setStyleSheet('color: #7d8b9e;')
+            self.bloat_download.setText('Download bloat')
+            self.bloat_download.setEnabled(False)
+        self.fields['bloat_dir'].setToolTip(values['bloat_dir'])
+        self.bloat_check_timer.start(150)
+
+    def scan_bloat_status(self):
+        if self.busy:
+            return
+        token = self.bloat_scan_token
+        self.bloat_active_token = token
+        values = self.values()
+        def inspect():
+            try:
+                manifest = load_manifest(ROOT / 'bloat/assets-manifest.json')
+                device = self.catalog.devices[values['device']]
+                data = inspect_downloads(manifest, Path(values['bloat_dir']).expanduser().resolve(),
+                    device, values['kind'], values['region'], self.bloat_verified,
+                    cancelled=lambda: token != self.bloat_scan_token)
+                if data is not None:
+                    self.events.put(('bloat-status', (token, data)))
+            except Exception as e:
+                self.events.put(('bloat-status', (token, {'error': str(e)})))
+            finally:
+                self.events.put(('bloat-scan-finished', token))
+        threading.Thread(target=inspect, daemon=True).start()
+
+    def apply_bloat_status(self, data):
+        self.bloat_data = data
+        if 'error' in data:
+            self.bloat_status.setText('Could not check local files')
+            self.bloat_status.setToolTip(data['error'])
+            self.bloat_status.setStyleSheet('color: #b35454;')
+            self.bloat_info.setText(data['error'])
+            self.bloat_download.setEnabled(False)
+            return
+        size = data['bytes']
+        size_text = f'{size / 1024**3:.2f} GB' if size >= 1024**3 else f'{size / 1024**2:.1f} MB'
+        self.bloat_info.setText(f'{data["total"]} verified images · {size_text}' if data['ready'] else
+                                f'{data["total"]} images · {size_text} total')
+        self.bloat_status.setToolTip('File sizes and SHA-256 checksums checked in the chosen folder.')
+        if not data['total']:
+            self.bloat_status.setText('No extra bloat needed')
+            self.bloat_download.setText('No download needed')
+        elif data['ready']:
+            self.bloat_status.setText('Already downloaded')
+            self.bloat_download.setText('Already downloaded')
+        elif data['downloaded']:
+            self.bloat_status.setText(f'{data["downloaded"]} of {data["total"]} files downloaded')
+            self.bloat_download.setText('Download missing bloat')
+        else:
+            self.bloat_status.setText('Not downloaded')
+            self.bloat_download.setText('Download bloat')
+        self.bloat_status.setStyleSheet('color: #347856;' if data['ready'] else 'color: #7d8b9e;')
+        self.bloat_download.setIcon(icon('check' if data['ready'] else 'download'))
+        self.bloat_download.setEnabled(bool(data['total']) and not data['ready'] and not self.busy)
+
+    def choose_bloat_folder(self):
+        folder = QFileDialog.getExistingDirectory(self, 'Choose bloat download folder', self.fields['bloat_dir'].text())
+        if folder:
+            self.fields['bloat_dir'].setText(folder)
+            self.save_preferences(self.values())
+
+    def open_bloat_folder(self):
+        folder = Path(self.fields['bloat_dir'].text()).expanduser().resolve()
+        if folder.is_dir():
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder)))
+
+    def save_preferences(self, values):
+        try:
+            self.settings.write_text(json.dumps({k: values[k] for k in
+                ('device', 'kind', 'region', 'output', 'distro', 'bloat_dir')}, indent=2) + '\n', encoding='utf-8')
+        except OSError as e:
+            self.log.appendPlainText('Could not save preferences: ' + str(e))
 
     def source_mode(self, url):
         self.fields['ota'].setPlaceholderText('https://… / full-OTA.zip' if url else 'Choose a full OTA .zip file')
@@ -706,16 +837,23 @@ class App(QMainWindow):
         if action == 'build' and not self.base_panel.isHidden() and not values['base']:
             QMessageBox.warning(self, 'BASE OTA required', 'Choose the Ace 6 ColorOS BASE full OTA.'); return
         try:
-            output = Path(values['output']).expanduser().resolve(); output.mkdir(parents=True, exist_ok=True)
-            values['output'] = str(output)
+            output = Path(values['bloat_dir'] if action == 'bloat' else values['output']).expanduser().resolve()
+            output.mkdir(parents=True, exist_ok=True)
+            values['bloat_dir'] = str(Path(values['bloat_dir']).expanduser().resolve())
+            if action != 'bloat':
+                values['output'] = str(output)
+                self.current_output = self.last_folder = output
             self.cancel_file = output / ('.cancel-' + uuid.uuid4().hex)
-            self.current_output = self.last_folder = output
-            self.settings.write_text(json.dumps({k: values[k] for k in ('device', 'kind', 'region', 'output', 'distro')}, indent=2) + '\n', encoding='utf-8')
+            self.save_preferences(values)
         except OSError as e:
             QMessageBox.warning(self, 'Output folder unavailable', str(e)); return
         self.busy = True; self.action = action; self.started = time.monotonic()
         self.set_busy(True); self.log.clear()
-        self.status.setText({'check': 'Checking your environment', 'test': 'Running pipeline self-test', 'build': 'Preparing your build'}[action])
+        self.status.setText({'check': 'Checking your environment', 'test': 'Running pipeline self-test',
+                             'build': 'Preparing your build', 'bloat': 'Downloading selected bloat'}[action])
+        labels = ('01  Check files', '02  Download', '03  Verify images', '04  Save files', '05  Ready') if action == 'bloat' else \
+                 ('01  Prepare OTA', '02  Stage files', '03  Build images', '04  Package ZIP', '05  Complete')
+        for widget, text in zip(self.steps, labels): widget.setText(text)
         self.progress.setRange(0, 0)
         self.highlight_step(-1)
         def task():
@@ -737,7 +875,17 @@ class App(QMainWindow):
         self.start_button.setEnabled(not busy and self.selection_valid)
         self.check_button.setEnabled(not busy); self.test_button.setEnabled(not busy)
         self.cancel_button.setEnabled(busy and self.action != 'check')
-        if not busy: self.kind_changed()
+        self.cancel_button.setText('Cancel download' if self.action == 'bloat' else 'Cancel build')
+        self.bloat_download.setEnabled(False)
+        if busy:
+            self.bloat_scan_token += 1
+            self.bloat_check_timer.stop()
+        if busy and self.action == 'bloat':
+            self.bloat_status.setText('Downloading and verifying…')
+            self.bloat_download.setText('Downloading…')
+        if not busy:
+            if self.action == 'bloat': self.bloat_data = None
+            self.kind_changed()
 
     def highlight_step(self, index):
         for i, item in enumerate(self.steps):
@@ -751,9 +899,17 @@ class App(QMainWindow):
         try:
             for _ in range(300):
                 kind, value = self.events.get_nowait()
-                if kind == 'output-root': self.backend_output = PurePosixPath(value)
+                if kind == 'bloat-scan-finished':
+                    if self.bloat_active_token == value: self.bloat_active_token = None
+                elif kind == 'bloat-status':
+                    token, data = value
+                    if token == self.bloat_scan_token and not self.busy:
+                        self.apply_bloat_status(data)
+                elif kind == 'output-root': self.backend_output = PurePosixPath(value)
                 elif kind == 'line':
-                    if value.startswith('@@RESULT '):
+                    if value.startswith('@@BLOAT_RESULT '):
+                        self.log.appendPlainText('Bloat files saved and verified in the selected folder.\n')
+                    elif value.startswith('@@RESULT '):
                         try:
                             result = json.loads(value[len('@@RESULT '):])
                             relative = PurePosixPath(result['job']).relative_to(self.backend_output)
@@ -769,8 +925,8 @@ class App(QMainWindow):
                     cancelled = self.cancel_file and self.cancel_file.exists()
                     self.busy = False
                     self.progress.setRange(0, 5); self.progress.setValue(5 if value == 0 else 0)
-                    self.status.setText('Build cancelled · partial files retained' if cancelled else
-                                        ('Environment ready' if self.action == 'check' else 'Self-test passed · test data only' if self.action == 'test' else 'Package complete · ready in your output folder') if value == 0 else 'Build failed · see output below')
+                    self.status.setText(('Download cancelled · completed files kept' if self.action == 'bloat' else 'Build cancelled · partial files retained') if cancelled else
+                                        ('Bloat downloaded · all files verified' if self.action == 'bloat' else 'Environment ready' if self.action == 'check' else 'Self-test passed · test data only' if self.action == 'test' else 'Package complete · ready in your output folder') if value == 0 else 'Download failed · see output below' if self.action == 'bloat' else 'Build failed · see output below')
                     self.highlight_step(4 if value == 0 else -1)
                     self.set_busy(False)
                     if self.cancel_file: self.cancel_file.unlink(missing_ok=True)
@@ -781,7 +937,7 @@ class App(QMainWindow):
     def cancel(self):
         if self.busy and self.cancel_file:
             try:
-                self.cancel_file.touch(); self.status.setText('Stopping build…'); self.cancel_button.setEnabled(False)
+                self.cancel_file.touch(); self.status.setText('Stopping download…' if self.action == 'bloat' else 'Stopping build…'); self.cancel_button.setEnabled(False)
             except OSError as e: QMessageBox.warning(self, 'Could not cancel', str(e))
 
     def open_output(self):
@@ -815,7 +971,7 @@ class App(QMainWindow):
         if self.busy:
             if self.closing:
                 event.ignore(); return
-            answer = QMessageBox.question(self, 'Build running', 'Cancel the running task and close when it has stopped?')
+            answer = QMessageBox.question(self, 'Task running', 'Cancel the running task and close when it has stopped?')
             if answer == QMessageBox.StandardButton.Yes: self.closing = True; self.cancel()
             event.ignore()
         else: event.accept()

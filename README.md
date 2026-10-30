@@ -59,6 +59,20 @@ All bloat images are versioned together in the private `bloat-assets-v1` release
 `bloat/assets-manifest.json` maps each device/region image path to a release
 attachment and pins its size and SHA-256. Identical images share one attachment.
 
+The **Bloat files** panel follows the selected device, region and flasher type.
+Use its folder button to choose where to keep the images, then click
+**Download bloat**. No OTA is needed for this download. The panel reports
+**Already downloaded** when all selected images have the correct sizes and
+SHA-256 checksums, or shows how many files are missing. Use the refresh button
+to recheck files manually; status also updates when the selection or folder
+changes. The chosen folder is remembered between sessions.
+
+Images are stored as `<chosen folder>/<device>/<region folder>/*.img`.
+Downloads happen one at a time. Completed images are reused, and a cancelled
+download can be retried without downloading those images again. A hidden
+`.cache` folder contains verified transport objects used for repairs and
+compressed images. Builds reuse the images from the chosen folder automatically.
+
 The builder fetches only the images needed by the selected device, region and
 flasher type. Downloads are verified and kept in `.bloat-cache/` for reuse.
 Images are verified again as they are staged. The Ace 6T ODM attachment is

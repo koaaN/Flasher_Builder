@@ -14,6 +14,7 @@ import os
 from pathlib import Path, PurePosixPath
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import uuid
@@ -105,28 +106,35 @@ def download_asset(repository, asset, cache):
         partial.unlink(missing_ok=True)
 
 
-def materialize(root, cache, manifest, device, kind, region):
+def materialize(root, cache, manifest, device, kind, region, destination=None, source=None):
     paths = selected_paths(manifest, device, kind, region)
     print(f'Bloat release: {manifest["repository"]} / {manifest["tag"]} • {len(paths)} selected image path(s)', flush=True)
     objects = {}
     for relative in paths:
         asset = manifest['assets'][manifest['files'][relative]]
-        target = (root / relative).resolve()
-        if not target.is_relative_to((root / 'bloat').resolve()):
+        bloat_root = (destination or (root / 'bloat')).resolve()
+        target = (bloat_root / PurePosixPath(relative).relative_to('bloat')).resolve()
+        if not target.is_relative_to(bloat_root):
             raise AssetError('Bloat destination escapes the workspace')
         if matches(target, asset['raw_bytes'], asset['raw_sha256']):
             print('  Using verified local image: ' + relative, flush=True)
             continue
+        local = None
+        if source:
+            candidate = (source / PurePosixPath(relative).relative_to('bloat')).resolve()
+            if candidate.is_relative_to(source.resolve()) and matches(candidate, asset['raw_bytes'], asset['raw_sha256']):
+                local = candidate
+                print('  Reusing downloaded image: ' + relative, flush=True)
         key = asset['sha256']
-        if key not in objects:
+        if local is None and key not in objects:
             objects[key] = download_asset(manifest['repository'], asset, cache)
         target.parent.mkdir(parents=True, exist_ok=True)
         partial = target.with_name(target.name + '.part-' + uuid.uuid4().hex)
         h = hashlib.sha256()
         size = 0
         try:
-            opener = gzip.open if asset['encoding'] == 'gzip' else open
-            with opener(objects[key], 'rb') as src, partial.open('wb') as dst:
+            opener = gzip.open if local is None and asset['encoding'] == 'gzip' else open
+            with opener(local or objects[key], 'rb') as src, partial.open('wb') as dst:
                 while chunk := src.read(4 * 1024 ** 2):
                     size += len(chunk)
                     if size > asset['raw_bytes']:
@@ -142,10 +150,57 @@ def materialize(root, cache, manifest, device, kind, region):
     return paths
 
 
+
+def inspect_downloads(manifest, destination, device, kind, region, verified=None, cancelled=None):
+    """Inspect the chosen image folder without downloading or blocking the GUI.
+
+    Successful hashes may be reused while size/mtime/ctime/inode are unchanged.
+    Build staging still verifies the actual image checksum independently.
+    """
+    paths = selected_paths(manifest, device, kind, region)
+    verified = verified if verified is not None else {}
+    count = 0
+    total_bytes = 0
+    for relative in paths:
+        if cancelled and cancelled():
+            return None
+        asset = manifest['assets'][manifest['files'][relative]]
+        total_bytes += asset['raw_bytes']
+        path = destination / PurePosixPath(relative).relative_to('bloat')
+        try:
+            stat = path.stat()
+        except FileNotFoundError:
+            continue
+        fingerprint = (stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns, stat.st_ino)
+        key = (str(path.resolve()), asset['raw_sha256'])
+        if not path.is_file() or stat.st_size != asset['raw_bytes']:
+            verified.pop(key, None)
+            continue
+        if verified.get(key) != fingerprint:
+            h = hashlib.sha256()
+            with path.open('rb') as image:
+                while chunk := image.read(4 * 1024 ** 2):
+                    if cancelled and cancelled():
+                        return None
+                    h.update(chunk)
+            if h.hexdigest() != asset['raw_sha256']:
+                verified.pop(key, None)
+                continue
+            after = path.stat()
+            if (after.st_size, after.st_mtime_ns, after.st_ctime_ns, after.st_ino) != fingerprint:
+                continue
+            verified[key] = fingerprint
+        count += 1
+    return dict(total=len(paths), downloaded=count, bytes=total_bytes,
+                ready=bool(paths) and count == len(paths))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--root', type=Path, required=True)
     parser.add_argument('--cache', type=Path, required=True)
+    parser.add_argument('--destination', type=Path)
+    parser.add_argument('--source', type=Path)
     parser.add_argument('--device', required=True)
     parser.add_argument('--kind', required=True, choices=['Super Flasher', 'SuperHybrid Flasher', 'Regional Flasher', 'RegionalHybrid Flasher'])
     parser.add_argument('--region', required=True, choices=['GLO', 'EU', 'IN', 'NA', 'CN'])
@@ -153,7 +208,9 @@ def main():
     try:
         root = args.root.resolve()
         manifest = load_manifest(root / 'bloat/assets-manifest.json')
-        materialize(root, args.cache.resolve(), manifest, args.device, args.kind, args.region)
+        materialize(root, args.cache.resolve(), manifest, args.device, args.kind, args.region,
+                    args.destination.resolve() if args.destination else None,
+                    args.source.resolve() if args.source else None)
         return 0
     except (AssetError, OSError, ValueError, KeyError, gzip.BadGzipFile) as e:
         print('ERROR: ' + str(e), file=sys.stderr, flush=True)
@@ -161,4 +218,7 @@ def main():
 
 
 if __name__ == '__main__':
+    def interrupted(signum, frame):
+        raise InterruptedError('Bloat download cancelled')
+    signal.signal(signal.SIGTERM, interrupted)
     sys.exit(main())
