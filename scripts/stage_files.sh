@@ -311,7 +311,8 @@ fi
 # CN DEBLOAT (my_preload ONLY)
 # -----------------------------
 
-if [[ "$region" == "CN" ]]; then
+if [[ "$region" == "CN" ]] && [[ -f "$bloat_base/GLO_BLOAT/my_preload.img" ||
+    -f "$bloat_base/GLO_BLOAT/my_preload.img.gz" || -f "$bloat_base/GLO_BLOAT/my_preload" ]]; then
   oos_here="$work_dir/OOS_FILES_HERE"
   mkdir -p "$oos_here"
 

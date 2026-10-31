@@ -24,6 +24,7 @@ DEVICE_NAMES = {
     'Oneplus Ace 6': 'OP ACE 6', 'Oneplus Ace 6T': 'OP ACE 6T',
     'Oneplus Pad 2 Pro': 'OP PAD2 PRO', 'Oneplus Pad 3': 'OP PAD3',
     'Oneplus Pad 3 Pro': 'OP PAD3 PRO', 'Realme GT 7 Pro': 'Realme GT7 PRO',
+    'Realme NEO8': 'Realme NEO 8',
 }
 
 

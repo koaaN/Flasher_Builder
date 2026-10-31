@@ -126,15 +126,15 @@ def run_self_test(args):
     print(f'Self-test folder: {base}', flush=True)
     for directory in ('.github', 'build_scripts', 'scripts', 'otaripper', 'lpmake', 'build_tools_assets', 'Platform-Tools'):
         shutil.copytree(repo / directory, fixture / directory)
-    for dev in ('13', 'Ace6'):
+    for dev in ('13', 'Ace6', 'NEO8'):
         shutil.copytree(repo / 'flasher_scripts' / dev, fixture / 'flasher_scripts' / dev)
         for region in ('GLO_BLOAT', 'CN_BLOAT', 'OOS_BLOAT', 'COS_FILES_HERE'):
             folder = fixture / 'bloat' / dev / region
             folder.mkdir(parents=True)
-            for name in ('my_preload', 'my_company', 'my_region', 'oplusstanvbk'):
+            for name in ('my_preload', 'my_company', 'my_region', 'oplusstanvbk', 'system_dlkm_oki'):
                 (folder / (name + '.img')).write_bytes(b'\0' * 4096)
     partitions = {name: (('TEST ONLY ' + name + '\n').encode() * 300)[:4096].ljust(4096, b'\0')
-                  for name in ('boot', 'init_boot', 'system', 'system_ext', 'product', 'vendor', 'vendor_dlkm', 'odm', 'system_dlkm', 'my_region', 'my_bigball', 'my_carrier', 'my_engineering', 'my_heytap', 'my_manifest', 'my_product', 'my_stock')}
+                  for name in ('boot', 'init_boot', 'system', 'system_ext', 'product', 'vendor', 'vendor_dlkm', 'odm', 'system_dlkm', 'my_region', 'my_bigball', 'my_carrier', 'my_engineering', 'my_heytap', 'my_manifest', 'my_product', 'my_stock', 'my_preload', 'my_company', 'system_dlkm_oki')}
     # Ace6's real builder reads and rewrites vbmeta using the bundled avbtool.
     vbmeta = base / 'vbmeta.img'
     worker.run(helper_command(repo, 'avbtool', 'make_vbmeta_image', '--output', vbmeta, '--padding_size', '4096'))
@@ -150,7 +150,8 @@ def run_self_test(args):
              ('Oneplus 13', 'RegionalHybrid Flasher', 'CN'),
              ('Oneplus 13', 'RegionalHybrid Flasher', 'GLO'),
              ('Oneplus Ace 6', 'Super Flasher', 'CN'),
-             ('Oneplus Ace 6', 'SuperHybrid Flasher', 'IN')]
+             ('Oneplus Ace 6', 'SuperHybrid Flasher', 'IN'),
+             ('Realme NEO8', 'Super Flasher', 'CN')]
     for device, kind, region in cases:
         worker.check()
         print(f'\nSELF-TEST: {device} / {kind} / {region}', flush=True)
@@ -166,6 +167,15 @@ def run_self_test(args):
                     raise BuildError('Self-test: super.img is not an Android sparse image.')
                 verify_super(z.read('super.img'), dict(system=(target_parts if conversion else partitions)['system'],
                                                       product=(target_parts if conversion else partitions)['product'], vendor=partitions['vendor']))
+                if device == 'Realme NEO8':
+                    image = z.read('super.img')
+                    expanded = struct.unpack_from('<II', image, 12)
+                    if expanded[0] * expanded[1] != 18790481920:
+                        raise BuildError('Self-test: NEO8 physical super size is incorrect.')
+                    verify_super(image, {name: b'\0' * 4096 for name in ('my_preload', 'my_company', 'system_dlkm_oki')})
+                    for script in ('Super_Flasher_COS.bat', 'Super_Flasher_COS.sh'):
+                        if 'Realme NEO8' not in z.read(script).decode():
+                            raise BuildError('Self-test: NEO8 flasher script missing from package.')
                 if conversion:
                     for name in ('vbmeta', 'vbmeta_system', 'vbmeta_vendor'):
                         if struct.unpack_from('>I', z.read('OOS_FILES_HERE/'+name+'.img'), 120)[0] != 3:
@@ -176,5 +186,5 @@ def run_self_test(args):
         expected = dest.with_suffix('.zip.sha256').read_text().split()[0]
         if hashlib.sha256(dest.read_bytes()).hexdigest() != expected:
             raise BuildError('Self-test: package SHA-256 mismatch.')
-    (base / 'SELF-TEST-PASSED.txt').write_text('All five pipeline tests passed with the REAL otaripper, lpmake and avbtool.\nGenerated packages contain test bytes. DO NOT FLASH.\n', encoding='utf-8')
+    (base / 'SELF-TEST-PASSED.txt').write_text('All six pipeline tests passed with the REAL otaripper, lpmake and avbtool.\nGenerated packages contain test bytes. DO NOT FLASH.\n', encoding='utf-8')
     print('\nSELF-TEST PASSED: extraction, three builders, sparse super image, vbmeta patching, ZIP integrity and SHA-256.', flush=True)

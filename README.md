@@ -1,6 +1,6 @@
 # Flasher Builder
 
-A local desktop GUI for this repository's firmware build workflow. Select the device, flasher type and region, choose a **full OTA ZIP** or paste its download URL, and click **Build package**. The GUI supports the same 61 combinations as `.github/workflows/build_tools.yml` and filters the choices as you select a device.
+A local desktop GUI for this repository's firmware build workflow. Select the device, flasher type and region, choose a **full OTA ZIP** or paste its download URL, and click **Build package**. The GUI supports the same 62 combinations as `.github/workflows/build_tools.yml` and filters the choices as you select a device.
 
 ## Linux and Windows releases
 
@@ -172,3 +172,5 @@ The desktop pipeline stages files, selects partitions and constructs lpmake
 arguments in Python. The original shell scripts remain for the separate firmware
 GitHub Actions workflow. See [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) for
 tool origins, versions and licenses.
+
+Realme NEO8 supports **Super Flasher → CN (ColorOS) only**, with a physical super size of **18,790,481,920 bytes**. Its required bloat images are `my_preload.img`, `my_company.img` and `system_dlkm_oki.img`; all three are packed into super. The OTA catalog maps to **Realme NEO 8 / CN (RMX8899)**. Generated packages include Windows and Linux fastboot scripts for the CN firmware, with no OxygenOS conversion or optional debloat-image step.

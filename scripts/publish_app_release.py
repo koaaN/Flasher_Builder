@@ -98,6 +98,7 @@ def main():
     files.append(checksums)
     notes = '''Native desktop release for x86-64 Linux and Windows.
 
+- Realme NEO8: CN / ColorOS Super Flasher, 18,790,481,920-byte physical super, exact OTA catalog mapping and three verified bloat images in the private bloat release. Windows and Linux flasher scripts are included.
 - Windows runs natively, with no WSL, Bash, or separate Python installation.
 - Both packages include the GUI, console worker, otaripper-lite 3.5.0, lpmake, and GitHub CLI.
 - Setup fits without scrolling. Build output opens only when work starts, and successful downloads return to setup automatically.

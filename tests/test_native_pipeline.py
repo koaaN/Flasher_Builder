@@ -35,7 +35,7 @@ class NativePipelineTests(unittest.TestCase):
             self.assertEqual(command, [str(ROOT / name)])
             self.assertNotIn('wsl.exe', command)
 
-    def test_all_61_selections_stage_same_images_as_actions(self):
+    def test_all_supported_selections_stage_same_images_as_actions(self):
         workflow = Catalog()
         original = json.loads((ROOT / 'bloat/assets-manifest.json').read_text())
         raw = b'Native staging image\0' * 256

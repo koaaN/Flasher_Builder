@@ -62,7 +62,7 @@ class BuilderTests(unittest.TestCase):
 
     def test_every_workflow_combination_has_assets(self):
         catalog = Catalog()
-        self.assertEqual(len(catalog.builders), 61)
+        self.assertEqual(len(catalog.builders), 62)
         for (kind, dev, region), builder in catalog.builders.items():
             device = next(k for k, v in catalog.devices.items() if v == dev)
             with self.subTest(device=device, kind=kind, region=region):
