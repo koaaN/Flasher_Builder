@@ -1,9 +1,13 @@
 """Regional super sizes, ColorOS layouts and host flashers without hardware."""
 import os
+import queue
 from pathlib import Path
 import shutil
 import subprocess
 import tempfile
+import threading
+import time
+from types import SimpleNamespace
 import unittest
 from flasher_builder.backend import Catalog, ROOT
 from flasher_builder.device_layout import coloros, image_folder
@@ -53,7 +57,38 @@ class FindX9UltraTests(unittest.TestCase):
         else:
             mock=binary/'fastboot';mock.write_text('#!/bin/sh\nprintf "%s\\n" "$*" >> "$FLASH_LOG"\nif [ "$FAIL_FLASH" = 1 ] && [ "$1" = flash ] && [ "$2" = boot_b ]; then exit 7; fi\n')
             mock.chmod(0o755);command=['bash',str(package/('Super_Flasher.sh' if kind=='super' else 'Regional_Flasher.sh'))]
-        result=subprocess.run(command,cwd=package,env=env,input='\nY\nN\n\n',capture_output=True,text=True,timeout=15)
+        if os.name=='nt':
+            # PAUSE consumes one character, while SET /P reads available pipe
+            # data in a chunk. Feed each answer only after its prompt, as a user
+            # would; a preloaded multiline pipe can put newlines in variables.
+            process=subprocess.Popen(command,cwd=package,env=env,stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True)
+            output=queue.Queue()
+            def read():
+                while char:=process.stdout.read(1):output.put(char)
+                output.put(None)
+            reader=threading.Thread(target=read,daemon=True);reader.start()
+            prompts=[('Press any key to continue','x'),('Do you want to keep the current ABL? [Y/n]: ','Y\n'),
+                     ('Do you want to wipe data? [y/N]: ','N\n'),('Press any key to continue','x')]
+            text='';pending=0;start=0;deadline=time.monotonic()+20
+            try:
+                while time.monotonic()<deadline:
+                    try:char=output.get(timeout=.1)
+                    except queue.Empty:
+                        if process.poll() is not None:break
+                        continue
+                    if char is None:break
+                    text+=char
+                    if pending<len(prompts) and prompts[pending][0] in text[start:]:
+                        process.stdin.write(prompts[pending][1]);process.stdin.flush()
+                        pending+=1;start=len(text)
+                if process.poll() is None:process.kill()
+                process.wait(timeout=3)
+                result=SimpleNamespace(returncode=process.returncode,stdout=text,stderr='')
+            finally:
+                process.stdin.close();process.stdout.close();reader.join(timeout=1)
+        else:
+            result=subprocess.run(command,cwd=package,env=env,input='\nY\nN\n\n',capture_output=True,text=True,timeout=15)
         return result,log.read_text() if log.exists() else ''
 
     def test_super_flasher_uses_packed_super_and_never_reflashes_logical_images(self):
