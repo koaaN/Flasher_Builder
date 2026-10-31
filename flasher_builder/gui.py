@@ -249,8 +249,32 @@ def label(text, name='', wrap=False):
     return widget
 
 
+class Button(QPushButton):
+    """Size styled controls from their content, without platform button minima."""
+    def sizeHint(self):
+        self.ensurePolished()
+        horizontal, vertical = {'primary': (20, 12), 'quiet': (8, 7),
+                                'region': (15, 8), 'sourceTab': (12, 7)}.get(self.objectName(), (14, 10))
+        ancestor = self.parentWidget()
+        while ancestor is not None:
+            if ancestor.objectName() == 'sidebar':
+                horizontal, vertical = 16, 13
+                break
+            ancestor = ancestor.parentWidget()
+        metrics = self.fontMetrics()
+        width = metrics.horizontalAdvance(self.text())
+        height = metrics.height()
+        if not self.icon().isNull():
+            width += self.iconSize().width() + (6 if self.text() else 0)
+            height = max(height, self.iconSize().height())
+        return QSize(width + horizontal * 2 + 2, height + vertical * 2 + 2)
+
+    def minimumSizeHint(self):
+        return self.sizeHint()
+
+
 def button(text, symbol=None, name='', callback=None):
-    widget = QPushButton(text)
+    widget = Button(text)
     widget.setObjectName(name)
     widget.setCursor(Qt.CursorShape.PointingHandCursor)
     if symbol:
