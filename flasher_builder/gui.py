@@ -139,8 +139,12 @@ class ComboBox(QComboBox):
         self.menu = SelectPopup(self)
 
     def sizeHint(self):
-        hint = super().sizeHint()
-        return QSize(hint.width(), max(44, hint.height()))
+        return QSize(240, 44)
+
+    def minimumSizeHint(self):
+        # The custom painter elides long text. Native combo hints can otherwise
+        # force the whole Windows form to fit its longest device/version name.
+        return QSize(140, 44)
 
     def paintEvent(self, event):
         painter = QPainter(self)

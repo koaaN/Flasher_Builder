@@ -46,7 +46,10 @@ class WorkspaceLayoutTests(unittest.TestCase):
         self.app.processEvents()
         setup = self.window.pages.widget(0)
         minimum = setup.minimumSizeHint()
-        self.assertLessEqual(minimum.width(), setup.width())
+        self.assertLessEqual(minimum.width(), setup.width(),
+            f'configuration={self.window.configure_card.minimumSizeHint().toTuple()}, '
+            f'bloat={self.window.bloat_card.minimumSizeHint().toTuple()}, '
+            f'OTA={self.window.ota_card.minimumSizeHint().toTuple()}')
         self.assertLessEqual(minimum.height(), setup.height())
         self.assertFalse(setup.findChildren(QScrollArea))
         for control in setup.findChildren(QWidget):
