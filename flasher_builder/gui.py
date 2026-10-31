@@ -485,7 +485,7 @@ class App(QMainWindow):
 
     def build_page(self):
         page = QWidget(); page.setObjectName('innerPanel')
-        layout = QVBoxLayout(page); layout.setContentsMargins(0, 0, 0, 0); layout.setSpacing(14)
+        layout = QVBoxLayout(page); layout.setContentsMargins(0, 0, 0, 0); layout.setSpacing(10)
         top = QHBoxLayout(); top.setSpacing(16)
         configure, form = card()
         title = QHBoxLayout()
@@ -635,7 +635,7 @@ class App(QMainWindow):
         self.bloat_card = notes
         top.addWidget(notes, 1)
         for frame in (configure, notes, source_card):
-            frame.layout().setContentsMargins(18, 14, 18, 14)
+            frame.layout().setContentsMargins(18, 12, 18, 12)
             frame.layout().setSpacing(8)
         layout.addLayout(top)
         layout.addWidget(source_card)
