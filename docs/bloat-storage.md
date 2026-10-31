@@ -1,20 +1,22 @@
 # Bloat release storage
 
-All bloat images live together in the private `bloat-assets-v1` release of
-`koaaN/Flasher_Builder`. There are 51 deduplicated image attachments covering
-144 device/region image paths, plus `assets-manifest.json` and `SHA256SUMS`.
+All bloat images live together in the public `bloat-assets-v1` release of
+`koaaN/Flasher_Builder`. There are 54 deduplicated image attachments covering
+147 device/region image paths, plus `assets-manifest.json` and `SHA256SUMS`.
 
 The repository's `bloat/assets-manifest.json` pins the release asset IDs,
 transport sizes and SHA-256 checksums, original image sizes/checksums, and the
 mapping from each image path to an attachment. Identical image contents share
-an attachment. The 2.02 GiB Ace 6T ODM image is stored as a 1.70 GiB lossless gzip
-attachment so that every attachment is under GitHub's 2 GiB limit.
+an attachment. Oversized images are stored as lossless gzip attachments; the
+original image bytes are restored and checked before use.
 
 ## Builds
 
-Install GitHub CLI (`gh`) and authenticate with read access to the private
-repository. On Windows this login belongs inside the WSL build environment.
-The GUI never saves authentication tokens in its settings file.
+Public bloat downloads need no account or GitHub login. Bundled aria2c uses
+`-x8 -s8` with at most one file downloading at a time. Curl is the fallback if
+aria2c is missing or a transfer fails. Private forks can use an existing GitHub
+CLI login to resolve an authenticated download URL; the account token is sent
+only to GitHub's API and is never passed to aria2c/curl or saved in preferences.
 
 During staging, `scripts/materialize_bloat.py` selects assets for the device,
 region and flasher type, including conversion/signal fixes. It checks existing
@@ -38,7 +40,7 @@ These are release attachments, not Actions artifacts or Git LFS objects.
 Release assets have no automatic age-based expiration. GitHub documents a
 limit of 1,000 attachments per release, each under 2 GiB, with no total release
 size or download bandwidth limit. The repository and its releases remain
-private. No paid Git LFS asset uploads are used.
+public. No paid Git LFS asset uploads are used.
 
 References:
 - https://docs.github.com/en/repositories/releasing-projects-on-github/about-releases
@@ -54,7 +56,7 @@ folder's hidden `.cache` holds transport objects for repairs.
 
 ## Required local prerequisite
 
-Bloat is step 2, before OTA selection. Continue to OTA, the OTA controls, and
+Bloat is step 2, before OTA selection. The OTA controls and
 Build package stay disabled until every required image is locally present and
 verified for the current device/flasher/region/folder. Changing selection or
 losing a required file locks those controls again. The worker independently

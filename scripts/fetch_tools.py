@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parent.parent
 def fetch(platforms):
     dependencies = json.loads((ROOT / 'tools/dependencies.json').read_text())
     for entry in dependencies:
-        if entry['platform'] not in platforms: continue
+        if entry['platform'] not in platforms and entry['platform'] != 'all': continue
         path = ROOT / entry['path']
         if path.is_file() and hashlib.sha256(path.read_bytes()).hexdigest() == entry['sha256']: continue
         print('Fetching verified ' + entry['path'], flush=True)

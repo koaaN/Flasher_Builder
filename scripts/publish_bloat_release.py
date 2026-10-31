@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Publish audited bloat assets sequentially to one private GitHub release.
+"""Publish audited bloat assets sequentially to one GitHub release.
 
 Uploads are resumable at asset granularity. Every object is checked against the
 SHA-256 digest reported by GitHub before oversized temporary copies are removed.
@@ -175,8 +175,9 @@ def main():
     stage = audit / 'release-upload'
     stage.mkdir(exist_ok=True)
     logs = audit / 'logs'
-    if not api('repos/' + args.repo)['private']:
-        raise RuntimeError('Refusing to upload private bloat assets to a public repository')
+    repository = api('repos/' + args.repo)
+    if repository['full_name'].lower() != args.repo.lower():
+        raise RuntimeError('Repository identity mismatch')
     plan_path = audit / 'release-plan.json'
     if plan_path.exists():
         plan = json.loads(plan_path.read_text())

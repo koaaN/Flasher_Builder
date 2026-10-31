@@ -721,7 +721,7 @@ class App(QMainWindow):
         layout.addWidget(label('Build environment', 'cardTitle'))
         layout.addWidget(label('Check the local tools before starting a firmware build.', 'muted'))
         details = QGridLayout(); details.setVerticalSpacing(22); details.setColumnStretch(1, 1)
-        for row, (title, value) in enumerate((('APP VERSION', __version__), ('BUILD BACKEND', 'Native Windows' if sys.platform == 'win32' else 'Native Linux'), ('ARCHITECTURE', platform.machine()), ('BUILD TOOLS', 'otaripper  /  lpmake  /  avbtool'), ('WORKFLOW CATALOG', f'{len(self.catalog.builders)} supported device, flasher and region combinations'))):
+        for row, (title, value) in enumerate((('APP VERSION', __version__), ('BUILD BACKEND', 'Native Windows' if sys.platform == 'win32' else 'Native Linux'), ('ARCHITECTURE', platform.machine()), ('BUILD TOOLS', 'otaripper  /  lpmake  /  avbtool  /  aria2c'), ('WORKFLOW CATALOG', f'{len(self.catalog.builders)} supported device, flasher and region combinations'))):
             details.addWidget(label(title, 'fieldLabel'), row, 0)
             details.addWidget(label(value, 'summaryValue', True), row, 1)
         layout.addLayout(details)

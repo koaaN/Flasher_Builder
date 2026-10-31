@@ -11,7 +11,7 @@ import tempfile
 import zipfile
 
 ROOT = Path(__file__).resolve().parent.parent
-DIRECTORIES = ('.github', 'flasher_builder', 'build_scripts', 'scripts', 'build_tools_assets',
+DIRECTORIES = ('.github', 'docs', 'flasher_builder', 'build_scripts', 'scripts', 'build_tools_assets',
                'Platform-Tools', 'bloat', 'flasher_scripts', 'lpmake', 'otaripper', 'tests', 'tools')
 FILES = ('requirements.txt', 'README.md', 'THIRD-PARTY-NOTICES.md', 'flasher-builder.py', 'flasher-worker.py', 'start-linux.sh', 'start-windows.bat')
 
@@ -55,6 +55,7 @@ def main():
                 other = project / name / (name if suffix else name + '.exe')
                 other.unlink(missing_ok=True)
             (project / 'tools/github' / ('gh' if suffix else 'gh.exe')).unlink(missing_ok=True)
+            (project / 'tools/aria2' / ('aria2c' if suffix else 'aria2c.exe')).unlink(missing_ok=True)
             if not suffix:
                 (project / 'lpmake/cygwin1.dll').unlink(missing_ok=True)
                 shutil.rmtree(project / 'lpmake/sources', ignore_errors=True)

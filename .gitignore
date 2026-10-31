@@ -22,3 +22,7 @@ bloat/.cancel-*
 /tools/github/gh
 /tools/github/gh.exe
 /lpmake/sources/*.tar.gz
+
+/tools/aria2/aria2c
+/tools/aria2/aria2c.exe
+/tools/aria2/sources/*.tar.*

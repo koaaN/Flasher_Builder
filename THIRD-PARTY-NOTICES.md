@@ -1,6 +1,6 @@
 # Bundled native dependencies
 
-The private application packages include these tools; their licenses remain in
+The application packages include these tools; their licenses remain in
 force. No GitHub credentials are included in a package.
 
 - **otaripper-lite 3.5.0**, by syedinsaf and contributors, Apache-2.0.
@@ -24,7 +24,17 @@ force. No GitHub credentials are included in a package.
 - **GitHub CLI 2.103.3**, GitHub and contributors, MIT.
   https://github.com/cli/cli/releases/tag/v2.103.3
   License: `tools/github/LICENSE`. Its platform binaries are fetched during
-  release builds and bundled for private bloat downloads; they are not Git blobs.
+  release builds and bundled for optional private-fork authentication; they are not Git blobs.
+- **aria2 1.37.0**, Tatsuhiro Tsujikawa and contributors, GPL-2.0-or-later.
+  Windows uses the official `aria2/aria2` win-64bit-build1 release. Linux uses the
+  unmodified musl static x86-64 build from `abcfy2/aria2-static-build` tag `1.37.0`.
+  Both archive and executable hashes are pinned in `tools/dependencies.json`.
+  License, dependency notices, upstream build information and rebuilding notes:
+  `tools/aria2/COPYING`, `tools/aria2/licenses/`, `tools/aria2/README.md`.
+  Complete aria2 source and sources for the statically linked GPL/LGPL components
+  (GMP, libiconv and XZ/liblzma) are included in `tools/aria2/sources/` in the
+  release archives. The GUI invokes this independently replaceable command-line
+  program as a subprocess.
 - **PySide6 / Qt 6**, Qt Company and contributors, LGPL-3.0/GPL/commercial options.
   https://doc.qt.io/qtforpython-6/licenses.html
   The packaged app uses the open-source PySide6 distribution. Qt libraries are

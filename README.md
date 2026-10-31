@@ -10,19 +10,24 @@ Download the matching package from the repository's [Releases](https://github.co
 - **Linux x86-64:** extract `FlasherBuilder-linux-x86_64.tar.gz` and run `./FlasherBuilder`.
 
 Extract the whole archive and keep the worker and project folders beside the GUI.
-Both packages include Python, Qt, native otaripper-lite **3.5.0**, lpmake and GitHub
-CLI. Windows does not need WSL, Git Bash, or a separate Python installation.
+Both packages include Python, Qt, native otaripper-lite **3.5.0**, lpmake, aria2c **1.37.0** and GitHub
+CLI (optional for private forks). Windows does not need WSL, Git Bash, or a separate Python installation.
 Linux requires curl and Qt runtime libraries; on Ubuntu/Debian:
 
 ```sh
 sudo apt install curl libegl1 libopengl0 libxkbcommon0
 ```
 
-Private bloat downloads require a GitHub login with access to this repository.
-From the extracted folder, run `tools/github/gh.exe auth login` on Windows or
-`./tools/github/gh auth login` on Linux. An existing GitHub CLI login works too.
-No account token is shipped or saved in application preferences. Already verified
-local bloat can be used without GitHub access. Windows uses its built-in curl.
+Public releases, bloat downloads and update checks work without a GitHub login.
+Downloads use bundled **aria2c `-x8 -s8`** (up to eight connections per file), with
+**curl fallback** if aria2c is unavailable or a transfer fails. Files still download
+one at a time. Servers determine whether parallel range requests improve speed.
+Sizes and checksums are verified before files are accepted. Cancelling removes
+partial data and aria2 control files without starting a fallback transfer.
+Windows uses its built-in curl; Linux users should keep curl installed as a fallback.
+
+For a private fork, an existing GitHub CLI login can resolve authenticated release
+links. No account token is shipped or saved in application preferences.
 
 Click **Check setup**, then **Run pipeline self-test** to verify the native tools.
 Test packages contain synthetic data and must never be flashed.
@@ -51,7 +56,7 @@ URLs are passed as argument arrays, without shell interpolation.
 
 Budget roughly **40–80 GB free** for full firmware builds, depending on device, OTA compression and the number of inputs. The worker checks available space before extraction, but actual requirements vary. The GUI logs the OTA's declared device identifier; choose firmware appropriate for the selected device. A successful package build does not establish compatibility with a physical phone.
 
-This application builds local ZIPs. SFTP uploads and Telegram announcements remain in the original GitHub Actions workflow. No runner registration is needed. Private release downloads use the GitHub CLI login in the native build environment; run the bundled `gh auth login` on the current system. No token is saved in the application settings.
+This application builds local ZIPs. SFTP uploads and Telegram announcements remain in the original GitHub Actions workflow. No runner registration or GitHub login is needed for public downloads.
 
 ### OTA version catalog
 
@@ -61,8 +66,7 @@ and displays the model, size and security patch when available. **Fetch versions
 uses the site's [public catalog API](https://roms.danielspringer.at/api/ota.php?format=html&help=1),
 with a shared 15-minute cache and ETag revalidation. An offline cached list is clearly marked.
 Selections with no matching catalog releases can still use a local ZIP or a manual URL.
-The picker does not guess substitute devices for conversion builds; the explicit
-Builds that require a separate base OTA show both target and base selectors automatically.
+Conversion builds use explicit target/base mappings and show both selectors when needed.
 
 Select a version and click **Build package** to download it and build in one operation.
 Alternatively, **Download OTA** saves and verifies the full ZIP without building;
@@ -79,7 +83,7 @@ their partial files and leave existing files intact.
 
 ## Bloat assets
 
-All bloat images are versioned together in the private `bloat-assets-v1` release.
+All bloat images are versioned together in the public `bloat-assets-v1` release.
 `bloat/assets-manifest.json` maps each device/region image path to a release
 attachment and pins its size and SHA-256. Identical images share one attachment.
 
@@ -104,8 +108,7 @@ staged. The native build worker requires local images and does not silently fetc
 missing bloat after step 2. Oversized release attachments are losslessly gzip-compressed;
 the builder restores the original `.img` automatically.
 
-The repository remains private. GitHub CLI authentication must have read access
-to `koaaN/Flasher_Builder`. Set `BLOAT_CACHE_DIR` in the build environment to use a different
+The repository and bloat release are public. Set `BLOAT_CACHE_DIR` in the build environment to use a different
 cache location. The cache can be removed when no build is running; the next
 build downloads the required assets again. Cached assets can be reused offline.
 This asset release uses release attachments, not Git LFS or expiring Actions
@@ -140,7 +143,7 @@ The GitHub Actions scripts extract to explicit directories, normalize script lin
 
 The setup form fits without scrolling, including supported target/base OTA selectors. Build output stays hidden until a task starts and uses its own view, so logs never shrink the setup form. Successful bloat and OTA downloads return to setup automatically; **View output** reopens their logs.
 
-The app checks for newer stable app releases in the background on startup. When an update is available, an **Update v…** button appears in the sidebar and opens the release download page. **Environment → Check for updates** checks again manually and displays your installed version. For this private repository, update checks use your existing GitHub CLI login (the same login used for bloat downloads); connection or login problems appear in Environment and do not block builds. Checks ignore bloat releases, drafts, prereleases and releases missing your platform's package. Extract the new package to update; automatic installation is not performed.
+The app checks for newer stable app releases in the background on startup. When an update is available, an **Update v…** button appears in the sidebar and opens the release download page. **Environment → Check for updates** checks again manually and displays your installed version. Public update checks work without a login; connection problems appear in Environment and do not block builds. Checks ignore bloat releases, drafts, prereleases and releases missing your platform's package. Extract the new package to update; automatic installation is not performed.
 
 The UI uses PySide6 (Qt 6). The build worker uses Python's standard library. Build history, environment checks, task logs and package summaries are built into the desktop interface. Create a portable source ZIP with:
 

@@ -60,14 +60,25 @@ class BloatBackendTests(unittest.TestCase):
                                   raw_bytes=len(raw), raw_sha256=sha, encoding='identity')},
                 files={'bloat/13/GLO_BLOAT/my_preload.img': sha})
             (repo / 'bloat').mkdir(); (repo / 'bloat/assets-manifest.json').write_text(json.dumps(manifest))
-            bin_dir = root / 'bin'; bin_dir.mkdir()
-            fake = bin_dir / 'gh'
-            fake.write_text('#!/usr/bin/python3\nimport sys,time\nsys.stdout.buffer.write(b"x"*1024)\nsys.stdout.buffer.flush()\ntime.sleep(30)\n')
-            fake.chmod(0o755)
+            shutil.copytree(ROOT / 'flasher_builder', repo / 'flasher_builder',
+                            ignore=shutil.ignore_patterns('__pycache__'))
+            shutil.copy2(ROOT / 'scripts/http_download.py', repo / 'scripts/http_download.py')
+            # Run the real helper and downloader, replacing only URL resolution
+            # and the aria2 executable so this integration test stays offline.
+            (repo / 'flasher-worker.py').write_text(
+                'import runpy\nfrom scripts import materialize_bloat as assets\n'
+                'assets.resolve_release_url=lambda url,*args,**kwargs:url\n'
+                'runpy.run_path(' + repr(str(ROOT / 'flasher-worker.py')) + ',run_name="__main__")\n')
+            tool = repo / 'tools/aria2/aria2c'; tool.parent.mkdir(parents=True)
+            tool.write_text('#!/usr/bin/python3\nimport sys,time\nfrom pathlib import Path\n'
+                'folder=next(x.split("=",1)[1] for x in sys.argv if x.startswith("--dir="))\n'
+                'name=next(x.split("=",1)[1] for x in sys.argv if x.startswith("--out="))\n'
+                'target=Path(folder)/name; target.write_bytes(b"x"*1024)\n'
+                'Path(str(target)+".aria2").write_bytes(b"control")\ntime.sleep(30)\n')
+            tool.chmod(0o755)
             destination = root / 'chosen bloat'; cancel = root / 'cancel'
-            env = os.environ | {'PATH': str(bin_dir) + os.pathsep + os.environ['PATH']}
-            env.pop('BLOAT_CACHE_DIR', None)
-            process = subprocess.Popen([sys.executable, str(ROOT / 'flasher_builder/backend.py'), '--repo', str(repo),
+            env = dict(os.environ); env.pop('BLOAT_CACHE_DIR', None)
+            process = subprocess.Popen([sys.executable, str(repo / 'flasher_builder/backend.py'), '--repo', str(repo),
                 '--download-bloat', '--bloat-dir', str(destination), '--cancel', str(cancel)],
                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env)
             try:

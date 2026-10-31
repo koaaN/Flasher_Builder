@@ -20,6 +20,11 @@ import sys
 import time
 import uuid
 
+PROJECT_ROOT = Path(sys.executable).resolve().parent if getattr(sys, 'frozen', False) else Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+from scripts.http_download import DownloadError, download_url, release_url, resolve_release_url
+
 CANCEL_FILE = None
 
 
@@ -87,41 +92,23 @@ def selected_paths(manifest, device, kind, region):
     return [path for path in sorted(manifest['files']) if path.startswith(prefix + main + '/') or path in extra]
 
 
-def download_asset(repository, asset, cache):
+def download_asset(repository, asset, cache, tag='bloat-assets-v1'):
     cache.mkdir(parents=True, exist_ok=True)
     path = cache / (asset['sha256'] + ('.img.gz' if asset['encoding'] == 'gzip' else '.img'))
     if matches(path, asset['bytes'], asset['sha256']):
         print('  Using verified cached asset: ' + asset['asset_name'], flush=True)
         return path
-    if not shutil.which('gh'):
-        raise AssetError('GitHub CLI is required to fetch private bloat assets. Run the bundled tools/github/gh auth login (gh.exe on Windows).')
     if shutil.disk_usage(cache).free < asset['bytes'] + 512 * 1024 ** 2:
         raise AssetError('Not enough disk space for the bloat asset cache')
     partial = path.with_name(path.name + '.part-' + uuid.uuid4().hex)
-    print('  Downloading private release asset: ' + asset['asset_name'], flush=True)
+    print('  Downloading release asset: ' + asset['asset_name'], flush=True)
     try:
-        with partial.open('wb') as output:
-            process = subprocess.Popen(['gh', 'api', f'repos/{repository}/releases/assets/{asset["asset_id"]}',
-                                     '-H', 'Accept: application/octet-stream'], stdout=output, stderr=subprocess.PIPE,
-                                    env=os.environ | {'GH_PROMPT_DISABLED': '1'},
-                                    **({'creationflags': subprocess.CREATE_NO_WINDOW} if os.name == 'nt' else {}))
-            try:
-                while True:
-                    check_cancel()
-                    try:
-                        _, errors = process.communicate(timeout=.15)
-                        break
-                    except subprocess.TimeoutExpired:
-                        pass
-            finally:
-                if process.poll() is None:
-                    process.terminate()
-                    try: process.wait(timeout=2)
-                    except subprocess.TimeoutExpired: process.kill(); process.wait()
-                process.stderr.close()
-        if process.returncode:
-            raise AssetError('Private release download failed. Check gh auth login in the build environment.\n'
-                             + errors.decode('utf-8', errors='replace').strip())
+        url = release_url(repository, tag, asset['asset_name'])
+        try:
+            download_url(url, partial, root=PROJECT_ROOT, check=check_cancel, checksum=asset['sha256'], expected_bytes=asset['bytes'],
+                resolve=lambda address: resolve_release_url(address, repository, asset['asset_id'], PROJECT_ROOT, check_cancel))
+        except DownloadError as e:
+            raise AssetError(str(e)) from e
         if not matches(partial, asset['bytes'], asset['sha256']):
             raise AssetError('Release asset size/SHA-256 mismatch: ' + asset['asset_name'])
         partial.replace(path)
@@ -154,7 +141,7 @@ def materialize(root, cache, manifest, device, kind, region, destination=None, s
             raise AssetError('Required bloat image is not available locally: ' + relative + '. Complete step 2 before building.')
         key = asset['sha256']
         if local is None and key not in objects:
-            objects[key] = download_asset(manifest['repository'], asset, cache)
+            objects[key] = download_asset(manifest['repository'], asset, cache, manifest['tag'])
         target.parent.mkdir(parents=True, exist_ok=True)
         partial = target.with_name(target.name + '.part-' + uuid.uuid4().hex)
         h = hashlib.sha256()

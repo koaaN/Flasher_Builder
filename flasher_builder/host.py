@@ -20,6 +20,7 @@ def helper_command(root, helper, *args):
 
 
 def configure_path(root):
-    directory = Path(root) / 'tools/github'
-    if directory.is_dir():
-        os.environ['PATH'] = str(directory.resolve()) + os.pathsep + os.environ.get('PATH', '')
+    for name in ('github', 'aria2'):
+        directory = Path(root) / 'tools' / name
+        if directory.is_dir():
+            os.environ['PATH'] = str(directory.resolve()) + os.pathsep + os.environ.get('PATH', '')

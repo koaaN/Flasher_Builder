@@ -13,6 +13,9 @@ import struct
 import time
 import uuid
 import zipfile
+import threading
+from functools import partial
+from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
 if __package__:
     from .backend import BuildError, Worker, build, check_environment
@@ -142,6 +145,21 @@ def run_self_test(args):
         partitions[name] = vbmeta.read_bytes()
     ota = base / 'TEST-ONLY-full-OTA.zip'
     make_ota(ota, partitions)
+    # Exercise the actual bundled downloader in frozen builds as well as source
+    # runs. This server exposes only generated test data on loopback.
+    class Handler(SimpleHTTPRequestHandler):
+        def log_message(self, *args): pass
+    server = ThreadingHTTPServer(('127.0.0.1', 0), partial(Handler, directory=str(base)))
+    thread = threading.Thread(target=server.serve_forever, daemon=True); thread.start()
+    downloaded = base / 'TEST-ONLY-downloaded-OTA.zip'
+    try:
+        print('SELF-TEST: bundled downloader over local HTTP', flush=True)
+        worker.source(f'http://127.0.0.1:{server.server_port}/{ota.name}', downloaded)
+        if downloaded.read_bytes() != ota.read_bytes():
+            raise BuildError('Self-test: downloaded OTA bytes differ.')
+    finally:
+        server.shutdown(); server.server_close(); thread.join()
+    ota = downloaded
     target_parts = dict(partitions, system=b'TARGET SYSTEM\0'.ljust(4096, b'T'),
                         product=b'TARGET PRODUCT\0'.ljust(4096, b'P'))
     target_ota = base / 'TEST-ONLY-target-OTA.zip'

@@ -1,0 +1,38 @@
+{
+  "zlib-ng.txt": {
+    "url": "https://raw.githubusercontent.com/zlib-ng/zlib-ng/2.3.3/LICENSE.md",
+    "sha256": "6c9f0d975b41afaa34d22f55bb8986ce69e5cb7ad327cb2b28820cd425edf5ee"
+  },
+  "libxml2.txt": {
+    "url": "https://raw.githubusercontent.com/GNOME/libxml2/v2.15.1/Copyright",
+    "sha256": "5d4873884a890122a4b9b20ad56ac6f7da1d796a5bfcf04a427970ac96217626"
+  },
+  "openssl-3.txt": {
+    "url": "https://raw.githubusercontent.com/openssl/openssl/openssl-3.6.2/LICENSE.txt",
+    "sha256": "7d5450cb2d142651b8afa315b5f238efc805dad827d91ba367d8516bc9d49e7a"
+  },
+  "c-ares.txt": {
+    "url": "https://raw.githubusercontent.com/c-ares/c-ares/v1.34.5/LICENSE.md",
+    "sha256": "460f5e768fda3752ca2169a95df062578a10fb126bfd65f3b9b1a1bed2f84807"
+  },
+  "libssh2.txt": {
+    "url": "https://raw.githubusercontent.com/libssh2/libssh2/libssh2-1.11.1/COPYING",
+    "sha256": "f7f9633cf9ff2f1333f3d7ce46973a8716a4d2a2815ad56f30d437d5fea7bafe"
+  },
+  "expat.txt": {
+    "url": "https://raw.githubusercontent.com/libexpat/libexpat/R_2_5_0/expat/COPYING",
+    "sha256": "122f2c27000472a201d337b9b31f7eb2b52d091b02857061a8880371612d9534"
+  },
+  "zlib.txt": {
+    "url": "https://raw.githubusercontent.com/madler/zlib/v1.3/LICENSE",
+    "sha256": "845efc77857d485d91fb3e0b884aaa929368c717ae8186b66fe1ed2495753243"
+  },
+  "musl.txt": {
+    "url": "https://git.musl-libc.org/cgit/musl/plain/COPYRIGHT?h=v1.2.5",
+    "sha256": "f9bc4423732350eb0b3f7ed7e91d530298476f8fec0c6c427a1c04ade22655af"
+  },
+  "GCC-RUNTIME-EXCEPTION.txt": {
+    "url": "https://raw.githubusercontent.com/gcc-mirror/gcc/releases/gcc-15.2.0/COPYING.RUNTIME",
+    "sha256": "9d6b43ce4d8de0c878bf16b54d8e7a10d9bd42b75178153e3af6a815bdc90f74"
+  }
+}

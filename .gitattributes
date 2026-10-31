@@ -1,0 +1,3 @@
+
+# Preserve upstream license and build-reference text exactly.
+tools/aria2/** -whitespace

@@ -6,6 +6,8 @@ import tempfile
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
+from urllib.error import HTTPError
+from contextlib import contextmanager
 from flasher_builder.updates import ASSETS, UpdateError, check_for_updates, select_update
 
 
@@ -15,6 +17,14 @@ def release(tag, **kwargs):
 
 
 class UpdateTests(unittest.TestCase):
+    def test_public_repository_checks_updates_without_login(self):
+        from unittest.mock import MagicMock
+        response = MagicMock()
+        response.__enter__.return_value.read.return_value = json.dumps([release('v1.1.0')]).encode()
+        with patch('flasher_builder.updates.urlopen', return_value=response), \
+             patch('flasher_builder.updates.subprocess.run', side_effect=AssertionError('Login should not be needed')):
+            self.assertEqual(check_for_updates('/no-gh', '1.0.4', 'linux')['version'], 'v1.1.0')
+
     def test_numeric_versions_and_platform_assets_ignore_other_releases(self):
         drafts = release('v4.0.0'); drafts['draft'] = True
         preview = release('v3.0.0'); preview['prerelease'] = True
@@ -36,7 +46,8 @@ class UpdateTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp); cli = root/'tools/github/gh'; cli.parent.mkdir(parents=True); cli.touch()
             response = SimpleNamespace(returncode=0, stdout=json.dumps([release('v1.1.0')]))
-            with patch('flasher_builder.updates.subprocess.run', return_value=response) as run:
+            with patch('flasher_builder.updates.urlopen', side_effect=HTTPError('https://api.github.com',404,'private',{},None)), \
+                 patch('flasher_builder.updates.subprocess.run', return_value=response) as run:
                 self.assertEqual(check_for_updates(root, '1.0.2', 'linux')['version'], 'v1.1.0')
             command = run.call_args.args[0]
             self.assertEqual(command[0], str(cli))
@@ -48,7 +59,8 @@ class UpdateTests(unittest.TestCase):
         cases = [SimpleNamespace(returncode=1, stdout='', stderr='secret diagnostic'),
                  SimpleNamespace(returncode=0, stdout='invalid JSON'),
                  subprocess.TimeoutExpired('gh', 20)]
-        with patch('flasher_builder.updates.shutil.which', return_value='gh'):
+        with patch('flasher_builder.updates.shutil.which', return_value='gh'), \
+             patch('flasher_builder.updates.urlopen', side_effect=HTTPError('https://api.github.com',404,'private',{},None)):
             for response in cases:
                 with self.subTest(response=response):
                     kwargs = {'side_effect': response} if isinstance(response, Exception) else {'return_value': response}

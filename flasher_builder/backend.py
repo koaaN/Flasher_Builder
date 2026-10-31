@@ -26,10 +26,12 @@ import zipfile
 
 if __package__:
     from . import ota_catalog
+    from scripts.http_download import DownloadError, download_url, executable
     from .host import tool, helper_command, configure_path
 else:
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
     import ota_catalog
+    from scripts.http_download import DownloadError, download_url, executable
     from host import tool, helper_command, configure_path
 
 ROOT = Path(sys.executable).resolve().parent if getattr(sys, 'frozen', False) else Path(__file__).resolve().parent.parent
@@ -202,12 +204,17 @@ class Worker:
             raise BuildError('Select a full OTA file or enter its HTTPS download URL.')
         if is_url(source):
             print(f'Downloading {dest.name} from {urlsplit(source).hostname}', flush=True)
-            self.run(['curl', '--location', '--fail', '--retry', '3', '--retry-delay', '3',
-                      '--connect-timeout', '30', '--speed-limit', '1024', '--speed-time', '120',
-                      '--proto', '=https,http', '--proto-redir', '=https,http',
-                      '-H', 'User-Agent: Dalvik/2.1.0 (Linux; U; Android 16; CPH2653 Build/AP3A.240617.008)',
-                      '-H', 'userId: oplus-ota|15002017', '-H', 'language: en-US', '-H', 'brand: oneplus-exp',
-                      '-o', str(dest) + '.part', source])
+            def valid_download(path):
+                try:
+                    validate_ota(path); return True
+                except BuildError:
+                    return False
+            try:
+                download_url(source, Path(str(dest) + '.part'), root=ROOT, check=self.check, verify=valid_download, headers=(
+                    'User-Agent: Dalvik/2.1.0 (Linux; U; Android 16; CPH2653 Build/AP3A.240617.008)',
+                    'userId: oplus-ota|15002017', 'language: en-US', 'brand: oneplus-exp'))
+            except DownloadError as e:
+                raise BuildError(str(e)) from e
             Path(str(dest) + '.part').replace(dest)
         else:
             path = Path(source).expanduser().resolve()
@@ -223,15 +230,14 @@ def check_environment(root=ROOT):
     if sys.platform not in ('linux', 'win32') or platform.machine().lower() not in ('x86_64', 'amd64'):
         raise BuildError('This package requires x86-64 Linux or Windows.')
     configure_path(root)
-    required = ('curl',)
-    missing = [tool for tool in required if not shutil.which(tool)]
-    if missing:
-        raise BuildError('Missing download tool: curl. Install curl and run Check setup again.')
+    if not executable('aria2c', root) and not executable('curl', root):
+        raise BuildError('Download tools missing. Keep bundled aria2c beside the app or install curl.')
     for rel in (tool(root, 'otaripper'), tool(root, 'lpmake'), Path(root) / 'build_tools_assets/avbtool.py'):
         if not Path(rel).is_file():
             raise BuildError(f'Missing project asset: {rel}. Keep the full project beside the launcher.')
     print(f'Backend: {platform.system()} {platform.machine()} • Python {platform.python_version()}', flush=True)
     print('Required tools and bundled binaries found.', flush=True)
+    print('Downloads: aria2c (8 connections), with curl fallback.', flush=True)
     print(f'Free space in project: {shutil.disk_usage(root).free / GIB:.1f} GiB', flush=True)
 
 

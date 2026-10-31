@@ -5,7 +5,7 @@ on:
       tag:
         description: Release version (v1.0.0)
         required: true
-        default: v1.0.4
+        default: v1.0.5
 permissions:
   contents: read
 concurrency:
@@ -18,7 +18,7 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
-      - name: Prepare private draft release
+      - name: Prepare draft release
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ inputs.tag }}

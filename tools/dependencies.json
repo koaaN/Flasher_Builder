@@ -54,5 +54,53 @@
     "url": "https://api.github.com/repos/cygwin/cygwin/tarball/cygwin-3.5.3",
     "sha256": "b56c3b7a3c44d4fa3d44c8bb6fb9541c9f403cb79620ffeb9044325f2407f17f",
     "archive_sha256": "b56c3b7a3c44d4fa3d44c8bb6fb9541c9f403cb79620ffeb9044325f2407f17f"
+  },
+  {
+    "platform": "linux",
+    "path": "tools/aria2/aria2c",
+    "url": "https://github.com/abcfy2/aria2-static-build/releases/download/1.37.0/aria2-x86_64-linux-musl_static.zip",
+    "member": "aria2c",
+    "archive_sha256": "e0a09b12ef67f35f8a8e4fdddbec851d235b7c31da549d0578bff459032b499a",
+    "sha256": "80e577dc58348b96da46dd12d326bc99794b5021be395a3e890f2d67c8790c22"
+  },
+  {
+    "platform": "windows",
+    "path": "tools/aria2/aria2c.exe",
+    "url": "https://github.com/aria2/aria2/releases/download/release-1.37.0/aria2-1.37.0-win-64bit-build1.zip",
+    "member": "aria2-1.37.0-win-64bit-build1/aria2c.exe",
+    "archive_sha256": "67d015301eef0b612191212d564c5bb0a14b5b9c4796b76454276a4d28d9b288",
+    "sha256": "be2099c214f63a3cb4954b09a0becd6e2e34660b886d4c898d260febfe9d70c2"
+  },
+  {
+    "platform": "all",
+    "path": "tools/aria2/sources/aria2-1.37.0.tar.xz",
+    "url": "https://github.com/aria2/aria2/releases/download/release-1.37.0/aria2-1.37.0.tar.xz",
+    "member": null,
+    "archive_sha256": "60a420ad7085eb616cb6e2bdf0a7206d68ff3d37fb5a956dc44242eb2f79b66b",
+    "sha256": "60a420ad7085eb616cb6e2bdf0a7206d68ff3d37fb5a956dc44242eb2f79b66b"
+  },
+  {
+    "platform": "all",
+    "path": "tools/aria2/sources/gmp-6.3.0.tar.xz",
+    "url": "https://ftp.gnu.org/gnu/gmp/gmp-6.3.0.tar.xz",
+    "member": null,
+    "archive_sha256": "a3c2b80201b89e68616f4ad30bc66aee4927c3ce50e33929ca819d5c43538898",
+    "sha256": "a3c2b80201b89e68616f4ad30bc66aee4927c3ce50e33929ca819d5c43538898"
+  },
+  {
+    "platform": "all",
+    "path": "tools/aria2/sources/libiconv-1.19.tar.gz",
+    "url": "https://ftp.gnu.org/gnu/libiconv/libiconv-1.19.tar.gz",
+    "member": null,
+    "archive_sha256": "88dd96a8c0464eca144fc791ae60cd31cd8ee78321e67397e25fc095c4a19aa6",
+    "sha256": "88dd96a8c0464eca144fc791ae60cd31cd8ee78321e67397e25fc095c4a19aa6"
+  },
+  {
+    "platform": "all",
+    "path": "tools/aria2/sources/xz-5.8.3.tar.xz",
+    "url": "https://github.com/tukaani-project/xz/releases/download/v5.8.3/xz-5.8.3.tar.xz",
+    "member": null,
+    "archive_sha256": "fff1ffcf2b0da84d308a14de513a1aa23d4e9aa3464d17e64b9714bfdd0bbfb6",
+    "sha256": "fff1ffcf2b0da84d308a14de513a1aa23d4e9aa3464d17e64b9714bfdd0bbfb6"
   }
 ]

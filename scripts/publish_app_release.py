@@ -87,6 +87,8 @@ def main():
             raise ValueError('Native package verification failed: ' + platform)
         if report.get('app_version') != args.tag.removeprefix('v'):
             raise ValueError('Packaged app version does not match release tag: ' + platform)
+        if not all(report.get(k) is True for k in ('bundled_aria2','download_pipeline_passed','anonymous_bloat_download')):
+            raise ValueError('Packaged download verification failed: ' + platform)
         digest = hashlib.sha256((directory / artifact).read_bytes()).hexdigest()
         if report.get('sha256') != digest or report.get('artifact') != artifact:
             raise ValueError('Validation receipt does not match package: ' + platform)
@@ -98,9 +100,9 @@ def main():
     files.append(checksums)
     notes = '''Native desktop release for x86-64 Linux and Windows.
 
-- Realme NEO8: CN / ColorOS Super Flasher, 18,790,481,920-byte physical super, exact OTA catalog mapping and three verified bloat images in the private bloat release. Windows and Linux flasher scripts are included.
 - Windows runs natively, with no WSL, Bash, or separate Python installation.
-- Both packages include the GUI, console worker, otaripper-lite 3.5.0, lpmake, and GitHub CLI.
+- Both packages include the GUI, console worker, otaripper-lite 3.5.0, lpmake, aria2c 1.37.0, and GitHub CLI.
+- Public releases, bloat downloads and update checks need no login. Bloat and OTA downloads use aria2c -x8 -s8 with curl fallback, one file at a time; checksums and cancellation cleanup remain enforced.
 - Setup fits without scrolling. Build output opens only when work starts, and successful downloads return to setup automatically.
 - Automatic startup update checks notify you when a newer app release is available. Environment includes a manual check and a link to the update download page.
 - Bloat controls now include a labelled Recheck button that spins during verification, plus Delete bloat with an exact-file confirmation and shared-cache preservation.
@@ -110,9 +112,9 @@ def main():
 
 Extract the entire platform archive and run FlasherBuilder (Linux) or FlasherBuilder.exe (Windows). Keep the bundled folders and worker beside it. Windows 10/11 x64; Linux x86-64 with curl and Qt runtime libraries (see README).
 
-For private bloat downloads, sign in with the bundled tools/github/gh auth login (gh.exe on Windows), or use an existing GitHub CLI login. No token is shipped in these packages. Existing verified local bloat works offline.
+Public downloads require no login. Private forks can use an existing GitHub CLI login. No account token is shipped in these packages. Existing verified local bloat works offline.
 
-The source ZIP supports both systems. Third-party licenses, pinned tool checksums, and build instructions are included. Test fixtures are synthetic and must never be flashed.
+The source ZIP supports both systems. aria2 and GPL/LGPL dependency sources are included under tools/aria2/sources/. Third-party licenses, pinned tool checksums, and build instructions are included. Test fixtures are synthetic and must never be flashed.
 '''
     release = find_release(args.tag)
     if release is None or not release.get('draft'): raise ValueError('Expected an unpublished draft release.')

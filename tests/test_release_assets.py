@@ -33,7 +33,7 @@ class ReleaseAssetTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp); cache = root / 'cache'; cache.mkdir()
             (cache / (obj['sha256'] + '.img.gz')).write_bytes(transport)
-            with patch.object(assets.subprocess, 'Popen', side_effect=AssertionError('Unexpected download')):
+            with patch.object(assets, 'download_url', side_effect=AssertionError('Unexpected download')):
                 paths = assets.materialize(root, cache, manifest, '13', 'SuperHybrid Flasher', 'CN')
             self.assertEqual((root / paths[0]).read_bytes(), raw)
             self.assertEqual(len(paths), 1)
@@ -45,11 +45,10 @@ class ReleaseAssetTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp); cache = root / 'cache'; cache.mkdir()
             (cache / (obj['sha256'] + '.img')).write_bytes(b'bad cache')
-            def download(command, stdout, **kwargs):
-                self.assertIn('repos/owner/private-repo/releases/assets/123', command)
-                stdout.write(transport)
-                return SimpleNamespace(returncode=0, stderr=io.BytesIO(), communicate=lambda timeout: (None, b''), poll=lambda: 0)
-            with patch.object(assets.shutil, 'which', return_value='/usr/bin/gh'), patch.object(assets.subprocess, 'Popen', side_effect=download) as run:
+            def download(url, destination, **kwargs):
+                self.assertIn('github.com/owner/private-repo/releases/download/bloat-assets-v1/test.img', url)
+                destination.write_bytes(transport)
+            with patch.object(assets.shutil, 'which', return_value='/usr/bin/gh'), patch.object(assets, 'download_url', side_effect=download) as run:
                 paths = assets.materialize(root, cache, manifest, '13', 'SuperHybrid Flasher', 'CN')
             self.assertEqual(run.call_count, 1)
             self.assertEqual(len(paths), 2)
@@ -61,10 +60,9 @@ class ReleaseAssetTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp); target = root / next(iter(manifest['files'])); target.parent.mkdir(parents=True)
             target.write_bytes(b'existing custom image')
-            def download(command, stdout, **kwargs):
-                stdout.write(b'not the requested image')
-                return SimpleNamespace(returncode=0, stderr=io.BytesIO(), communicate=lambda timeout: (None, b''), poll=lambda: 0)
-            with patch.object(assets.shutil, 'which', return_value='/usr/bin/gh'), patch.object(assets.subprocess, 'Popen', side_effect=download):
+            def download(url, destination, **kwargs):
+                destination.write_bytes(b'not the requested image')
+            with patch.object(assets.shutil, 'which', return_value='/usr/bin/gh'), patch.object(assets, 'download_url', side_effect=download):
                 with self.assertRaisesRegex(assets.AssetError, 'SHA-256 mismatch'):
                     assets.materialize(root, root / 'cache', manifest, '13', 'SuperHybrid Flasher', 'CN')
             self.assertEqual(target.read_bytes(), b'existing custom image')
@@ -94,7 +92,7 @@ class ReleaseAssetTests(unittest.TestCase):
             assets.materialize(root, cache, manifest, '13', 'SuperHybrid Flasher', 'CN', destination=folder)
             chosen = folder / '13/CN_BLOAT/my_preload.img'
             self.assertEqual(chosen.read_bytes(), raw)
-            with patch.object(assets.subprocess, 'Popen', side_effect=AssertionError('Unexpected download')):
+            with patch.object(assets, 'download_url', side_effect=AssertionError('Unexpected download')):
                 assets.materialize(root / 'job', root / 'empty-cache', manifest, '13', 'SuperHybrid Flasher', 'CN', source=folder)
             self.assertEqual((root / 'job/bloat/13/CN_BLOAT/my_preload.img').read_bytes(), raw)
 
@@ -103,7 +101,7 @@ class ReleaseAssetTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp); cache = root / 'cache'; cache.mkdir()
             (cache / (obj['sha256'] + '.img')).write_bytes(transport)
-            with patch.object(assets.subprocess, 'Popen', side_effect=AssertionError('Unexpected download')):
+            with patch.object(assets, 'download_url', side_effect=AssertionError('Unexpected download')):
                 with self.assertRaisesRegex(assets.AssetError, 'Complete step 2'):
                     assets.materialize(root / 'job', cache, manifest, '13', 'SuperHybrid Flasher', 'CN', source=root / 'missing', local_only=True)
             self.assertFalse((root / 'job/bloat/13/CN_BLOAT/my_preload.img').exists())
