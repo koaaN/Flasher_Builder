@@ -62,13 +62,13 @@ uses the site's [public catalog API](https://roms.danielspringer.at/api/ota.php?
 with a shared 15-minute cache and ETag revalidation. An offline cached list is clearly marked.
 Selections with no matching catalog releases can still use a local ZIP or a manual URL.
 The picker does not guess substitute devices for conversion builds; the explicit
-Ace 6 OxygenOS builder uses **OP 15R / IN** as target and **OP ACE 6 / CN** as base.
+Builds that require a separate base OTA show both target and base selectors automatically.
 
 Select a version and click **Build package** to download it and build in one operation.
 Alternatively, **Download OTA** saves and verifies the full ZIP without building;
 the current session then shows **Already downloaded** and reuses that local ZIP for
 builds. On later launches, choose that saved ZIP in **Local file**. Downloads happen
-one at a time, including the target and base for Ace 6. Step 2 must be complete first.
+one at a time, including separate target and base packages when required. Step 2 must be complete first.
 
 **Copy download link** resolves a fresh link onto the clipboard. Some links expire;
 the worker resolves them again immediately before transfer rather than reusing an
@@ -113,7 +113,7 @@ artifacts.
 
 ## Testing
 
-**Check setup** verifies required commands and assets. **Run self-test** generates a tiny Android OTA with valid payload operations and runs the **real bundled** otaripper, lpmake and avbtool through all three builder scripts. It tests SuperHybrid, Super, RegionalHybrid CN and GLO, and the Ace 6 base/target conversion, then checks extracted bytes, sparse-image headers, archive CRCs and SHA-256. Test artifacts begin with `TEST-DO-NOT-FLASH`; they contain synthetic bytes and must never be flashed.
+**Check setup** verifies required commands and assets. **Run self-test** generates a tiny Android OTA with valid payload operations and runs the **real bundled** otaripper, lpmake and avbtool through all three builder scripts. It tests SuperHybrid, Super, RegionalHybrid CN and GLO, and supported base/target conversions, then checks extracted bytes, sparse-image headers, archive CRCs and SHA-256. Test artifacts begin with `TEST-DO-NOT-FLASH`; they contain synthetic bytes and must never be flashed.
 
 Command-line checks:
 
@@ -127,10 +127,10 @@ python3 flasher_builder/backend.py --self-test --output /tmp/flasher-builder-tes
 A normal command-line build is also supported:
 
 ```sh
-python3 flasher_builder/backend.py --download-bloat --device 'Oneplus 13' \
-  --kind 'SuperHybrid Flasher' --region GLO --bloat-dir /path/to/bloat
-python3 flasher_builder/backend.py --device 'Oneplus 13' \
-  --kind 'SuperHybrid Flasher' --region GLO --bloat-dir /path/to/bloat \
+python3 flasher_builder/backend.py --download-bloat --device 'DEVICE_NAME' \
+  --kind 'FLASHER_TYPE' --region REGION --bloat-dir /path/to/bloat
+python3 flasher_builder/backend.py --device 'DEVICE_NAME' \
+  --kind 'FLASHER_TYPE' --region REGION --bloat-dir /path/to/bloat \
   --ota /path/to/FULL-OTA.zip --output /path/to/builds
 ```
 
