@@ -1193,9 +1193,9 @@ class App(QMainWindow):
             if role == 'ota' and ota_catalog.needs_matched_odm(*self.ota_context):
                 try:
                     donor = ota_catalog.matching_odm(self.ota_data or {'releases': []}, entry)
-                    self.ota_details[role].setText(self.ota_details[role].text() + '\nODM only: ' + donor['version'] + ' · same security patch')
+                    self.ota_details[role].setText(self.ota_details[role].text() + ' · ODM only: ' + donor['version'])
                 except ota_catalog.CatalogError as e:
-                    self.ota_details[role].setText(self.ota_details[role].text() + '\nODM unavailable: no exact security patch match.')
+                    self.ota_details[role].setText(self.ota_details[role].text() + ' · ODM unavailable: no exact patch match.')
                     self.ota_details[role].setToolTip(str(e))
         self.update_build_gate()
 
