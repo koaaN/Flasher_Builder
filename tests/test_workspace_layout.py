@@ -46,6 +46,15 @@ class WorkspaceLayoutTests(unittest.TestCase):
         self.app.processEvents()
         setup = self.window.pages.widget(0)
         minimum = setup.minimumSizeHint()
+        if minimum.width() > setup.width():
+            for card in (self.window.configure_card, self.window.bloat_card, self.window.ota_card):
+                print('LAYOUT CARD', card.minimumSizeHint().toTuple(), flush=True)
+                for control in card.findChildren(QWidget):
+                    if control.isVisibleTo(card):
+                        print(type(control).__name__, getattr(control, 'text', lambda: '')()[:50],
+                              'min', control.minimumSize().toTuple(),
+                              'hints', control.minimumSizeHint().toTuple(), control.sizeHint().toTuple(),
+                              'font', control.font().toString(), flush=True)
         self.assertLessEqual(minimum.width(), setup.width(),
             f'configuration={self.window.configure_card.minimumSizeHint().toTuple()}, '
             f'bloat={self.window.bloat_card.minimumSizeHint().toTuple()}, '
