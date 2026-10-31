@@ -1006,7 +1006,7 @@ class App(QMainWindow):
             self.catalog.selection(values['device'], values['kind'], self.region)
             text = 'Target: OnePlus 15R India OxygenOS OTA · Base: Ace 6 ColorOS OTA' if needs_base else 'Only combinations supported by the build workflow are available.'
             if self.catalog.devices[values['device']] == 'X9U':
-                text = 'ColorOS · EU bloat is shared by every region, including CN.'
+                text = 'ColorOS · EU bloat is used for CN.' if self.region == 'CN' else f'ColorOS · {self.region} bloat files.'
             if ota_catalog.needs_matched_odm(values['device'], values['kind'], self.region):
                 text = 'Target: OnePlus 15R · ODM: Ace 6T CN · Exact patch match required.'
                 self.source_hint.setText('Only odm.img is streamed; the donor must have the same security patch.')

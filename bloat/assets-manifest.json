@@ -518,6 +518,96 @@
           "sha256": "107dd041c93d44469dc20dbe555dbbbb1ec17bd15dbe78f9ba6137d615625e63"
         }
       ]
+    },
+    "862c06a0d43f5c2fb2fc0bad2f6828e242f9ffb645443f02dc697318d5ba0d49": {
+      "asset_id": 696385556,
+      "asset_name": "bloat-X9U-APC_BLOAT-my_preload-862c06a0d43f.img",
+      "bytes": 183132160,
+      "sha256": "862c06a0d43f5c2fb2fc0bad2f6828e242f9ffb645443f02dc697318d5ba0d49",
+      "raw_bytes": 183132160,
+      "raw_sha256": "862c06a0d43f5c2fb2fc0bad2f6828e242f9ffb645443f02dc697318d5ba0d49",
+      "encoding": "identity"
+    },
+    "df8554d258e3fffd3ebcc448a33f33dd08941ef0597c163f65de4d008c95de4d": {
+      "asset_id": 696385847,
+      "asset_name": "bloat-X9U-ID_BLOAT-my_preload-df8554d258e3.img",
+      "bytes": 985059328,
+      "sha256": "df8554d258e3fffd3ebcc448a33f33dd08941ef0597c163f65de4d008c95de4d",
+      "raw_bytes": 985059328,
+      "raw_sha256": "df8554d258e3fffd3ebcc448a33f33dd08941ef0597c163f65de4d008c95de4d",
+      "encoding": "identity"
+    },
+    "9563374a18664c84121459812caac97f787b15cbd8f8a363e64d8528dc6c1989": {
+      "asset_id": 696387400,
+      "asset_name": "bloat-X9U-IN_BLOAT-my_preload-9563374a1866.img",
+      "bytes": 324435968,
+      "sha256": "9563374a18664c84121459812caac97f787b15cbd8f8a363e64d8528dc6c1989",
+      "raw_bytes": 324435968,
+      "raw_sha256": "9563374a18664c84121459812caac97f787b15cbd8f8a363e64d8528dc6c1989",
+      "encoding": "identity"
+    },
+    "4c0353b6d800dc67c34440022afc5f3eae8f598616c6fe5fb604ba296bde7abe": {
+      "asset_id": 696387988,
+      "asset_name": "bloat-X9U-JP_BLOAT-my_preload-4c0353b6d800.img",
+      "bytes": 588394496,
+      "sha256": "4c0353b6d800dc67c34440022afc5f3eae8f598616c6fe5fb604ba296bde7abe",
+      "raw_bytes": 588394496,
+      "raw_sha256": "4c0353b6d800dc67c34440022afc5f3eae8f598616c6fe5fb604ba296bde7abe",
+      "encoding": "identity"
+    },
+    "999734b7a596d7b41f553d0830d8322b30359843c665761b8d87f5c927226c05": {
+      "asset_id": 696388854,
+      "asset_name": "bloat-X9U-MX_BLOAT-my_preload-999734b7a596.img",
+      "bytes": 695984128,
+      "sha256": "999734b7a596d7b41f553d0830d8322b30359843c665761b8d87f5c927226c05",
+      "raw_bytes": 695984128,
+      "raw_sha256": "999734b7a596d7b41f553d0830d8322b30359843c665761b8d87f5c927226c05",
+      "encoding": "identity"
+    },
+    "0bd4272e0a2da34390b1895f7ca7f1c270a901e22ffae2a6b08e2ae10e129651": {
+      "asset_id": 696389939,
+      "asset_name": "bloat-X9U-MY_BLOAT-my_preload-0bd4272e0a2d.img",
+      "bytes": 721268736,
+      "sha256": "0bd4272e0a2da34390b1895f7ca7f1c270a901e22ffae2a6b08e2ae10e129651",
+      "raw_bytes": 721268736,
+      "raw_sha256": "0bd4272e0a2da34390b1895f7ca7f1c270a901e22ffae2a6b08e2ae10e129651",
+      "encoding": "identity"
+    },
+    "c7010c11e616d9e2f16780e1b5614c46e13d4295aa872a54760ba7d6c7d310b1": {
+      "asset_id": 696390864,
+      "asset_name": "bloat-X9U-SG_BLOAT-my_preload-c7010c11e616.img",
+      "bytes": 717197312,
+      "sha256": "c7010c11e616d9e2f16780e1b5614c46e13d4295aa872a54760ba7d6c7d310b1",
+      "raw_bytes": 717197312,
+      "raw_sha256": "c7010c11e616d9e2f16780e1b5614c46e13d4295aa872a54760ba7d6c7d310b1",
+      "encoding": "identity"
+    },
+    "19dcbf4ddc2034fa58e429872b331ac35c14d4c2f95ef89bb3a101969e959522": {
+      "asset_id": 696391718,
+      "asset_name": "bloat-X9U-TH_BLOAT-my_preload-19dcbf4ddc20.img",
+      "bytes": 530198528,
+      "sha256": "19dcbf4ddc2034fa58e429872b331ac35c14d4c2f95ef89bb3a101969e959522",
+      "raw_bytes": 530198528,
+      "raw_sha256": "19dcbf4ddc2034fa58e429872b331ac35c14d4c2f95ef89bb3a101969e959522",
+      "encoding": "identity"
+    },
+    "6ec67ccf8a01226cf32c255c81bf0ea54638ec1dcfb67ebdfe77da3f68dc579f": {
+      "asset_id": 696392476,
+      "asset_name": "bloat-X9U-TW_BLOAT-my_preload-6ec67ccf8a01.img",
+      "bytes": 430391296,
+      "sha256": "6ec67ccf8a01226cf32c255c81bf0ea54638ec1dcfb67ebdfe77da3f68dc579f",
+      "raw_bytes": 430391296,
+      "raw_sha256": "6ec67ccf8a01226cf32c255c81bf0ea54638ec1dcfb67ebdfe77da3f68dc579f",
+      "encoding": "identity"
+    },
+    "7a4e17df48fa71062c5ef01db124be234a5b6aa26f092b3e8b042b906d4d7d6b": {
+      "asset_id": 696393321,
+      "asset_name": "bloat-X9U-VN_BLOAT-my_preload-7a4e17df48fa.img",
+      "bytes": 723320832,
+      "sha256": "7a4e17df48fa71062c5ef01db124be234a5b6aa26f092b3e8b042b906d4d7d6b",
+      "raw_bytes": 723320832,
+      "raw_sha256": "7a4e17df48fa71062c5ef01db124be234a5b6aa26f092b3e8b042b906d4d7d6b",
+      "encoding": "identity"
     }
   },
   "files": {
@@ -671,6 +761,26 @@
     "bloat/X9U/CN_BLOAT/my_company.img": "3c673be2229ba248bd7d551785f30d957936fb85aa497b6f99191457034d78d1",
     "bloat/X9U/EU_BLOAT/my_company.img": "3c673be2229ba248bd7d551785f30d957936fb85aa497b6f99191457034d78d1",
     "bloat/X9U/CN_BLOAT/my_preload.img": "a4d3d6502b2ef8a1249296b403eccd91d6b118463c2e5334962e97b90c94cd4b",
-    "bloat/X9U/EU_BLOAT/my_preload.img": "b7edd6108aeef9d378bed2d5e06ec281c23a8bf4e1da250cab55e9e2227a2628"
+    "bloat/X9U/EU_BLOAT/my_preload.img": "b7edd6108aeef9d378bed2d5e06ec281c23a8bf4e1da250cab55e9e2227a2628",
+    "bloat/X9U/APC_BLOAT/my_preload.img": "862c06a0d43f5c2fb2fc0bad2f6828e242f9ffb645443f02dc697318d5ba0d49",
+    "bloat/X9U/APC_BLOAT/my_company.img": "3c673be2229ba248bd7d551785f30d957936fb85aa497b6f99191457034d78d1",
+    "bloat/X9U/ID_BLOAT/my_preload.img": "df8554d258e3fffd3ebcc448a33f33dd08941ef0597c163f65de4d008c95de4d",
+    "bloat/X9U/ID_BLOAT/my_company.img": "3c673be2229ba248bd7d551785f30d957936fb85aa497b6f99191457034d78d1",
+    "bloat/X9U/IN_BLOAT/my_preload.img": "9563374a18664c84121459812caac97f787b15cbd8f8a363e64d8528dc6c1989",
+    "bloat/X9U/IN_BLOAT/my_company.img": "3c673be2229ba248bd7d551785f30d957936fb85aa497b6f99191457034d78d1",
+    "bloat/X9U/JP_BLOAT/my_preload.img": "4c0353b6d800dc67c34440022afc5f3eae8f598616c6fe5fb604ba296bde7abe",
+    "bloat/X9U/JP_BLOAT/my_company.img": "3c673be2229ba248bd7d551785f30d957936fb85aa497b6f99191457034d78d1",
+    "bloat/X9U/MX_BLOAT/my_preload.img": "999734b7a596d7b41f553d0830d8322b30359843c665761b8d87f5c927226c05",
+    "bloat/X9U/MX_BLOAT/my_company.img": "3c673be2229ba248bd7d551785f30d957936fb85aa497b6f99191457034d78d1",
+    "bloat/X9U/MY_BLOAT/my_preload.img": "0bd4272e0a2da34390b1895f7ca7f1c270a901e22ffae2a6b08e2ae10e129651",
+    "bloat/X9U/MY_BLOAT/my_company.img": "3c673be2229ba248bd7d551785f30d957936fb85aa497b6f99191457034d78d1",
+    "bloat/X9U/SG_BLOAT/my_preload.img": "c7010c11e616d9e2f16780e1b5614c46e13d4295aa872a54760ba7d6c7d310b1",
+    "bloat/X9U/SG_BLOAT/my_company.img": "3c673be2229ba248bd7d551785f30d957936fb85aa497b6f99191457034d78d1",
+    "bloat/X9U/TH_BLOAT/my_preload.img": "19dcbf4ddc2034fa58e429872b331ac35c14d4c2f95ef89bb3a101969e959522",
+    "bloat/X9U/TH_BLOAT/my_company.img": "3c673be2229ba248bd7d551785f30d957936fb85aa497b6f99191457034d78d1",
+    "bloat/X9U/TW_BLOAT/my_preload.img": "6ec67ccf8a01226cf32c255c81bf0ea54638ec1dcfb67ebdfe77da3f68dc579f",
+    "bloat/X9U/TW_BLOAT/my_company.img": "3c673be2229ba248bd7d551785f30d957936fb85aa497b6f99191457034d78d1",
+    "bloat/X9U/VN_BLOAT/my_preload.img": "7a4e17df48fa71062c5ef01db124be234a5b6aa26f092b3e8b042b906d4d7d6b",
+    "bloat/X9U/VN_BLOAT/my_company.img": "3c673be2229ba248bd7d551785f30d957936fb85aa497b6f99191457034d78d1"
   }
 }

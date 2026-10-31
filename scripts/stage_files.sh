@@ -60,7 +60,10 @@ normalize_updater_script_lf () {
 get_bloat_folder () {
   local dev="$1" region="$2"
 
-  if [[ "$dev" == "X9U" ]]; then echo "EU_BLOAT"; return; fi
+  if [[ "$dev" == "X9U" ]]; then
+    if [[ "$region" == "CN" ]]; then echo "EU_BLOAT"; else echo "${region}_BLOAT"; fi
+    return
+  fi
 
   case "$region" in
     CN|EU|GLO|IN|NA)

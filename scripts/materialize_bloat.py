@@ -93,7 +93,7 @@ def load_manifest(path):
 
 
 def bloat_folder(device, kind, region):
-    if device == 'X9U': return 'EU_BLOAT'
+    if device == 'X9U' and region == 'CN': return 'EU_BLOAT'
     if device == 'Ace6' and kind == 'SuperHybrid Flasher' and region == 'IN': return 'OOS_BLOAT'
     return region + '_BLOAT'
 

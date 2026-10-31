@@ -150,7 +150,8 @@ class OtaGuiTests(unittest.TestCase):
             self.assertEqual(self.window.values()['region'],region)
             self.assertEqual(self.window.values()['ota_catalog_id'],'x9u-'+region)
             self.assertEqual(self.window.os_badge.text(),'COLOR OS')
-            self.assertIn('EU bloat',self.window.selection_info.text())
+            expected = 'EU bloat is used for CN' if region == 'CN' else f'{region} bloat files'
+            self.assertIn(expected,self.window.selection_info.text())
         self.window.fields['kind'].setCurrentText('Regional Flasher')
         self.assertEqual(self.window.values()['region'],'VN')
         self.assertEqual(self.window.region_combo.currentData(),'VN')

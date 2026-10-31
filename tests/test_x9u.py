@@ -32,11 +32,28 @@ class FindX9UltraTests(unittest.TestCase):
         for region in (r for r in REGIONS if r!='CN'):
             self.assertEqual(catalog.super_size('X9U',region),20451426304)
 
-    def test_bloat_manifest_includes_verified_cn_multipart_and_exact_eu_assets(self):
+    def test_bloat_manifest_selects_matching_regions_and_keeps_cn_eu_fallback(self):
         manifest=load_manifest(ROOT/'bloat/assets-manifest.json')
-        for region in REGIONS:
-            selected=selected_paths(manifest,'X9U','Super Flasher',region)
-            self.assertEqual(set(selected),{f'bloat/X9U/EU_BLOAT/{name}.img' for name in ('my_company','my_preload')})
+        expected_preloads = {
+            'APC': '862c06a0d43f5c2fb2fc0bad2f6828e242f9ffb645443f02dc697318d5ba0d49',
+            'ID': 'df8554d258e3fffd3ebcc448a33f33dd08941ef0597c163f65de4d008c95de4d',
+            'IN': '9563374a18664c84121459812caac97f787b15cbd8f8a363e64d8528dc6c1989',
+            'JP': '4c0353b6d800dc67c34440022afc5f3eae8f598616c6fe5fb604ba296bde7abe',
+            'MX': '999734b7a596d7b41f553d0830d8322b30359843c665761b8d87f5c927226c05',
+            'MY': '0bd4272e0a2da34390b1895f7ca7f1c270a901e22ffae2a6b08e2ae10e129651',
+            'SG': 'c7010c11e616d9e2f16780e1b5614c46e13d4295aa872a54760ba7d6c7d310b1',
+            'TH': '19dcbf4ddc2034fa58e429872b331ac35c14d4c2f95ef89bb3a101969e959522',
+            'TW': '6ec67ccf8a01226cf32c255c81bf0ea54638ec1dcfb67ebdfe77da3f68dc579f',
+            'VN': '7a4e17df48fa71062c5ef01db124be234a5b6aa26f092b3e8b042b906d4d7d6b',
+        }
+        for kind in ('Super Flasher', 'Regional Flasher'):
+            for region in REGIONS:
+                folder = 'EU' if region == 'CN' else region
+                prefix = f'bloat/X9U/{folder}_BLOAT/'
+                selected=selected_paths(manifest,'X9U',kind,region)
+                self.assertEqual(set(selected),{prefix+name+'.img' for name in ('my_company','my_preload')})
+                if region in expected_preloads:
+                    self.assertEqual(manifest['files'][prefix+'my_preload.img'],expected_preloads[region])
         asset=manifest['assets'][manifest['files']['bloat/X9U/CN_BLOAT/my_preload.img']]
         self.assertEqual(asset['raw_bytes'],2399965184)
         self.assertEqual(len(asset['parts']),3)
