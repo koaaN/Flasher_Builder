@@ -75,7 +75,7 @@ def load_manifest(path):
     return data
 
 
-def selected_paths(manifest, device, kind, region):
+def selected_paths(manifest, device, kind, region, static_odm=False):
     if not re.fullmatch(r'[A-Za-z0-9]+', device):
         raise AssetError('Invalid device ID')
     main = 'OOS_BLOAT' if device == 'Ace6' and kind == 'SuperHybrid Flasher' and region == 'IN' else region + '_BLOAT'
@@ -89,7 +89,8 @@ def selected_paths(manifest, device, kind, region):
         extra |= {prefix + 'FIXES/' + name + '.img' for name in ('my_region', 'oplusstanvbk', 'odm')}
     if device == 'GT7Pro' and kind == 'Super Flasher' and region == 'EU':
         extra |= {prefix + 'FIXES/' + name + '.img' for name in ('my_region', 'oplusstanvbk')}
-    return [path for path in sorted(manifest['files']) if path.startswith(prefix + main + '/') or path in extra]
+    return [path for path in sorted(manifest['files']) if (path.startswith(prefix + main + '/') or path in extra)
+            and (static_odm or not (device == 'Ace6T' and kind == 'Super Flasher' and region in ('IN', 'GLO') and path.endswith('/odm.img')))]
 
 
 def download_asset(repository, asset, cache, tag='bloat-assets-v1'):
@@ -117,8 +118,8 @@ def download_asset(repository, asset, cache, tag='bloat-assets-v1'):
         partial.unlink(missing_ok=True)
 
 
-def materialize(root, cache, manifest, device, kind, region, destination=None, source=None, local_only=False):
-    paths = selected_paths(manifest, device, kind, region)
+def materialize(root, cache, manifest, device, kind, region, destination=None, source=None, local_only=False, static_odm=False):
+    paths = selected_paths(manifest, device, kind, region, static_odm)
     print(f'Bloat release: {manifest["repository"]} / {manifest["tag"]} • {len(paths)} selected image path(s)', flush=True)
     objects = {}
     for relative in paths:
@@ -222,6 +223,7 @@ def main():
     parser.add_argument('--source', type=Path)
     parser.add_argument('--check-only', action='store_true')
     parser.add_argument('--local-only', action='store_true')
+    parser.add_argument('--static-odm', action='store_true', help='Retain the legacy GitHub Actions ODM asset.')
     parser.add_argument('--cancel', type=Path)
     parser.add_argument('--device', required=True)
     parser.add_argument('--kind', required=True, choices=['Super Flasher', 'SuperHybrid Flasher', 'Regional Flasher', 'RegionalHybrid Flasher'])
@@ -241,7 +243,7 @@ def main():
             return 0
         materialize(root, args.cache.resolve(), manifest, args.device, args.kind, args.region,
                     args.destination.resolve() if args.destination else None,
-                    args.source.resolve() if args.source else None, local_only=args.local_only)
+                    args.source.resolve() if args.source else None, local_only=args.local_only, static_odm=args.static_odm)
         return 0
     except (AssetError, OSError, ValueError, KeyError, gzip.BadGzipFile) as e:
         print('ERROR: ' + str(e), file=sys.stderr, flush=True)

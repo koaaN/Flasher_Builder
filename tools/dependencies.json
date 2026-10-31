@@ -3,17 +3,17 @@
     "platform": "linux",
     "path": "otaripper/otaripper",
     "url": "https://github.com/syedinsaf/otaripper/releases/download/v3.5.0/otaripper-3.5.0-linux-static-x86_64.tar.gz",
-    "member": "./otaripper-lite",
+    "member": "./otaripper",
     "archive_sha256": "562602e84720bf1358cb04bdce65899385eca0ba302813181c47c8e8925387b8",
-    "sha256": "18ebe677477e79292b4d7d16859dff865cb0062ed68c14570dcfa21b1b9e4031"
+    "sha256": "022823095f6d848b486e3b53722d44de01b7c45e82d1791e3ec6ff79612e8985"
   },
   {
     "platform": "windows",
     "path": "otaripper/otaripper.exe",
     "url": "https://github.com/syedinsaf/otaripper/releases/download/v3.5.0/otaripper-3.5.0-windows-msvc-x86_64.zip",
-    "member": "otaripper-lite.exe",
+    "member": "otaripper.exe",
     "archive_sha256": "fb29f33f80f5c89dcccf0104cf20a5bff3ac4041d5103813e770da6653645208",
-    "sha256": "aab61f370d9dab9a74fafa1811ff9b28db049463e11cc7cc986aebb420d70d4f"
+    "sha256": "63369143d6c14f20e3f15746646e8269673c3eecee4a4128185f8ee2659f0256"
   },
   {
     "platform": "windows",

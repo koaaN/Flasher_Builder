@@ -434,6 +434,7 @@ class App(QMainWindow):
         self.resize(1280, 820)
         self.setMinimumSize(1120, 720)
         self.catalog = Catalog()
+        self.selection_valid = False
         self.events = queue.Queue()
         self.busy = False
         self.closing = False
@@ -890,6 +891,13 @@ class App(QMainWindow):
         try:
             self.catalog.selection(values['device'], values['kind'], self.region)
             text = 'Target: OnePlus 15R India OxygenOS OTA · Base: Ace 6 ColorOS OTA' if needs_base else 'Only combinations supported by the build workflow are available.'
+            if ota_catalog.needs_matched_odm(values['device'], values['kind'], self.region):
+                text = 'Target: OnePlus 15R OTA · ODM: Ace 6T CN OTA with the exact same security patch.'
+                self.source_hint.setText('Only odm.img is streamed from the matching Ace 6T OTA. No matching patch means the build is unavailable.')
+            else:
+                self.source_hint.setText('Choose a version to download or build. Temporary links are refreshed automatically.' if self.ota_mode == 'catalog' else
+                                         'Paste the direct HTTP(S) link to a full OTA ZIP.' if self.ota_mode == 'url' else
+                                         'Use a full OTA package. Incremental updates are not supported.')
             self.selection_valid = True
         except BuildError as e:
             text = str(e); self.selection_valid = False
@@ -925,10 +933,24 @@ class App(QMainWindow):
         ready = self.local_bloat_ready()
         enabled = ready and not self.busy and not self.bloat_deleting
         self.ota_card.setEnabled(enabled)
-        self.start_button.setEnabled(enabled)
+        odm_error = self.odm_catalog_error()
+        self.start_button.setEnabled(enabled and not odm_error)
         self.ota_gate_hint.setVisible(not ready)
-        self.start_button.setToolTip('Build the package' if ready else 'Complete step 2: required bloat files must be verified locally.')
+        self.start_button.setToolTip(odm_error or ('Build the package' if ready else 'Complete step 2: required bloat files must be verified locally.'))
         self.update_ota_controls()
+
+    def odm_catalog_error(self):
+        values = self.values()
+        if self.ota_mode != 'catalog' or not ota_catalog.needs_matched_odm(values['device'], values['kind'], self.region):
+            return ''
+        entry = self.ota_combos['ota'].currentData()
+        if not entry or self.ota_data is None:
+            return 'Select a target OTA with a matching Ace 6T security patch.'
+        try:
+            ota_catalog.matching_odm(self.ota_data, entry)
+        except ota_catalog.CatalogError as e:
+            return str(e)
+        return ''
 
     def refresh_bloat_status(self, *args, force=False):
         if self.busy or self.bloat_deleting or 'bloat_dir' not in self.fields or not hasattr(self, 'region'):
@@ -1168,7 +1190,14 @@ class App(QMainWindow):
             if local and Path(local).is_file(): details.append('Saved locally')
             self.ota_details[role].setToolTip(local or '')
             self.ota_details[role].setText(' · '.join(d for d in details if d))
-        self.update_ota_controls()
+            if role == 'ota' and ota_catalog.needs_matched_odm(*self.ota_context):
+                try:
+                    donor = ota_catalog.matching_odm(self.ota_data or {'releases': []}, entry)
+                    self.ota_details[role].setText(self.ota_details[role].text() + '\nODM only: ' + donor['version'] + ' · same security patch')
+                except ota_catalog.CatalogError as e:
+                    self.ota_details[role].setText(self.ota_details[role].text() + '\nODM unavailable: no exact security patch match.')
+                    self.ota_details[role].setToolTip(str(e))
+        self.update_build_gate()
 
     def update_ota_controls(self):
         if not hasattr(self, 'ota_fetch_button'): return
@@ -1238,6 +1267,8 @@ class App(QMainWindow):
             return
         if action == 'build' and not values['ota'] and not values.get('ota_catalog_id'):
             QMessageBox.warning(self, 'Full OTA required', 'Choose a full OTA ZIP or paste its download URL.'); return
+        if action == 'build' and self.odm_catalog_error():
+            QMessageBox.warning(self, 'Matching ODM required', self.odm_catalog_error()); return
         if action == 'build' and 'base' in ota_catalog.targets(values['device'], values['kind'], values['region']) and not values['base'] and not values.get('base_catalog_id'):
             QMessageBox.warning(self, 'BASE OTA required', 'Choose the Ace 6 ColorOS BASE full OTA.'); return
         if action == 'ota':

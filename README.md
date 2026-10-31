@@ -10,7 +10,7 @@ Download the matching package from the repository's [Releases](https://github.co
 - **Linux x86-64:** extract `FlasherBuilder-linux-x86_64.tar.gz` and run `./FlasherBuilder`.
 
 Extract the whole archive and keep the worker and project folders beside the GUI.
-Both packages include Python, Qt, native otaripper-lite **3.5.0**, lpmake, aria2c **1.37.0** and GitHub
+Both packages include Python, Qt, native otaripper **3.5.0** with remote streaming, lpmake, aria2c **1.37.0** and GitHub
 CLI (optional for private forks). Windows does not need WSL, Git Bash, or a separate Python installation.
 Linux requires curl and Qt runtime libraries; on Ubuntu/Debian:
 
@@ -69,6 +69,16 @@ with a shared 15-minute cache and ETag revalidation. An offline cached list is c
 Selections with no matching catalog releases can still use a local ZIP or a manual URL.
 Conversion builds use explicit target/base mappings and show both selectors when needed.
 
+Where a conversion requires a patch-matched ODM, the catalog shows the selected
+donor version. The app finds a full donor OTA with the **exact same security patch
+date**, including for older target versions, checks the actual OTA metadata, and
+streams **only `odm.img`** plus the small ZIP/payload metadata needed to locate it.
+The full donor OTA is never downloaded. The image must pass its payload SHA-256
+checks before packing; the donor version, patch, image size and SHA-256 are recorded
+in `build.json`. Missing patch data, no exact match, or a server without range
+support stops the build. A fixed bloat ODM or a different patch is never substituted.
+Local-file and direct-URL targets are identified from their embedded OTA metadata.
+
 Select a version and click **Build package** to download it and build in one operation.
 Alternatively, **Download OTA** saves and verifies the full ZIP without building;
 the current session then shows **Already downloaded** and reuses that local ZIP for
@@ -117,7 +127,7 @@ artifacts.
 
 ## Testing
 
-**Check setup** verifies required commands and assets. **Run self-test** generates a tiny Android OTA with valid payload operations and runs the **real bundled** otaripper, lpmake and avbtool through all three builder scripts. It tests SuperHybrid, Super, RegionalHybrid CN and GLO, and supported base/target conversions, then checks extracted bytes, sparse-image headers, archive CRCs and SHA-256. Test artifacts begin with `TEST-DO-NOT-FLASH`; they contain synthetic bytes and must never be flashed.
+**Check setup** verifies required commands and assets. **Run self-test** generates tiny Android OTAs with valid payload operations and runs the **real bundled** otaripper, lpmake and avbtool through all three builder scripts. It checks extracted bytes, sparse-image headers, archive CRCs, SHA-256, folder output, and patch-matched ODM extraction from a local HTTP range server. The range test checks that unrelated payload data is never transferred. Test artifacts begin with `TEST-DO-NOT-FLASH`; they contain synthetic bytes and must never be flashed.
 
 Command-line checks:
 

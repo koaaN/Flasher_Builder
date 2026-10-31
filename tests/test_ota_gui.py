@@ -85,6 +85,27 @@ class OtaGuiTests(unittest.TestCase):
         self.window.poll()
         self.assertEqual(self.app.clipboard().text(), 'https://cdn.example/fresh.zip')
 
+    def test_ace6t_catalog_shows_patch_matched_donor_and_blocks_unmatched_target(self):
+        target = dict(entry('target-old', 'OP 15R', 'IN'), security_patch='2026-08-01')
+        newer = dict(target, id='target-new', version='17.0.0.106', security_patch='2026-10-01')
+        donor = dict(entry('donor', 'OP ACE 6T', 'CN'), version='PLR110_16.0.10.500(CN01)', security_patch='2026-08-01')
+        self.catalog['releases'] = [target, newer, donor]
+        self.window.fields['device'].setCurrentText('Oneplus Ace 6T'); self.window.set_region('IN')
+        self.window.populate_ota_versions(); self.wait_for(self.window.local_bloat_ready)
+        combo = self.window.ota_combos['ota']
+        combo.setCurrentIndex(next(i for i in range(combo.count()) if combo.itemData(i)['id'] == 'target-old'))
+        self.assertTrue(self.window.start_button.isEnabled())
+        self.assertIn(donor['version'], self.window.ota_details['ota'].text())
+        self.assertEqual(self.window.values()['ota_catalog_id'], 'target-old')
+        combo.setCurrentIndex(next(i for i in range(combo.count()) if combo.itemData(i)['id'] == 'target-new'))
+        self.assertFalse(self.window.start_button.isEnabled())
+        self.assertIn('2026-10-01', self.window.start_button.toolTip())
+        self.assertIn('ODM unavailable', self.window.ota_details['ota'].text())
+        self.assertTrue(self.window.ota_download_buttons['ota'].isEnabled())
+        self.window.file_tab.click()
+        self.assertTrue(self.window.start_button.isEnabled())
+        self.assertIn('Only odm.img', self.window.source_hint.text())
+
     def test_downloaded_zip_reused_and_wsl_id_remains_literal(self):
         path = self.root / 'OTA saved.zip'; path.write_bytes(b'test')
         self.window.ota_local['glo'] = str(path); self.window.ota_version_changed('ota')

@@ -5,9 +5,11 @@ REPLACE operations. It contains test bytes, never flashable firmware.
 """
 from __future__ import annotations
 from argparse import Namespace
+from contextlib import contextmanager
 import hashlib
 import io
 import json
+import re
 from pathlib import Path
 import shutil
 import struct
@@ -43,7 +45,7 @@ def blob(field, data):
     return varint((field << 3) | 2) + varint(len(data)) + data
 
 
-def make_ota(path, partitions):
+def make_ota(path, partitions, metadata=None):
     manifest = number(3, 4096) + number(12, 0)
     payload_data = b''
     for name, data in partitions.items():
@@ -58,8 +60,48 @@ def make_ota(path, partitions):
     payload = b'CrAU' + struct.pack('>QQI', 2, len(manifest), 0) + manifest + payload_data
     with zipfile.ZipFile(path, 'w') as z:
         z.writestr('payload.bin', payload)
-        z.writestr('META-INF/com/android/metadata', 'ota-type=AB\npre-device=TEST-ONLY\nversion_name=TEST_1.2.3.4\n')
+        z.writestr('META-INF/com/android/metadata', metadata or 'ota-type=AB\npre-device=TEST-ONLY\nversion_name=TEST_1.2.3.4\n')
     return partitions
+
+
+@contextmanager
+def serve_ranges(directory):
+    """Loopback fixture server recording every requested range and byte count."""
+    requests = []
+    class Handler(SimpleHTTPRequestHandler):
+        def log_message(self, *args): pass
+
+        def send_head(self):
+            self.remaining = None
+            path = Path(self.translate_path(self.path))
+            value = self.headers.get('Range')
+            if not value or not path.is_file():
+                if path.is_file(): requests.append((path.name, 0, path.stat().st_size-1))
+                return super().send_head()
+            match = re.fullmatch(r'bytes=(\d+)-(\d+)', value)
+            if not match or not (0 <= int(match[1]) <= int(match[2]) < path.stat().st_size):
+                self.send_error(416); return None
+            start, end = int(match[1]), int(match[2])
+            self.remaining = end-start+1
+            requests.append((path.name, start, end))
+            self.send_response(206); self.send_header('Content-Length', str(self.remaining))
+            self.send_header('Content-Range', f'bytes {start}-{end}/{path.stat().st_size}')
+            self.send_header('Accept-Ranges', 'bytes'); self.end_headers()
+            stream = path.open('rb'); stream.seek(start); return stream
+
+        def copyfile(self, source, destination):
+            if self.remaining is None: return super().copyfile(source, destination)
+            while self.remaining:
+                data = source.read(min(65536, self.remaining))
+                if not data: break
+                destination.write(data); self.remaining -= len(data)
+
+    server = ThreadingHTTPServer(('127.0.0.1', 0), partial(Handler, directory=str(directory)))
+    thread = threading.Thread(target=server.serve_forever, daemon=True); thread.start()
+    try:
+        yield f'http://127.0.0.1:{server.server_port}', requests
+    finally:
+        server.shutdown(); server.server_close(); thread.join()
 
 
 def sparse_range(image, start, length):
@@ -130,9 +172,9 @@ def run_self_test(args):
     print(f'Self-test folder: {base}', flush=True)
     for directory in ('.github', 'build_scripts', 'scripts', 'otaripper', 'lpmake', 'build_tools_assets', 'Platform-Tools'):
         shutil.copytree(repo / directory, fixture / directory)
-    for dev in ('13', 'Ace6', 'NEO8'):
+    for dev in ('13', 'Ace6', 'Ace6T', 'NEO8'):
         shutil.copytree(repo / 'flasher_scripts' / dev, fixture / 'flasher_scripts' / dev)
-        for region in ('GLO_BLOAT', 'CN_BLOAT', 'OOS_BLOAT', 'COS_FILES_HERE'):
+        for region in ('GLO_BLOAT', 'IN_BLOAT', 'CN_BLOAT', 'OOS_BLOAT', 'COS_FILES_HERE'):
             folder = fixture / 'bloat' / dev / region
             folder.mkdir(parents=True)
             for name in ('my_preload', 'my_company', 'my_region', 'oplusstanvbk', 'system_dlkm_oki'):
@@ -219,5 +261,40 @@ def run_self_test(args):
         raise BuildError('Self-test: folder build history is incorrect.')
     if {p.name for p in folder.parent.iterdir()} != {folder.name, 'build.json', 'build.log'}:
         raise BuildError('Self-test: folder build left an archive or temporary working files.')
-    (base / 'SELF-TEST-PASSED.txt').write_text('All seven pipeline tests passed with the REAL otaripper, lpmake and avbtool.\nGenerated packages contain test bytes. DO NOT FLASH.\n', encoding='utf-8')
-    print('\nSELF-TEST PASSED: extraction, three builders, sparse super image, vbmeta patching, ZIP integrity, SHA-256 and unzipped folder output.', flush=True)
+    odm_data = b'PATCH MATCHED ODM\n'.ljust(4096, b'D')
+    donor = base / 'TEST-ONLY-donor.zip'
+    make_ota(donor, {'unrelated': b'U' * (4 * 1024**2), 'odm': odm_data},
+             'ota-type=AB\nversion_name=PLR110_16.0.10.500(CN01)\npost-security-patch-level=2026-08-01\n')
+    with serve_ranges(base) as (address, requests):
+        entries = [dict(id='matched-donor', device='OP ACE 6T', region='CN', model='PLR110',
+                        version='PLR110_16.0.10.500(CN01)', security_patch='2026-08-01',
+                        source_url=address+'/'+donor.name)]
+        for region, model in (('IN', 'CPH2767'), ('GLO', 'CPH2769')):
+            target = base / ('TEST-ONLY-15R-'+region+'.zip')
+            version = model+'_16.0.10.500(EX01)'
+            make_ota(target, dict(partitions, odm=b'WRONG TARGET ODM'.ljust(4096, b'W')),
+                     f'ota-type=AB\nversion_name={version}\npost-security-patch-level=2026-08-01\n')
+            entries.append(dict(id='target-'+region, device='OP 15R', region=region, model=model,
+                                version=version, security_patch='2026-08-01', source_url=address+'/'+target.name))
+        entries.append(dict(entries[0], id='wrong-newer-donor', version='PLR110_17.0.0.101(CN01)',
+                            security_patch='2026-09-01', is_latest=True))
+        cache = fixture / '.ota-catalog'; cache.mkdir()
+        (cache / 'catalog.json').write_text(json.dumps(dict(fetched_at=time.time(), etag='',
+            data=dict(api_version='1', releases=entries))), encoding='utf-8')
+        for region in ('IN', 'GLO'):
+            print(f'\nSELF-TEST: Ace 6T {region}, remote patch-matched ODM only', flush=True)
+            dest = build(Namespace(repo=str(fixture), output=str(base / 'results'), device='Oneplus Ace 6T',
+                kind='Super Flasher', region=region, ota='', ota_catalog_id='target-'+region,
+                base='', cancel=args.cancel, fixture=True))
+            with zipfile.ZipFile(dest) as archive:
+                verify_super(archive.read('super.img'), dict(odm=odm_data, system=partitions['system']))
+            receipt = json.loads((dest.parent / 'build.json').read_text(encoding='utf-8'))['odm_source']
+            if receipt['catalog_id'] != 'matched-donor' or receipt['sha256'] != hashlib.sha256(odm_data).hexdigest():
+                raise BuildError('Self-test: matched ODM provenance is incorrect.')
+        ranges = [(start, end) for name, start, end in requests if name == donor.name]
+        if not ranges or sum(end-start+1 for start, end in ranges) >= donor.stat().st_size:
+            raise BuildError('Self-test: selective ODM extraction transferred too much data.')
+        if any(start <= 2*1024**2 <= end for start, end in ranges):
+            raise BuildError('Self-test: ODM extraction downloaded an unrelated payload partition.')
+    (base / 'SELF-TEST-PASSED.txt').write_text('All nine pipeline tests passed with the REAL otaripper, lpmake and avbtool.\nGenerated packages contain test bytes. DO NOT FLASH.\n', encoding='utf-8')
+    print('\nSELF-TEST PASSED: extraction, three builders, sparse super image, vbmeta patching, ZIP integrity, SHA-256, unzipped folder output and remote patch-matched ODM only.', flush=True)

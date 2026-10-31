@@ -87,7 +87,7 @@ def main():
             raise ValueError('Native package verification failed: ' + platform)
         if report.get('app_version') != args.tag.removeprefix('v'):
             raise ValueError('Packaged app version does not match release tag: ' + platform)
-        if not all(report.get(k) is True for k in ('bundled_aria2','download_pipeline_passed','anonymous_bloat_download')):
+        if not all(report.get(k) is True for k in ('bundled_aria2','download_pipeline_passed','anonymous_bloat_download','remote_odm_streaming')):
             raise ValueError('Packaged download verification failed: ' + platform)
         digest = hashlib.sha256((directory / artifact).read_bytes()).hexdigest()
         if report.get('sha256') != digest or report.get('artifact') != artifact:
@@ -101,7 +101,8 @@ def main():
     notes = '''Native desktop release for x86-64 Linux and Windows.
 
 - Windows runs natively, with no WSL, Bash, or separate Python installation.
-- Both packages include the GUI, console worker, otaripper-lite 3.5.0, lpmake, aria2c 1.37.0, and GitHub CLI.
+- Both packages include the GUI, console worker, full otaripper 3.5.0 with remote HTTP streaming, lpmake, aria2c 1.37.0, and GitHub CLI.
+- Conversions that require a patch-matched ODM automatically select the donor OTA by the exact security patch date, including older targets. Only odm.img is streamed, with payload SHA-256 verification and donor provenance in build.json. Missing matches stop the build; the fixed GitHub ODM is no longer required for these desktop selections.
 - Public releases, bloat downloads and update checks need no login. Bloat and OTA downloads use aria2c -x8 -s8 with curl fallback, one file at a time; checksums and cancellation cleanup remain enforced.
 - Setup fits without scrolling. Build output opens only when work starts, and successful downloads return to setup automatically.
 - Uncheck ZIP build to keep the finished flasher folder without compression. The setting is remembered, folder builds open directly from history, and cancellation removes unfinished output. Command-line builds support --no-zip.

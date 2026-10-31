@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import http.cookiejar
+from datetime import date
 from html.parser import HTMLParser
 import json
 import os
@@ -33,12 +34,50 @@ class CatalogError(Exception):
 
 
 def targets(device, kind, region):
+    if needs_matched_odm(device, kind, region):
+        return {'ota': ('OP 15R', region)}
     if device == 'Oneplus Ace 6' and kind == 'SuperHybrid Flasher' and region == 'IN':
         return {'ota': ('OP 15R', 'IN'), 'base': ('OP ACE 6', 'CN')}
     try:
         return {'ota': (DEVICE_NAMES[device], region)}
     except KeyError as e:
         raise CatalogError('This device has no OTA catalog mapping.') from e
+
+
+def needs_matched_odm(device, kind, region):
+    return device == 'Oneplus Ace 6T' and kind == 'Super Flasher' and region in ('IN', 'GLO')
+
+
+def patch_date(value):
+    if not isinstance(value, str) or not re.fullmatch(r'\d{4}-\d{2}-\d{2}', value):
+        raise CatalogError('A complete security patch date is required to match the ODM source.')
+    try:
+        date.fromisoformat(value)
+    except ValueError as e:
+        raise CatalogError('The security patch date is invalid.') from e
+    return value
+
+
+def matching_odm(data, target):
+    patch = patch_date(target.get('security_patch'))
+    candidates = [e for e in releases_for(data, 'OP ACE 6T', 'CN') if e.get('security_patch') == patch]
+    if not candidates:
+        raise CatalogError(f'No Ace 6T CN OTA has security patch {patch}. Choose a target with an exact patch match; a different ODM will not be substituted.')
+    return candidates[0]
+
+
+def release_from_metadata(data, device, region, metadata):
+    """Identify a local/downloaded target without choosing a newer release."""
+    values = '\n'.join(str(metadata.get(k, '')) for k in
+                       ('version_name', 'ota_version', 'post-build-incremental', 'post-build'))
+    versions = set(re.findall(r'\d+(?:\.\d+){2,4}', values))
+    matches = [e for e in releases_for(data, device, region)
+               if (e.get('ota_version') and e['ota_version'] in values) or
+               (e.get('model') and re.search(r'(?<![A-Za-z0-9])' + re.escape(e['model']) + r'(?![A-Za-z0-9])', values)
+                and any(v in versions for v in re.findall(r'\d+(?:\.\d+){2,4}', e['version'])))]
+    if len(matches) != 1:
+        raise CatalogError('Could not identify this local OTA as an exact OnePlus 15R version for the selected region. Select its version in the catalog or use a matching full OTA.')
+    return matches[0]
 
 
 def request(opener, url, data=None, headers=None):

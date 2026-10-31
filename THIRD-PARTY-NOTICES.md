@@ -3,10 +3,10 @@
 The application packages include these tools; their licenses remain in
 force. No GitHub credentials are included in a package.
 
-- **otaripper-lite 3.5.0**, by syedinsaf and contributors, Apache-2.0.
+- **otaripper 3.5.0**, by syedinsaf and contributors, Apache-2.0.
   https://github.com/syedinsaf/otaripper/releases/tag/v3.5.0
   Linux uses the static musl x86-64 build; Windows uses the MSVC x86-64 build.
-  This application downloads the OTA itself, then uses the local extractor.
+  The full executable supports local extraction and selective remote HTTP streaming.
   License: `otaripper/LICENSE`.
 - **lpmake**, Android Open Source Project, Apache-2.0.
   The existing Linux executable is retained. Windows uses the x86-64 build from

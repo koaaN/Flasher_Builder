@@ -104,11 +104,12 @@ def pack_super(worker, assets, directory, size):
         raise BuildError('lpmake did not create super.img.')
 
 
-def extract(worker, assets, ota, directory, partitions=None):
+def extract(worker, assets, ota, directory, partitions=None, strict=False):
     directory.mkdir(parents=True, exist_ok=True)
     command = [tool(assets, 'otaripper'), '--no-open', '--output-dir', directory, ota]
     if partitions:
         command += ['--partitions', ','.join(partitions)]
+    if strict: command += ['--strict', '--threads', '8']
     worker.run(command, cwd=directory.parent)
     # Recent otaripper releases create a versioned child even with -o.
     image_folders = {p.parent for p in directory.rglob('*.img')}
@@ -117,7 +118,7 @@ def extract(worker, assets, ota, directory, partitions=None):
     return image_folders.pop()
 
 
-def build_images(worker, assets, result, download, dev, kind, region, size, builder):
+def build_images(worker, assets, result, download, dev, kind, region, size, builder, odm=None):
     boot_dir = result / ('COS_FILES_HERE' if region == 'CN' else 'OOS_FILES_HERE')
     boot_dir.mkdir(parents=True, exist_ok=True)
     super_dir = result / 'Super'
@@ -156,6 +157,10 @@ def build_images(worker, assets, result, download, dev, kind, region, size, buil
             if image.is_file(): image.replace(boot_dir / image.name)
         shutil.rmtree(images)
     if 'Super' in kind:
+        if dev == 'Ace6T' and region in ('IN', 'GLO'):
+            if odm is None or not odm.is_file() or not odm.stat().st_size:
+                raise BuildError('The patch-matched Ace 6T ODM image is missing. A static ODM will not be used.')
+            worker.copy(odm, super_dir / 'odm.img')
         pack_super(worker, assets, super_dir, size)
         (super_dir / 'super.img').replace(result / 'super.img')
         shutil.rmtree(super_dir)

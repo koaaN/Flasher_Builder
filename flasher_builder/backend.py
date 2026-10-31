@@ -26,12 +26,14 @@ import zipfile
 
 if __package__:
     from . import ota_catalog
-    from scripts.http_download import DownloadError, download_url, executable
+    from scripts.http_download import DownloadError, download_url, executable, redact_output
+    from .remote_zip import ota_metadata, RangeError
     from .host import tool, helper_command, configure_path
 else:
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
     import ota_catalog
-    from scripts.http_download import DownloadError, download_url, executable
+    from scripts.http_download import DownloadError, download_url, executable, redact_output
+    from remote_zip import ota_metadata, RangeError
     from host import tool, helper_command, configure_path
 
 ROOT = Path(sys.executable).resolve().parent if getattr(sys, 'frozen', False) else Path(__file__).resolve().parent.parent
@@ -160,7 +162,7 @@ class Worker:
                     if line is None:
                         done = True
                     else:
-                        print(line, end='', flush=True)
+                        print(redact_output(line), end='', flush=True)
                 except queue.Empty:
                     pass
             if proc.wait():
@@ -356,6 +358,55 @@ def prepare_ota(worker, args, role, destination):
     return result
 
 
+def plan_matched_odm(worker, args):
+    data = worker.metadata(ota_catalog.load_catalog, Path(args.repo) / '.ota-catalog')
+    target = worker.metadata(selected_release, args, 'ota') if getattr(args, 'ota_catalog_id', '') else None
+    if target:
+        # Fail before downloading a full target if no donor exists.
+        ota_catalog.matching_odm(data, target)
+    return data, target
+
+
+def prepare_matched_odm(worker, args, metadata, download, plan):
+    data, target = plan
+    actual_target = ota_catalog.release_from_metadata(data, 'OP 15R', args.region, metadata)
+    if target is None:
+        target = actual_target
+    elif actual_target['id'] != target['id']:
+        raise BuildError('The target download returned a different OTA version. ODM matching stopped.')
+    patch = ota_catalog.patch_date(metadata.get('post-security-patch-level'))
+    if patch != ota_catalog.patch_date(target.get('security_patch')):
+        raise BuildError('The target OTA security patch differs from its catalog entry. The ODM source cannot be matched safely.')
+    donor = ota_catalog.matching_odm(data, target)
+    print(f'Matched ODM source: {donor["device"]} / {donor["region"]} / {donor["version"]} / security patch {patch}', flush=True)
+    url = worker.metadata(ota_catalog.resolve_link, donor)
+    print('Verifying donor OTA metadata using HTTP ranges…', flush=True)
+    try:
+        donor_metadata = worker.metadata(ota_metadata, url, worker.check)
+    except (RangeError, OSError, ValueError, KeyError, zipfile.BadZipFile) as e:
+        raise BuildError('Could not verify the ODM source OTA using HTTP ranges. No full-OTA fallback is used.') from e
+    if ota_catalog.patch_date(donor_metadata.get('post-security-patch-level')) != patch:
+        raise BuildError('The donor OTA security patch differs from the target. ODM download stopped.')
+    actual_donor = ota_catalog.release_from_metadata(data, 'OP ACE 6T', 'CN', donor_metadata)
+    if actual_donor['id'] != donor['id']:
+        raise BuildError('The donor link returned a different OTA version. ODM download stopped.')
+    if __package__:
+        from .native_pipeline import extract
+    else:
+        from native_pipeline import extract
+    print('Downloading ONLY odm.img from the matched OTA; the full Ace 6T OTA is not downloaded.', flush=True)
+    directory = extract(worker, Path(args.repo), url, download / 'matched-odm', ('odm',), strict=True)
+    odm = directory / 'odm.img'
+    if not odm.is_file() or not odm.stat().st_size or {p.name for p in directory.glob('*.img')} != {'odm.img'}:
+        raise BuildError('Selective extraction did not produce exactly one non-empty odm.img.')
+    digest = hashlib.sha256()
+    with odm.open('rb') as stream:
+        while chunk := stream.read(4 * 1024**2):
+            worker.check(); digest.update(chunk)
+    return odm, dict(catalog_id=donor['id'], device=donor['device'], region=donor['region'],
+                     version=donor['version'], security_patch=patch, sha256=digest.hexdigest(), bytes=odm.stat().st_size)
+
+
 def download_ota(args):
     import tempfile
     repo = Path(args.repo).resolve()
@@ -432,6 +483,7 @@ def build(args):
         download = job / 'download'
         download.mkdir()
         print('STEP 1/5 • Prepare OTA', flush=True)
+        odm_plan = plan_matched_odm(worker, args) if ota_catalog.needs_matched_odm(args.device, args.kind, args.region) else None
         version, payload_size, metadata = prepare_ota(worker, args, 'ota', download / 'OTA.zip')
         if needs_base:
             _, base_size, _ = prepare_ota(worker, args, 'base', download / 'BASE.zip')
@@ -443,6 +495,7 @@ def build(args):
         free = shutil.disk_usage(job).free
         if free < required and not getattr(args, 'fixture', False):
             raise BuildError(f'Not enough disk space: {free / GIB:.1f} GiB free; allow at least {required / GIB:.1f} GiB for this payload. Choose another output drive.')
+        odm, odm_receipt = prepare_matched_odm(worker, args, metadata, download, odm_plan) if odm_plan is not None else (None, None)
         print('STEP 2/5 • Stage flasher and device assets', flush=True)
         assets = job / 'assets'
         normalize_assets(repo, assets, dev, template)
@@ -454,7 +507,7 @@ def build(args):
         result = stage(worker, assets, job / 'stage', dev, args.kind, args.region, source)
         print('STEP 3/5 • Extract partitions and build flasher', flush=True)
         result = build_images(worker, assets, result, download, dev, args.kind, args.region,
-                              catalog.sizes.get(dev, 0), builder)
+                              catalog.sizes.get(dev, 0), builder, odm)
         if not result.is_dir():
             raise BuildError(f'Builder did not create the expected output: {result}')
         boot_dir = result / ('COS_FILES_HERE' if args.region == 'CN' else 'OOS_FILES_HERE')
@@ -477,6 +530,7 @@ def build(args):
         manifest = dict(device=args.device, flasher_type=args.kind, region=args.region,
                         version=version, artifact=filename, created=time.strftime('%Y-%m-%dT%H:%M:%S'),
                         test_fixture=bool(getattr(args, 'fixture', False)), output_format='folder' if no_zip else 'zip')
+        if odm_receipt is not None: manifest['odm_source'] = odm_receipt
         (job / 'build.json').write_text(json.dumps(manifest, indent=2) + '\n', encoding='utf-8')
         print('Removing temporary working files…', flush=True)
         for directory in (assets, job / 'stage', download):

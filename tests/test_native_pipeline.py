@@ -66,6 +66,9 @@ class NativePipelineTests(unittest.TestCase):
                         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
                         legacy = root / 'actions' / output.name
                         expected = {p.relative_to(legacy).as_posix(): p.read_bytes() for p in legacy.rglob('*.img')}
+                        if dev == 'Ace6T' and region in ('IN', 'GLO'):
+                            self.assertNotIn('Super/odm.img', images)
+                            expected.pop('Super/odm.img')  # Desktop streams a patch-matched ODM at build time.
                         self.assertEqual(images, expected)
                         shutil.rmtree(root/'actions')
                     shutil.rmtree(root/'native')
