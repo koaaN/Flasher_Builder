@@ -85,6 +85,8 @@ def main():
         report = json.loads((directory / f'validation-{platform}.json').read_text())
         if not all(report.get(k) is True for k in ('native_worker', 'frozen_gui', 'pipeline_passed')) or report.get('wsl_required') is not False:
             raise ValueError('Native package verification failed: ' + platform)
+        if report.get('documentation_in_app') is not True:
+            raise ValueError('Packaged documentation verification failed: ' + platform)
         if report.get('app_version') != args.tag.removeprefix('v'):
             raise ValueError('Packaged app version does not match release tag: ' + platform)
         if not all(report.get(k) is True for k in ('bundled_aria2','download_pipeline_passed','anonymous_bloat_download','remote_odm_streaming')):
@@ -100,6 +102,9 @@ def main():
     files.append(checksums)
     notes = '''Native desktop release for x86-64 Linux and Windows.
 
+- Documentation opens inside the app with styled headings, code blocks, section navigation and text search. Local Markdown links stay in the viewer; web links open in the browser.
+- OTA selection, link copying and downloads are available before bloat is downloaded. Build package stays disabled until the required bloat, OTA inputs, output folder and any required ODM match are ready.
+- Removed the Running locally badge and Local engine sidebar panel.
 - Windows runs natively, with no WSL, Bash, or separate Python installation.
 - Both packages include the GUI, console worker, full otaripper 3.5.0 with remote HTTP streaming, lpmake, aria2c 1.37.0, and GitHub CLI.
 - Conversions that require a patch-matched ODM automatically select the donor OTA by the exact security patch date, including older targets. Only odm.img is streamed, with payload SHA-256 verification and donor provenance in build.json. Missing matches stop the build; the fixed GitHub ODM is no longer required for these desktop selections.

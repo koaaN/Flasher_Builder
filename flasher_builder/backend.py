@@ -410,8 +410,7 @@ def prepare_matched_odm(worker, args, metadata, download, plan):
 def download_ota(args):
     import tempfile
     repo = Path(args.repo).resolve()
-    dev, _, _ = Catalog(repo).selection(args.device, args.kind, args.region)
-    require_local_bloat(args, repo, dev)
+    Catalog(repo).selection(args.device, args.kind, args.region)
     role = args.download_role
     if not getattr(args, role + '_catalog_id', ''):
         raise BuildError('Select an OTA catalog version first.')

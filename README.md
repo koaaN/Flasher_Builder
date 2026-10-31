@@ -2,6 +2,8 @@
 
 A local desktop GUI for this repository's firmware build workflow. Select the device, flasher type and region, choose a **full OTA ZIP** or paste its download URL, and click **Build package**. The GUI supports the same 62 combinations as `.github/workflows/build_tools.yml` and filters the choices as you select a device.
 
+Open **Documentation** in the sidebar to read this guide inside the app, with formatted headings, code blocks, section navigation and text search. Bundled documentation works offline; web links open in your browser.
+
 ## Linux and Windows releases
 
 Download the matching package from the repository's [Releases](https://github.com/koaaN/Flasher_Builder/releases):
@@ -49,7 +51,7 @@ URLs are passed as argument arrays, without shell interpolation.
 ## Building a package
 
 - Choose a supported device, flasher type and region. CN means ColorOS; other regions use OxygenOS templates.
-- Complete **step 2 — Bloat files**: choose a folder containing the required images or click **Download bloat**. The app verifies their sizes and SHA-256 hashes. Step 3 and **Build package** stay locked until the selected build's files are verified locally.
+- Complete **step 2 — Bloat files**: choose a folder containing the required images or click **Download bloat**. The app verifies their sizes and SHA-256 hashes. You can select or download an OTA before this step is complete. **Build package** stays disabled until the required bloat, OTA selections, output folder and any required ODM match are ready.
 - In **step 3**, use **Version catalog**, choose a full OTA ZIP, or enter an HTTP(S) URL. Placeholder and incremental OTA files are rejected.
 - Choose the output folder. **ZIP build** is checked by default; uncheck it to keep the finished flasher folder and skip compression. This choice is remembered between launches. Recovery installation requires a ZIP.
 - Click **Build package**. The app opens **Build output** for progress and logs; **Back to setup** returns to the form. The log reports download, staging, extraction, packing and optional compression. **Cancel** stops the active native tools and their child processes.
@@ -83,7 +85,7 @@ Select a version and click **Build package** to download it and build in one ope
 Alternatively, **Download OTA** saves and verifies the full ZIP without building;
 the current session then shows **Already downloaded** and reuses that local ZIP for
 builds. On later launches, choose that saved ZIP in **Local file**. Downloads happen
-one at a time, including separate target and base packages when required. Step 2 must be complete first.
+one at a time, including separate target and base packages when required. Bloat is required for building, and can be downloaded before or after selecting the OTA.
 
 **Copy download link** resolves a fresh link onto the clipboard. Some links expire;
 the worker resolves them again immediately before transfer rather than reusing an
@@ -188,4 +190,4 @@ GitHub Actions workflow. See [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) fo
 tool origins, versions and licenses.
 
 
-**Delete bloat** removes the image files required by the current selection and their unused download-cache copies from the selected bloat folder. A confirmation lists the device, region, folder and exact image paths. Other files remain in place; cache objects shared with another locally stored image are preserved. Deleting required files locks step 3/build until **Download bloat** restores them. Delete/recheck controls are disabled during builds and downloads.
+**Delete bloat** removes the image files required by the current selection and their unused download-cache copies from the selected bloat folder. A confirmation lists the device, region, folder and exact image paths. Other files remain in place; cache objects shared with another locally stored image are preserved. Deleting required files disables building until **Download bloat** restores them; OTA selection stays available. Delete/recheck controls are disabled during builds and downloads.

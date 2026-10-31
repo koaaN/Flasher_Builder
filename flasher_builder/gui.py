@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 import platform
 import queue
@@ -12,16 +13,17 @@ import sys
 import threading
 import time
 import uuid
+from urllib.parse import urlsplit
 
 from PySide6.QtCore import QByteArray, QEvent, QPoint, QPointF, QRectF, QSize, Qt, QTimer, QUrl
-from PySide6.QtGui import QColor, QDesktopServices, QFont, QFontDatabase, QFontMetrics, QIcon, QPainter, QPen, QPixmap, QTextCursor
+from PySide6.QtGui import QColor, QDesktopServices, QFont, QFontDatabase, QFontMetrics, QIcon, QPainter, QPen, QPixmap, QTextBlockFormat, QTextCharFormat, QTextCursor, QTextOption
 from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import (QApplication, QButtonGroup, QComboBox, QFileDialog, QFrame,
     QAbstractItemView, QCheckBox, QGraphicsDropShadowEffect, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QListView, QMainWindow, QMessageBox, QPlainTextEdit,
     QProgressBar, QPushButton, QScrollArea, QSizePolicy, QStackedWidget,
-    QStyle, QStyledItemDelegate, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget)
+    QStyle, QStyledItemDelegate, QTextBrowser, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget)
 
-from .backend import ROOT, BuildError, Catalog
+from .backend import ROOT, BuildError, Catalog, clean_source
 from .runtime import Runtime
 from . import ota_catalog
 from . import __version__, updates
@@ -363,8 +365,6 @@ QWidget#sidebar QLabel#sideHeading { color: #607591; font-size: 10px; font-weigh
 QWidget#sidebar QPushButton { text-align: left; padding: 13px 16px; background: transparent; border: 0; border-radius: 7px; color: #a3b2c9; font-weight: 500; }
 QWidget#sidebar QPushButton:hover { background: #1a2a43; color: white; }
 QWidget#sidebar QPushButton:checked { background: #213a61; color: #eef5ff; }
-QWidget#sidebar QFrame#engineCard { background: #16263e; border: 1px solid #253750; border-radius: 9px; }
-QWidget#sidebar QLabel#engineTitle { color: #e2eaf8; font-weight: 600; }
 QLabel { background: transparent; }
 QLabel#eyebrow { color: #7f8b9c; font-size: 10px; font-weight: 600; letter-spacing: 1.8px; }
 QLabel#title { font-size: 29px; font-weight: 700; color: #18283f; }
@@ -372,7 +372,6 @@ QLabel#subtitle, QLabel#muted { color: #7b889a; font-size: 12px; }
 QLabel#cardTitle { font-size: 15px; font-weight: 650; color: #20324b; }
 QLabel#fieldLabel { color: #485871; font-size: 11px; font-weight: 600; }
 QLabel#sectionNumber { background: #eef3ff; border-radius: 6px; color: #3b66c8; font-size: 11px; font-weight: 700; padding: 6px; }
-QLabel#badge { color: #346852; background: #eaf4ee; border: 1px solid #d8e8df; border-radius: 12px; padding: 5px 11px; font-size: 11px; }
 QLabel#osBadge { color: #536b92; background: #f0f4fa; border-radius: 5px; padding: 5px 8px; font-size: 10px; }
 QFrame#card { background: #ffffff; border: 1px solid #e1e6ef; border-radius: 11px; }
 QWidget#innerPanel { background: transparent; }
@@ -412,6 +411,7 @@ QLabel#logTitle { color: #d6e1f2; font-size: 12px; font-weight: 600; }
 QFrame#consoleCard { background: #142137; border: 1px solid #233249; border-radius: 9px; }
 QFrame#consoleCard QWidget { background: transparent; }
 QPlainTextEdit { background: #142137; color: #afc3df; border: none; font-family: "JetBrains Mono", "Consolas", "DejaVu Sans Mono"; font-size: 11px; padding: 8px 14px; selection-background-color: #315682; }
+QTextBrowser#documentation { background: #ffffff; color: #40536e; border: none; padding: 0; selection-background-color: #dce7ff; }
 QProgressBar { border: none; background: #e3e9f3; border-radius: 2px; max-height: 4px; min-height: 4px; }
 QProgressBar::chunk { background: #4277dd; border-radius: 2px; }
 QScrollArea { border: none; background: transparent; }
@@ -517,16 +517,12 @@ class App(QMainWindow):
         side.addStretch()
         self.update_notice = button('Update available', 'download', callback=self.open_update)
         self.update_notice.hide(); side.addWidget(self.update_notice)
-        engine = QFrame(); engine.setObjectName('engineCard')
-        el = QVBoxLayout(engine); el.setContentsMargins(13, 14, 13, 14); el.setSpacing(6)
-        el.addWidget(label('●  LOCAL ENGINE', 'engineTitle'))
-        el.addWidget(label('Windows · x86_64' if sys.platform == 'win32' else 'Linux · x86_64'))
-        el.addWidget(label('Files stay on this PC'))
-        side.addWidget(engine)
         side.addSpacing(9)
-        docs = button('  Documentation', callback=lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(ROOT / 'README.md'))))
-        docs.setIcon(icon('help', '#7b90ad'))
-        side.addWidget(docs)
+        self.documentation_button = button('  Documentation', callback=self.open_documentation)
+        self.documentation_button.setIcon(icon('help', '#7b90ad'))
+        self.documentation_button.setCheckable(True)
+        self.nav_group.addButton(self.documentation_button); self.nav.append(self.documentation_button)
+        side.addWidget(self.documentation_button)
         horizontal.addWidget(sidebar)
         content = QWidget()
         body = QVBoxLayout(content)
@@ -537,7 +533,6 @@ class App(QMainWindow):
         self.title_label = label('New package', 'title'); heading.addWidget(self.title_label)
         self.subtitle = label('Turn a full OTA into a ready-to-use flasher package.', 'subtitle'); heading.addWidget(self.subtitle)
         header.addLayout(heading); header.addStretch()
-        header.addWidget(label('●  Running locally', 'badge'), alignment=Qt.AlignmentFlag.AlignTop)
         body.addLayout(header)
         self.pages = QStackedWidget()
         self.pages.addWidget(self.build_page())
@@ -545,6 +540,7 @@ class App(QMainWindow):
         self.pages.addWidget(self.environment_page())
         self.output_page = self.console()
         self.pages.addWidget(self.output_page)
+        self.pages.addWidget(self.documentation_page())
         body.addWidget(self.pages, 1)
         footer = QHBoxLayout()
         footer.addWidget(label('CONFIGURE → BLOAT FILES → OTA → BUILD', 'eyebrow'))
@@ -586,7 +582,6 @@ class App(QMainWindow):
         self.configure_card = configure
         source_card, source_layout = card()
         self.ota_card = source_card
-        self.ota_card.setEnabled(False)
         source_head = QHBoxLayout()
         source_head.addWidget(label('03', 'sectionNumber'))
         source_head.addWidget(label('OTA source', 'cardTitle'))
@@ -599,8 +594,6 @@ class App(QMainWindow):
             b.setCheckable(True); self.source_group.addButton(b); source_head.addWidget(b); self.inputs.append(b)
         self.file_tab.setChecked(True)
         source_layout.addLayout(source_head)
-        self.ota_gate_hint = label('Complete step 2 to unlock OTA selection.', 'hint', True)
-        source_layout.addWidget(self.ota_gate_hint)
         self.catalog_panel = QWidget()
         self.catalog_panel.setObjectName('innerPanel')
         catalog_layout = QVBoxLayout(self.catalog_panel); catalog_layout.setContentsMargins(0, 0, 0, 0); catalog_layout.setSpacing(8)
@@ -647,7 +640,7 @@ class App(QMainWindow):
         actions = QHBoxLayout(); actions.setSpacing(8)
         actions.addWidget(label('Save package to', 'fieldLabel'))
         self.fields['output'] = QLineEdit(str(ROOT / 'builds')); self.inputs.append(self.fields['output'])
-        self.fields['output'].editingFinished.connect(self.update_summary)
+        self.fields['output'].textChanged.connect(self.update_summary)
         actions.addWidget(self.fields['output'], 1)
         output_browse = button('Browse', 'folder', callback=self.choose_output)
         self.inputs.append(output_browse); actions.addWidget(output_browse)
@@ -730,6 +723,7 @@ class App(QMainWindow):
         row = QHBoxLayout(); row.setSpacing(8)
         field = QLineEdit(); field.setPlaceholderText(placeholder)
         field.setClearButtonEnabled(True)
+        field.textChanged.connect(self.update_summary)
         row.addWidget(field, 1)
         browse = button('Choose ZIP', 'folder', callback=lambda: self.choose_ota(key))
         row.addWidget(browse)
@@ -777,6 +771,112 @@ class App(QMainWindow):
         update_actions.addStretch(); layout.addLayout(update_actions)
         layout.addStretch()
         return scroll
+
+    def documentation_page(self):
+        page = QWidget(); page.setObjectName('innerPanel')
+        layout = QVBoxLayout(page); layout.setContentsMargins(0, 0, 0, 0); layout.setSpacing(12)
+        toolbar = QHBoxLayout(); toolbar.setSpacing(8)
+        toolbar.addWidget(button('Guide', 'help', callback=self.open_documentation))
+        self.documentation_topics = ComboBox(); self.documentation_topics.setAccessibleName('Documentation section')
+        self.documentation_topics.setMinimumWidth(180)
+        self.documentation_topics.currentIndexChanged.connect(self.jump_documentation)
+        toolbar.addWidget(self.documentation_topics, 1)
+        self.documentation_search = QLineEdit(); self.documentation_search.setPlaceholderText('Find in documentation…')
+        self.documentation_search.setAccessibleName('Find in documentation'); self.documentation_search.setClearButtonEnabled(True)
+        self.documentation_search.textChanged.connect(lambda: self.find_documentation(restart=True))
+        self.documentation_search.returnPressed.connect(self.find_documentation)
+        toolbar.addWidget(self.documentation_search, 1)
+        self.documentation_next = button('Next match', callback=self.find_documentation)
+        self.documentation_next.setEnabled(False); toolbar.addWidget(self.documentation_next)
+        layout.addLayout(toolbar)
+        paper, paper_layout = card(); paper_layout.setContentsMargins(6, 6, 6, 6)
+        self.documentation_view = QTextBrowser(); self.documentation_view.setObjectName('documentation')
+        self.documentation_view.setAccessibleName('Documentation content')
+        self.documentation_view.setOpenLinks(False); self.documentation_view.setOpenExternalLinks(False)
+        self.documentation_view.setWordWrapMode(QTextOption.WrapMode.WrapAtWordBoundaryOrAnywhere)
+        self.documentation_view.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.documentation_view.anchorClicked.connect(self.open_documentation_link)
+        paper_layout.addWidget(self.documentation_view); layout.addWidget(paper, 1)
+        self.documentation_path = None
+        return page
+
+    def open_documentation(self):
+        self.load_documentation(ROOT / 'README.md')
+        self.navigate(4)
+
+    def load_documentation(self, path):
+        self.documentation_path = Path(path).resolve()
+        document = self.documentation_view.document()
+        font = QFont(QApplication.font()); font.setPixelSize(14)
+        document.setDefaultFont(font); document.setDocumentMargin(26)
+        document.setBaseUrl(QUrl.fromLocalFile(str(self.documentation_path.parent) + os.sep))
+        try:
+            text = self.documentation_path.read_text(encoding='utf-8')
+        except (OSError, UnicodeError):
+            text = '# Documentation unavailable\n\nKeep README.md and the docs folder beside the application.'
+        document.setMarkdown(text)
+        self.documentation_topics.blockSignals(True); self.documentation_topics.clear()
+        block = document.begin()
+        while block.isValid():
+            cursor = QTextCursor(block); formatting = block.blockFormat(); level = formatting.headingLevel()
+            formatting.setLineHeight(150, QTextBlockFormat.LineHeightTypes.ProportionalHeight.value)
+            formatting.setBottomMargin(12)
+            if level:
+                formatting.setTopMargin(8 if level == 1 else 24); formatting.setBottomMargin(12)
+                heading = QTextCharFormat(); heading.setFontPointSize({1: 20, 2: 15, 3: 12}.get(level, 11))
+                heading.setFontWeight(QFont.Weight.DemiBold); heading.setForeground(QColor('#20324b'))
+                heading.setAnchor(True); heading.setAnchorNames([re.sub(r'[^\w -]', '', block.text()).lower().replace(' ', '-')])
+                cursor.select(QTextCursor.SelectionType.BlockUnderCursor); cursor.mergeCharFormat(heading)
+                self.documentation_topics.addItem(block.text(), block.position())
+            elif formatting.nonBreakableLines():
+                formatting.setBackground(QColor('#f3f6fc')); formatting.setLeftMargin(12); formatting.setRightMargin(12)
+                formatting.setTopMargin(8); formatting.setBottomMargin(8); formatting.setNonBreakableLines(False)
+            cursor.setBlockFormat(formatting)
+            fragment = block.begin()
+            while not fragment.atEnd():
+                part = fragment.fragment()
+                if part.isValid() and part.charFormat().anchorHref():
+                    link = QTextCursor(document); link.setPosition(part.position())
+                    link.setPosition(part.position() + part.length(), QTextCursor.MoveMode.KeepAnchor)
+                    color = QTextCharFormat(); color.setForeground(QColor('#3268d9')); link.mergeCharFormat(color)
+                fragment += 1
+            block = block.next()
+        self.documentation_topics.blockSignals(False)
+        self.documentation_search.clear()
+        cursor = QTextCursor(document); cursor.movePosition(QTextCursor.MoveOperation.Start)
+        self.documentation_view.setTextCursor(cursor); self.documentation_view.verticalScrollBar().setValue(0)
+
+    def jump_documentation(self):
+        position = self.documentation_topics.currentData()
+        if position is None: return
+        cursor = QTextCursor(self.documentation_view.document()); cursor.setPosition(position)
+        self.documentation_view.setTextCursor(cursor); self.documentation_view.ensureCursorVisible()
+        scrollbar = self.documentation_view.verticalScrollBar()
+        scrollbar.setValue(scrollbar.value() + self.documentation_view.cursorRect().top() - 12)
+
+    def find_documentation(self, *args, restart=False):
+        text = self.documentation_search.text()
+        self.documentation_next.setEnabled(bool(text))
+        if restart or not text:
+            cursor = self.documentation_view.textCursor(); cursor.movePosition(QTextCursor.MoveOperation.Start)
+            self.documentation_view.setTextCursor(cursor)
+        found = bool(text) and self.documentation_view.find(text)
+        if text and not found:
+            cursor = self.documentation_view.textCursor(); cursor.movePosition(QTextCursor.MoveOperation.Start)
+            self.documentation_view.setTextCursor(cursor); found = self.documentation_view.find(text)
+        self.documentation_search.setToolTip('Press Enter for the next match.' if found or not text else 'No matching text in this document.')
+        self.documentation_search.setStyleSheet('' if found or not text else 'border-color: #c68181;')
+
+    def open_documentation_link(self, url):
+        if url.scheme() in ('http', 'https'):
+            QDesktopServices.openUrl(url); return
+        base = QUrl.fromLocalFile(str(self.documentation_path))
+        resolved = base.resolved(url)
+        if not resolved.isLocalFile(): return
+        path = Path(resolved.toLocalFile()).resolve()
+        if not path.is_relative_to(ROOT.resolve()) or path.suffix.lower() != '.md': return
+        if path != self.documentation_path: self.load_documentation(path)
+        if resolved.fragment(): self.documentation_view.scrollToAnchor(resolved.fragment())
 
     def check_updates(self):
         if self.update_checking:
@@ -916,7 +1016,9 @@ class App(QMainWindow):
             self.summary_values[key].setText(value)
         try:
             p = Path(values['output']).expanduser().resolve()
-            while not p.exists(): p = p.parent
+            while not p.exists():
+                if p.parent == p: raise OSError('Output drive unavailable.')
+                p = p.parent
             free = shutil.disk_usage(p).free / 1024**3
             self.space.setText(f'{free:.1f} GB available on output drive\n' + ('Choose a larger drive for full builds.' if free < 40 else 'Ready for your next build.'))
         except OSError:
@@ -930,14 +1032,48 @@ class App(QMainWindow):
                     and 'error' not in data and (data.get('ready') or data.get('total') == 0))
 
     def update_build_gate(self):
-        ready = self.local_bloat_ready()
-        enabled = ready and not self.busy and not self.bloat_deleting
-        self.ota_card.setEnabled(enabled)
-        odm_error = self.odm_catalog_error()
-        self.start_button.setEnabled(enabled and not odm_error)
-        self.ota_gate_hint.setVisible(not ready)
-        self.start_button.setToolTip(odm_error or ('Build the package' if ready else 'Complete step 2: required bloat files must be verified locally.'))
+        enabled = not self.busy and not self.bloat_deleting
+        self.ota_card.setEnabled(enabled and self.selection_valid)
+        error = self.build_requirements_error()
+        self.start_button.setEnabled(enabled and not error)
+        self.start_button.setToolTip(error or 'Build the package')
         self.update_ota_controls()
+
+    def build_requirements_error(self):
+        if not self.selection_valid:
+            return 'Choose a supported device, flasher type and region.'
+        if not self.local_bloat_ready():
+            return 'Required bloat files must be downloaded and verified before building.'
+        values = self.values()
+        for role in ota_catalog.targets(values['device'], values['kind'], self.region):
+            title = 'TARGET' if role == 'ota' else 'BASE'
+            if values.get(role + '_catalog_id'):
+                continue
+            source = clean_source(values[role])
+            if not source:
+                return f'Select a full {title} OTA ZIP, download URL or catalog version.'
+            try:
+                url = urlsplit(source)
+                if url.scheme.lower() in ('http', 'https'):
+                    if not url.hostname: return f'Enter a valid HTTP(S) {title} OTA URL.'
+                elif not Path(source).expanduser().is_file():
+                    return f'Choose an existing full {title} OTA ZIP.'
+            except (OSError, ValueError):
+                return f'Choose a valid {title} OTA file or HTTP(S) URL.'
+        error = self.odm_catalog_error()
+        if error: return error
+        if not values['output']:
+            return 'Choose an output folder.'
+        try:
+            output = Path(values['output']).expanduser().resolve()
+            while not output.exists():
+                if output.parent == output: raise OSError('Output drive unavailable.')
+                output = output.parent
+            if not output.is_dir() or not os.access(output, os.W_OK):
+                return 'Choose a writable output folder.'
+        except (OSError, ValueError, RuntimeError):
+            return 'Choose a valid output folder.'
+        return ''
 
     def odm_catalog_error(self):
         values = self.values()
@@ -1201,10 +1337,10 @@ class App(QMainWindow):
 
     def update_ota_controls(self):
         if not hasattr(self, 'ota_fetch_button'): return
-        self.ota_fetch_button.setEnabled(not self.busy and not self.ota_fetching)
+        self.ota_fetch_button.setEnabled(not self.busy and not self.bloat_deleting and not self.ota_fetching)
         for role, combo in self.ota_combos.items():
             entry = combo.currentData()
-            enabled = bool(entry) and not self.busy and not self.ota_link_pending
+            enabled = bool(entry) and not self.busy and not self.bloat_deleting and not self.ota_link_pending
             local = self.ota_local.get(entry['id']) if entry else None
             downloaded = bool(local and Path(local).is_file())
             self.ota_download_buttons[role].setText('Already downloaded' if downloaded else 'Download OTA')
@@ -1214,7 +1350,7 @@ class App(QMainWindow):
 
     def copy_ota_link(self, role):
         entry = self.ota_combos[role].currentData()
-        if not entry or self.busy or self.ota_link_pending or not self.local_bloat_ready(): return
+        if not entry or self.busy or self.bloat_deleting or self.ota_link_pending: return
         self.ota_link_token += 1; token = self.ota_link_token
         self.ota_link_pending = True; self.update_ota_controls()
         self.ota_details[role].setText('Resolving a fresh download link…')
@@ -1243,7 +1379,8 @@ class App(QMainWindow):
         titles = [('New package', 'Turn a full OTA into a ready-to-use flasher package.'),
                   ('Build history', 'Your packages, checksums and build records in one place.'),
                   ('Environment', 'Check your local engine and verify the build pipeline.'),
-                  ('Build output', 'Progress, results and logs for your latest task.')]
+                  ('Build output', 'Progress, results and logs for your latest task.'),
+                  ('Documentation', 'Guides and reference for building your flasher package.')]
         self.title_label.setText(titles[index][0]); self.subtitle.setText(titles[index][1])
         if index == 1: self.load_history()
 
@@ -1262,15 +1399,11 @@ class App(QMainWindow):
             return
         if self.busy: return
         values = self.values()
-        if action in ('build', 'ota') and not self.local_bloat_ready():
+        if action == 'build' and not self.local_bloat_ready():
             QMessageBox.warning(self, 'Bloat files required', 'Complete step 2 first: download the required bloat files or choose a folder that already contains them.')
             return
-        if action == 'build' and not values['ota'] and not values.get('ota_catalog_id'):
-            QMessageBox.warning(self, 'Full OTA required', 'Choose a full OTA ZIP or paste its download URL.'); return
-        if action == 'build' and self.odm_catalog_error():
-            QMessageBox.warning(self, 'Matching ODM required', self.odm_catalog_error()); return
-        if action == 'build' and 'base' in ota_catalog.targets(values['device'], values['kind'], values['region']) and not values['base'] and not values.get('base_catalog_id'):
-            QMessageBox.warning(self, 'BASE OTA required', 'Choose the Ace 6 ColorOS BASE full OTA.'); return
+        if action == 'build' and self.build_requirements_error():
+            QMessageBox.warning(self, 'Build not ready', self.build_requirements_error()); return
         if action == 'ota':
             role, release_id, path = self.ota_download_request
             values.update(download_role=role, download_path=path)
@@ -1511,8 +1644,14 @@ def main():
                 if window.busy and time.monotonic() - started < 90:
                     return
                 success = not window.busy and window.status.text() == 'Self-test passed · test data only'
+                window.open_documentation()
+                documentation_ok = (window.pages.currentIndex() == 4 and window.documentation_view.isReadOnly()
+                                    and window.documentation_topics.findText('Building a package') >= 0)
+                window.documentation_search.setText('bloat')
+                documentation_ok = documentation_ok and window.documentation_view.textCursor().selectedText().lower() == 'bloat'
+                success = success and documentation_ok
                 (output / 'qt-smoke-test.log').write_text(window.log.toPlainText(), encoding='utf-8')
-                (output / 'qt-smoke-test.json').write_text(json.dumps({'passed': success, 'status': window.status.text(), 'frozen': bool(getattr(sys, 'frozen', False)), 'app_version': __version__}, indent=2) + '\n', encoding='utf-8')
+                (output / 'qt-smoke-test.json').write_text(json.dumps({'passed': success, 'status': window.status.text(), 'frozen': bool(getattr(sys, 'frozen', False)), 'app_version': __version__, 'documentation_in_app': documentation_ok}, indent=2) + '\n', encoding='utf-8')
                 window.navigate(0)
                 window.grab().save(str(output / 'qt-preview.png'))
                 application.exit(0 if success else 1)

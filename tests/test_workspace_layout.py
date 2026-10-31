@@ -8,10 +8,10 @@ import tempfile
 import time
 import unittest
 from unittest.mock import patch
-from PySide6.QtCore import QPoint, QRect, Qt
+from PySide6.QtCore import QPoint, QRect, Qt, QUrl
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QLineEdit, QPushButton, QScrollArea, QWidget
-from flasher_builder.gui import App, CheckBox, ComboBox, STYLE
+from flasher_builder.gui import App, CheckBox, ComboBox, ROOT, STYLE
 from flasher_builder.runtime import Runtime
 from flasher_builder.ota_catalog import targets
 
@@ -163,6 +163,65 @@ class WorkspaceLayoutTests(unittest.TestCase):
             self.window.update_check_button.click()
             self.wait_for(lambda: not self.window.update_checking)
         self.assertIn('up to date', self.window.update_status.text())
+
+    def test_documentation_opens_inside_app_and_preserves_setup(self):
+        self.window.fields['ota'].setText('https://example.invalid/full.zip')
+        before = self.window.values()
+        with patch('flasher_builder.gui.QDesktopServices.openUrl') as open_url:
+            self.window.documentation_button.click()
+            self.assertEqual(self.window.pages.currentIndex(), 4)
+            self.assertTrue(self.window.documentation_button.isChecked())
+            self.assertTrue(self.window.documentation_view.isReadOnly())
+            text = self.window.documentation_view.toPlainText()
+            self.assertIn('Building a package', text)
+            self.assertNotIn('## Building a package', text)
+            self.assertGreater(self.window.documentation_topics.count(), 4)
+            open_url.assert_not_called()
+        self.app.processEvents()
+        page = self.window.pages.currentWidget()
+        self.assertLessEqual(page.minimumSizeHint().width(), page.width())
+        self.assertLessEqual(page.minimumSizeHint().height(), page.height())
+        self.assertFalse(self.window.output_available)
+        self.window.nav[0].click()
+        self.assertEqual(self.window.pages.currentIndex(), 0)
+        self.assertEqual(self.window.values(), before)
+
+    def test_documentation_section_navigation_and_search_wrap(self):
+        self.window.documentation_button.click()
+        topics = self.window.documentation_topics
+        topics.setCurrentIndex(topics.findText('Building a package'))
+        self.assertEqual(self.window.documentation_view.textCursor().block().text(), 'Building a package')
+        self.window.documentation_search.setText('bloat')
+        cursor = self.window.documentation_view.textCursor()
+        self.assertEqual(cursor.selectedText().lower(), 'bloat')
+        first = cursor.selectionStart()
+        self.window.documentation_next.click()
+        self.assertGreater(self.window.documentation_view.textCursor().selectionStart(), first)
+        self.window.documentation_search.setText('no-such-documentation-text-9382')
+        self.assertIn('No matching text', self.window.documentation_search.toolTip())
+        self.window.documentation_search.clear()
+        self.assertFalse(self.window.documentation_next.isEnabled())
+
+    def test_local_documentation_links_stay_in_app_and_web_links_open_browser(self):
+        self.window.documentation_button.click()
+        with patch('flasher_builder.gui.QDesktopServices.openUrl') as open_url:
+            self.window.documentation_view.anchorClicked.emit(QUrl('THIRD-PARTY-NOTICES.md'))
+            self.assertEqual(self.window.documentation_path, ROOT / 'THIRD-PARTY-NOTICES.md')
+            self.assertIn('Bundled native dependencies', self.window.documentation_view.toPlainText())
+            open_url.assert_not_called()
+            self.window.open_documentation_link(QUrl.fromLocalFile(str(self.root / 'outside.md')))
+            self.assertEqual(self.window.documentation_path, ROOT / 'THIRD-PARTY-NOTICES.md')
+            self.window.documentation_view.anchorClicked.emit(QUrl('https://github.com/koaaN/Flasher_Builder/releases'))
+            open_url.assert_called_once()
+            self.assertEqual(open_url.call_args.args[0].scheme(), 'https')
+        self.window.documentation_button.click()
+        self.assertEqual(self.window.documentation_path, ROOT / 'README.md')
+
+    def test_missing_documentation_is_reported_inside_viewer(self):
+        self.window.open_documentation()
+        self.window.load_documentation(self.root / 'missing.md')
+        self.assertIn('Documentation unavailable', self.window.documentation_view.toPlainText())
+        self.assertEqual(self.window.pages.currentIndex(), 4)
 
 
 if __name__ == '__main__': unittest.main()

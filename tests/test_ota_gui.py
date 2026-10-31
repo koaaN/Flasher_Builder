@@ -103,6 +103,8 @@ class OtaGuiTests(unittest.TestCase):
         self.assertIn('ODM unavailable', self.window.ota_details['ota'].text())
         self.assertTrue(self.window.ota_download_buttons['ota'].isEnabled())
         self.window.file_tab.click()
+        self.assertFalse(self.window.start_button.isEnabled())
+        self.window.fields['ota'].setText('https://example.invalid/full.zip')
         self.assertTrue(self.window.start_button.isEnabled())
         self.assertIn('Only odm.img', self.window.source_hint.text())
 

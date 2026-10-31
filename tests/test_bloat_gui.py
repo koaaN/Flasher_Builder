@@ -55,7 +55,7 @@ class BloatGuiTests(unittest.TestCase):
     def test_download_button_needs_no_ota_and_switches_to_already_downloaded(self):
         self.assertEqual(self.window.bloat_status.text(), 'Not downloaded')
         self.assertTrue(self.window.bloat_download.isEnabled())
-        self.assertFalse(self.window.ota_card.isEnabled())
+        self.assertTrue(self.window.ota_card.isEnabled())
         self.assertFalse(self.window.start_button.isEnabled())
         self.assertEqual(self.window.fields['ota'].text(), '')
         target = self.folder / '13/GLO_BLOAT/my_preload.img'
@@ -71,13 +71,15 @@ class BloatGuiTests(unittest.TestCase):
         self.assertEqual(self.window.pages.currentIndex(), 0)
         self.assertFalse(self.window.bloat_download.isEnabled())
         self.assertTrue(self.window.ota_card.isEnabled())
+        self.assertFalse(self.window.start_button.isEnabled())
+        self.window.fields['ota'].setText('https://example.invalid/full.zip')
         self.assertTrue(self.window.start_button.isEnabled())
         saved = json.loads(self.window.settings.read_text())
         self.assertEqual(Path(saved['bloat_dir']).resolve(), self.folder.resolve())
         target.unlink(); self.window.refresh_bloat_status()
         self.wait_for(lambda: self.window.bloat_data is not None and not self.window.bloat_data.get('ready') and self.window.bloat_active_token is None)
         self.assertTrue(self.window.bloat_download.isEnabled())
-        self.assertFalse(self.window.ota_card.isEnabled())
+        self.assertTrue(self.window.ota_card.isEnabled())
         self.assertFalse(self.window.start_button.isEnabled())
 
     def test_folder_picker_updates_status_and_saved_destination(self):
@@ -102,7 +104,7 @@ class BloatGuiTests(unittest.TestCase):
         self.assertFalse(self.window.busy)
         self.assertFalse(self.window.output_available)
 
-    def test_region_change_locks_step_three_until_its_files_exist(self):
+    def test_region_change_keeps_ota_available_and_blocks_build_for_missing_bloat(self):
         sha = next(iter(self.manifest['assets']))
         self.manifest['files']['bloat/13/EU_BLOAT/my_preload.img'] = sha
         target = self.folder / '13/GLO_BLOAT/my_preload.img'
@@ -111,7 +113,7 @@ class BloatGuiTests(unittest.TestCase):
         self.wait_for(lambda: self.window.local_bloat_ready())
         self.assertTrue(self.window.ota_card.isEnabled())
         self.window.set_region('EU')
-        self.assertFalse(self.window.ota_card.isEnabled())
+        self.assertTrue(self.window.ota_card.isEnabled())
         self.wait_for(lambda: self.window.bloat_data is not None and self.window.bloat_active_token is None)
         self.assertFalse(self.window.start_button.isEnabled())
 
@@ -157,9 +159,54 @@ class BloatGuiTests(unittest.TestCase):
             self.assertFalse(self.window.start_button.isEnabled())
             self.wait_for(lambda:not self.window.bloat_deleting and self.window.bloat_data is not None and self.window.bloat_active_token is None)
         self.assertFalse(target.exists());self.assertFalse(cache.exists());self.assertEqual(other.read_bytes(),b'other region')
-        self.assertFalse(self.window.local_bloat_ready());self.assertFalse(self.window.ota_card.isEnabled())
+        self.assertFalse(self.window.local_bloat_ready());self.assertTrue(self.window.ota_card.isEnabled())
         self.assertTrue(self.window.bloat_download.isEnabled());self.assertFalse(self.window.bloat_delete.isEnabled())
         self.assertFalse(self.window.output_available)
+
+    def test_ota_can_be_selected_copied_and_downloaded_before_bloat(self):
+        catalog = dict(api_version='1', releases=[dict(id='target', device='OP 13', region='GLO',
+            model='CPH2653', version='16.0.10.500', source_url='https://example.invalid/full.zip')])
+        with patch('flasher_builder.ota_catalog.load_catalog', return_value=catalog):
+            self.window.catalog_tab.click()
+            self.wait_for(lambda: not self.window.ota_fetching)
+        self.assertTrue(self.window.ota_combos['ota'].isEnabled())
+        self.assertEqual(self.window.values()['ota_catalog_id'], 'target')
+        self.assertFalse(self.window.start_button.isEnabled())
+        with patch('flasher_builder.ota_catalog.resolve_link', return_value='https://cdn.example/full.zip'):
+            self.window.copy_ota_link('ota')
+            self.wait_for(lambda: not self.window.ota_link_pending)
+        self.assertEqual(self.app.clipboard().text(), 'https://cdn.example/full.zip')
+        target = self.root / 'downloaded-OTA.zip'
+        code = ('from pathlib import Path; Path(' + repr(str(target)) + ').write_bytes(b"test OTA"); '
+                'print(\'@@OTA_RESULT {"role":"ota","file":"worker-path"}\')')
+        with patch('flasher_builder.gui.QFileDialog.getSaveFileName', return_value=(str(target), '')), \
+             patch.object(Runtime, 'command', return_value=[sys.executable, '-u', '-c', code]):
+            self.window.ota_download_buttons['ota'].click()
+            self.assertTrue(self.window.busy)
+            self.wait_for(lambda: not self.window.busy)
+        self.assertEqual(self.window.values()['ota'], str(target))
+        self.assertFalse(self.window.local_bloat_ready())
+        self.assertTrue(self.window.ota_card.isEnabled())
+        self.assertFalse(self.window.start_button.isEnabled())
+
+    def test_build_button_tracks_ota_and_output_edits_after_bloat_is_ready(self):
+        target = self.folder / '13/GLO_BLOAT/my_preload.img'
+        target.parent.mkdir(parents=True); target.write_bytes(self.raw)
+        self.window.refresh_bloat_status(force=True); self.wait_for(self.window.local_bloat_ready)
+        self.window.fields['output'].setText(str(self.root / 'builds'))
+        self.assertFalse(self.window.start_button.isEnabled())
+        self.window.fields['ota'].setText('https://example.invalid/full.zip')
+        self.assertTrue(self.window.start_button.isEnabled())
+        for source in ('', 'https://', str(self.root / 'missing.zip')):
+            self.window.fields['ota'].setText(source)
+            self.assertFalse(self.window.start_button.isEnabled())
+        self.window.fields['ota'].setText('https://example.invalid/full.zip')
+        self.window.fields['output'].clear()
+        self.assertFalse(self.window.start_button.isEnabled())
+        self.window.fields['output'].setText(str(target))
+        self.assertFalse(self.window.start_button.isEnabled())
+        self.window.fields['output'].setText(str(self.root / 'builds'))
+        self.assertTrue(self.window.start_button.isEnabled())
 
 
 if __name__ == '__main__':

@@ -13,6 +13,7 @@ from argparse import Namespace
 from unittest.mock import patch
 from flasher_builder import backend
 from flasher_builder.backend import ROOT
+from flasher_builder.selftest import make_ota
 
 
 class BloatBackendTests(unittest.TestCase):
@@ -34,11 +35,15 @@ class BloatBackendTests(unittest.TestCase):
             with patch.object(backend, 'check_environment'), patch.object(backend.Worker, 'source') as fetch:
                 with self.assertRaises(backend.BuildError): backend.build(args)
                 fetch.assert_not_called()
-                args.download_role = 'ota'; args.download_path = str(root / 'out/OTA.zip')
+                args.download_role = 'ota'; args.download_path = str(root / 'OTA.zip')
                 args.ota_catalog_id = 'selected-version'
-                with patch.object(backend, 'selected_release') as resolve:
-                    with self.assertRaises(backend.BuildError): backend.download_ota(args)
-                    resolve.assert_not_called()
+                def prepare(worker, args, role, destination):
+                    make_ota(destination, {'boot': b'B' * 4096})
+                    return '1.2.3.4', 4096, {}
+                with patch.object(backend, 'prepare_ota', side_effect=prepare) as download:
+                    backend.download_ota(args)
+                    download.assert_called_once()
+                    self.assertTrue((root / 'OTA.zip').is_file())
                 args.ota_catalog_id = ''
             self.assertFalse((root / 'out').exists())
             image = root / 'chosen/13/GLO_BLOAT/my_preload.img'; image.parent.mkdir(parents=True); image.write_bytes(raw)
