@@ -87,6 +87,8 @@ def main():
             raise ValueError('Native package verification failed: ' + platform)
         if report.get('documentation_in_app') is not True:
             raise ValueError('Packaged documentation verification failed: ' + platform)
+        if not all(report.get(k) is True for k in ('regional_super_sizes','multipart_bloat')):
+            raise ValueError('Packaged regional-size/multipart verification failed: ' + platform)
         if report.get('app_version') != args.tag.removeprefix('v'):
             raise ValueError('Packaged app version does not match release tag: ' + platform)
         if not all(report.get(k) is True for k in ('bundled_aria2','download_pipeline_passed','anonymous_bloat_download','remote_odm_streaming')):
@@ -102,6 +104,9 @@ def main():
     files.append(checksums)
     notes = '''Native desktop release for x86-64 Linux and Windows.
 
+- Added OPPO Find X9 Ultra Super and Regional fastboot builds for CN and EU. Both use ColorOS templates and OTA_FILES_HERE. Physical super sizes are 19671285760 bytes for CN and 20451426304 for non-CN regions.
+- Oversized bloat transports can span verified release attachments. Downloads remain sequential; each part, the combined transport and the original image are SHA-256 checked. The app restores the image automatically and removes temporary parts on cancellation or failure.
+- Added real-tool checks for both regional super sizes, staged bloat preservation, multipart transport, and the supplied Linux/Windows host scripts using fake fastboot. Hybrid/recovery options are not enabled for the new device.
 - Documentation opens inside the app with styled headings, code blocks, section navigation and text search. Local Markdown links stay in the viewer; web links open in the browser.
 - OTA selection, link copying and downloads are available before bloat is downloaded. Build package stays disabled until the required bloat, OTA inputs, output folder and any required ODM match are ready.
 - Removed the Running locally badge and Local engine sidebar panel.

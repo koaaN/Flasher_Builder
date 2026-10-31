@@ -63,9 +63,26 @@ def load_manifest(path):
             raise AssetError('Invalid transport checksum in manifest')
         if asset.get('encoding') not in ('identity', 'gzip'):
             raise AssetError('Unsupported bloat asset encoding')
-        for field in ('bytes', 'raw_bytes', 'asset_id'):
+        for field in ('bytes', 'raw_bytes'):
             if not isinstance(asset.get(field), int) or asset[field] <= 0:
                 raise AssetError('Invalid asset size or ID in manifest')
+        parts = asset.get('parts')
+        if parts is not None:
+            if not isinstance(parts, list) or not 2 <= len(parts) <= 100:
+                raise AssetError('Invalid multipart asset')
+        else:
+            parts = [asset]
+        for part in parts:
+            if not isinstance(part, dict) or not isinstance(part.get('asset_id'), int) or part['asset_id'] <= 0:
+                raise AssetError('Invalid release asset ID')
+            if not isinstance(part.get('bytes'), int) or not 0 < part['bytes'] < 2 * 1024**3:
+                raise AssetError('Invalid release asset size')
+            if not re.fullmatch(r'[a-f0-9]{64}', part.get('sha256', '')):
+                raise AssetError('Invalid release asset checksum')
+            if not re.fullmatch(r'[A-Za-z0-9_.-]+', part.get('asset_name', '')):
+                raise AssetError('Invalid release asset name')
+        if sum(part['bytes'] for part in parts) != asset['bytes']:
+            raise AssetError('Multipart asset size mismatch')
     for filename, key in data['files'].items():
         parts = PurePosixPath(filename).parts
         if len(parts) < 4 or parts[0] != 'bloat' or '..' in parts or '\\' in filename or filename != PurePosixPath(filename).as_posix() or not filename.endswith('.img'):
@@ -99,15 +116,31 @@ def download_asset(repository, asset, cache, tag='bloat-assets-v1'):
     if matches(path, asset['bytes'], asset['sha256']):
         print('  Using verified cached asset: ' + asset['asset_name'], flush=True)
         return path
-    if shutil.disk_usage(cache).free < asset['bytes'] + 512 * 1024 ** 2:
+    largest_part = max((part['bytes'] for part in asset.get('parts', [])), default=0)
+    required = asset['bytes'] + max(asset['raw_bytes'], largest_part) + 512 * 1024 ** 2
+    if shutil.disk_usage(cache).free < required:
         raise AssetError('Not enough disk space for the bloat asset cache')
     partial = path.with_name(path.name + '.part-' + uuid.uuid4().hex)
+    chunk_path = partial.with_name(partial.name + '.chunk')
     print('  Downloading release asset: ' + asset['asset_name'], flush=True)
     try:
-        url = release_url(repository, tag, asset['asset_name'])
         try:
-            download_url(url, partial, root=PROJECT_ROOT, check=check_cancel, checksum=asset['sha256'], expected_bytes=asset['bytes'],
-                resolve=lambda address: resolve_release_url(address, repository, asset['asset_id'], PROJECT_ROOT, check_cancel))
+            if asset.get('parts'):
+                with partial.open('wb') as combined:
+                    for number, part in enumerate(asset['parts'], 1):
+                        check_cancel()
+                        print(f'  Part {number}/{len(asset["parts"])}: {part["asset_name"]}', flush=True)
+                        download_url(release_url(repository, tag, part['asset_name']), chunk_path,
+                            root=PROJECT_ROOT, check=check_cancel, checksum=part['sha256'], expected_bytes=part['bytes'],
+                            resolve=lambda address, part=part: resolve_release_url(address, repository, part['asset_id'], PROJECT_ROOT, check_cancel))
+                        with chunk_path.open('rb') as src:
+                            while chunk := src.read(4 * 1024**2):
+                                check_cancel(); combined.write(chunk)
+                        chunk_path.unlink()
+            else:
+                url = release_url(repository, tag, asset['asset_name'])
+                download_url(url, partial, root=PROJECT_ROOT, check=check_cancel, checksum=asset['sha256'], expected_bytes=asset['bytes'],
+                    resolve=lambda address: resolve_release_url(address, repository, asset['asset_id'], PROJECT_ROOT, check_cancel))
         except DownloadError as e:
             raise AssetError(str(e)) from e
         if not matches(partial, asset['bytes'], asset['sha256']):
@@ -116,6 +149,7 @@ def download_asset(repository, asset, cache, tag='bloat-assets-v1'):
         return path
     finally:
         partial.unlink(missing_ok=True)
+        chunk_path.unlink(missing_ok=True)
 
 
 def materialize(root, cache, manifest, device, kind, region, destination=None, source=None, local_only=False, static_odm=False):

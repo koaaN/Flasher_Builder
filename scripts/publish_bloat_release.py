@@ -196,6 +196,30 @@ def main():
     for number, item in enumerate(objects, 1):
         name = item['asset_name']
         print(f'[{number:02d}/{len(objects)}] {name} • {item["bytes"] / MIB:.2f} MiB', flush=True)
+        if item.get('parts'):
+            verified_parts = []
+            for part in item['parts']:
+                part_name = part['asset_name']
+                if part_name not in remote:
+                    source = Path(part['candidate'])
+                    if source.stat().st_size != part['bytes'] or digest(source) != part['sha256']:
+                        raise RuntimeError('Multipart source checksum mismatch: ' + part_name)
+                    staged = stage / part_name
+                    if not staged.exists(): os.link(source, staged)
+                    upload(args.repo, args.tag, staged, logs)
+                    remote = metadata(args.repo, release_id)
+                actual = remote[part_name]
+                if not verify_remote(actual, part['bytes'], part['sha256']):
+                    raise RuntimeError('GitHub part verification failed: ' + part_name)
+                verified_parts.append(dict(asset_id=actual['id'], asset_name=part_name,
+                    bytes=part['bytes'], sha256=part['sha256']))
+            updated = dict(asset_id=verified_parts[0]['asset_id'], asset_name=name,
+                bytes=item['bytes'], sha256=item['sha256'], raw_bytes=item['raw_bytes'],
+                raw_sha256=item['raw_sha256'], encoding=item['encoding'], parts=verified_parts)
+            if state['uploaded'].get(item['raw_sha256']) != updated:
+                state['uploaded'][item['raw_sha256']] = updated
+            save(state_path, state)
+            continue
         if name not in remote:
             source = obtain(item, audit)
             staged = stage / name
@@ -216,10 +240,11 @@ def main():
                     assets=state['uploaded'], files=plan['paths'])
     manifest_path = audit / 'assets-manifest.json'
     save(manifest_path, manifest)
-    checksums = [f'{v["sha256"]}  {v["asset_name"]}' for v in state['uploaded'].values()]
+    checksums = [f'{part["sha256"]}  {part["asset_name"]}' for v in state['uploaded'].values()
+                 for part in v.get('parts', [v])]
     checksums.append(digest(manifest_path) + '  assets-manifest.json')
     checksum_path = audit / 'SHA256SUMS'
-    checksum_path.write_text('\n'.join(sorted(checksums)) + '\n')
+    checksum_path.write_text('\n'.join(sorted(checksums, key=lambda line: line.split('  ', 1)[1])) + '\n')
     for path in (manifest_path, checksum_path):
         if path.name not in remote:
             upload(args.repo, args.tag, path, logs)

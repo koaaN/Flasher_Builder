@@ -7,6 +7,7 @@ from __future__ import annotations
 from argparse import Namespace
 from contextlib import contextmanager
 import hashlib
+import gzip
 import io
 import json
 import re
@@ -172,9 +173,9 @@ def run_self_test(args):
     print(f'Self-test folder: {base}', flush=True)
     for directory in ('.github', 'build_scripts', 'scripts', 'otaripper', 'lpmake', 'build_tools_assets', 'Platform-Tools'):
         shutil.copytree(repo / directory, fixture / directory)
-    for dev in ('13', 'Ace6', 'Ace6T', 'NEO8'):
+    for dev in ('13', 'Ace6', 'Ace6T', 'NEO8', 'X9U'):
         shutil.copytree(repo / 'flasher_scripts' / dev, fixture / 'flasher_scripts' / dev)
-        for region in ('GLO_BLOAT', 'IN_BLOAT', 'CN_BLOAT', 'OOS_BLOAT', 'COS_FILES_HERE'):
+        for region in ('GLO_BLOAT', 'EU_BLOAT', 'IN_BLOAT', 'CN_BLOAT', 'OOS_BLOAT', 'COS_FILES_HERE'):
             folder = fixture / 'bloat' / dev / region
             folder.mkdir(parents=True)
             for name in ('my_preload', 'my_company', 'my_region', 'oplusstanvbk', 'system_dlkm_oki'):
@@ -296,5 +297,56 @@ def run_self_test(args):
             raise BuildError('Self-test: selective ODM extraction transferred too much data.')
         if any(start <= 2*1024**2 <= end for start, end in ranges):
             raise BuildError('Self-test: ODM extraction downloaded an unrelated payload partition.')
-    (base / 'SELF-TEST-PASSED.txt').write_text('All nine pipeline tests passed with the REAL otaripper, lpmake and avbtool.\nGenerated packages contain test bytes. DO NOT FLASH.\n', encoding='utf-8')
-    print('\nSELF-TEST PASSED: extraction, three builders, sparse super image, vbmeta patching, ZIP integrity, SHA-256, unzipped folder output and remote patch-matched ODM only.', flush=True)
+    # Exercise multipart transport in the actual source/frozen materializer.
+    from scripts import materialize_bloat as materializer
+    print('\nSELF-TEST: multipart bloat transport with per-part and original-image verification', flush=True)
+    preload = b'X9U CN PRELOAD\n'.ljust(4096, b'C'); transport = gzip.compress(preload, mtime=0)
+    raw_sha = hashlib.sha256(preload).hexdigest(); transport_sha = hashlib.sha256(transport).hexdigest()
+    zero = b'\0'*4096; zero_sha = hashlib.sha256(zero).hexdigest()
+    chunks = [transport[:len(transport)//2], transport[len(transport)//2:]]
+    parts = []
+    for number, chunk in enumerate(chunks, 1):
+        name=f'TEST-ONLY-preload.part{number}';(base/name).write_bytes(chunk)
+        parts.append(dict(asset_id=number,asset_name=name,bytes=len(chunk),sha256=hashlib.sha256(chunk).hexdigest()))
+    manifest = dict(schema_version=1,repository='owner/test-fixture',tag='fixture',assets={
+        raw_sha:dict(asset_id=1,asset_name='preload.img.gz',encoding='gzip',raw_bytes=len(preload),raw_sha256=raw_sha,
+                     bytes=len(transport),sha256=transport_sha,parts=parts),
+        zero_sha:dict(asset_id=3,asset_name='zero.img',encoding='identity',raw_bytes=len(zero),raw_sha256=zero_sha,
+                      bytes=len(zero),sha256=zero_sha)},files={
+        f'bloat/X9U/{region}_BLOAT/{name}.img':raw_sha if (region,name)==('CN','my_preload') else zero_sha
+        for region in ('CN','EU') for name in ('my_preload','my_company')})
+    (fixture/'bloat/assets-manifest.json').write_text(json.dumps(manifest),encoding='utf-8')
+    (fixture/'bloat/X9U/CN_BLOAT/my_preload.img').unlink()
+    with serve_ranges(base) as (address, requests):
+        original_url, original_cancel = materializer.release_url, materializer.CANCEL_FILE
+        try:
+            materializer.release_url=lambda repo,tag,name:address+'/'+name
+            materializer.CANCEL_FILE=worker.cancel
+            materializer.materialize(fixture,base/'multipart-cache',manifest,'X9U','Super Flasher','CN')
+        finally:
+            materializer.release_url, materializer.CANCEL_FILE = original_url, original_cancel
+    if (fixture/'bloat/X9U/CN_BLOAT/my_preload.img').read_bytes()!=preload:
+        raise BuildError('Self-test: multipart bloat image bytes differ.')
+    for kind in ('Super Flasher','Regional Flasher'):
+        for region in ('CN','EU'):
+            print(f'\nSELF-TEST: Find X9 Ultra / {kind} / {region}',flush=True)
+            dest=build(Namespace(repo=str(fixture),output=str(base/'results'),device='OPPO Find X9 Ultra',
+                kind=kind,region=region,ota=str(ota),base='',cancel=args.cancel,fixture=True))
+            expected_preload=preload if region=='CN' else zero
+            with zipfile.ZipFile(dest) as archive:
+                if archive.read('OTA_FILES_HERE/boot.img')!=partitions['boot']:
+                    raise BuildError('Self-test: X9U boot image folder is incorrect.')
+                if any(name.startswith('META-INF/') for name in archive.namelist()):
+                    raise BuildError('Self-test: fastboot-only X9U build contains recovery metadata.')
+                if 'Super' in kind:
+                    image=archive.read('super.img');block_size,blocks=struct.unpack_from('<II',image,12)
+                    if block_size*blocks!=(19671285760 if region=='CN' else 20451426304):
+                        raise BuildError('Self-test: regional X9U physical super size is incorrect.')
+                    verify_super(image,dict(my_preload=expected_preload,my_company=zero,
+                        system=partitions['system'],system_dlkm_oki=partitions['system_dlkm_oki']))
+                else:
+                    for name,data in (('my_preload',expected_preload),('my_company',zero)):
+                        if archive.read('OTA_FILES_HERE/'+name+'.img')!=data:
+                            raise BuildError('Self-test: OTA extraction overwrote staged X9U bloat.')
+    (base / 'SELF-TEST-PASSED.txt').write_text('All thirteen pipeline builds and multipart transport passed with the REAL otaripper, lpmake and avbtool.\nGenerated packages contain test bytes. DO NOT FLASH.\n', encoding='utf-8')
+    print('\nSELF-TEST PASSED: extraction, three builders, sparse super image, vbmeta patching, ZIP integrity, SHA-256, unzipped folder output, remote patch-matched ODM only, regional super sizes and multipart bloat.', flush=True)

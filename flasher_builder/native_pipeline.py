@@ -7,9 +7,11 @@ import struct
 if __package__:
     from .backend import BuildError, ROOT
     from .host import tool, helper_command
+    from .device_layout import template_subtree, image_folder
 else:
     from __main__ import BuildError, ROOT
     from host import tool, helper_command
+    from device_layout import template_subtree, image_folder
 from scripts.materialize_bloat import load_manifest, selected_paths
 
 SUPER_PARTS = ('my_bigball', 'my_carrier', 'my_company', 'my_engineering', 'my_heytap',
@@ -31,8 +33,10 @@ def copy_tree(worker, source, destination):
 def stage(worker, assets, destination, dev, kind, region, source):
     name = kind + (' CN' if region == 'CN' else '')
     result = destination / name
-    template = assets / 'flasher_scripts' / dev / ('cos' if region == 'CN' else 'oos') / ('super' if 'Super' in kind else 'regional')
+    template = assets / 'flasher_scripts' / dev / template_subtree(dev, region) / ('super' if 'Super' in kind else 'regional')
     copy_tree(worker, template, result)
+    if dev == 'X9U' and 'Hybrid' not in kind:
+        shutil.rmtree(result / 'META-INF', ignore_errors=True)
     # Recovery's updater-script must retain Unix line endings on Windows too.
     for script in result.rglob('updater-script'):
         script.write_bytes(script.read_bytes().replace(b'\r\n', b'\n'))
@@ -54,7 +58,7 @@ def stage(worker, assets, destination, dev, kind, region, source):
             continue  # Legacy nested archival copies are not staging inputs.
         folder = path.parts[-2]
         if folder == main:
-            output = result / ('Super' if 'Super' in kind else 'COS_FILES_HERE' if region == 'CN' else 'OOS_FILES_HERE')
+            output = result / ('Super' if 'Super' in kind else image_folder(dev, region))
         elif folder == 'GLO_BLOAT' and region == 'CN':
             output = result / 'OOS_FILES_HERE'
         else:
@@ -119,7 +123,7 @@ def extract(worker, assets, ota, directory, partitions=None, strict=False):
 
 
 def build_images(worker, assets, result, download, dev, kind, region, size, builder, odm=None):
-    boot_dir = result / ('COS_FILES_HERE' if region == 'CN' else 'OOS_FILES_HERE')
+    boot_dir = result / image_folder(dev, region)
     boot_dir.mkdir(parents=True, exist_ok=True)
     super_dir = result / 'Super'
     if builder == 'BUILD_ACE6_OOS.sh':
@@ -150,11 +154,17 @@ def build_images(worker, assets, result, download, dev, kind, region, size, buil
             super_dir.mkdir(parents=True, exist_ok=True)
             if dev in ('Ace5', 'Ace6T') and region != 'CN':
                 (images / 'odm.img').unlink(missing_ok=True)
-            for name in EXTRACT_TO_SUPER:
+            for name in (SUPER_PARTS if dev == 'X9U' else EXTRACT_TO_SUPER):
                 image = images / (name + '.img')
-                if image.is_file(): image.replace(super_dir / image.name)
+                if image.is_file():
+                    destination = super_dir / image.name
+                    if dev == 'X9U' and destination.exists(): image.unlink()
+                    else: image.replace(destination)
         for image in images.iterdir():
-            if image.is_file(): image.replace(boot_dir / image.name)
+            if image.is_file():
+                destination = boot_dir / image.name
+                if dev == 'X9U' and destination.exists(): image.unlink()
+                else: image.replace(destination)
         shutil.rmtree(images)
     if 'Super' in kind:
         if dev == 'Ace6T' and region in ('IN', 'GLO'):

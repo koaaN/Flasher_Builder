@@ -28,12 +28,14 @@ if __package__:
     from . import ota_catalog
     from scripts.http_download import DownloadError, download_url, executable, redact_output
     from .remote_zip import ota_metadata, RangeError
+    from .device_layout import template_subtree, image_folder
     from .host import tool, helper_command, configure_path
 else:
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
     import ota_catalog
     from scripts.http_download import DownloadError, download_url, executable, redact_output
     from remote_zip import ota_metadata, RangeError
+    from device_layout import template_subtree, image_folder
     from host import tool, helper_command, configure_path
 
 ROOT = Path(sys.executable).resolve().parent if getattr(sys, 'frozen', False) else Path(__file__).resolve().parent.parent
@@ -54,7 +56,8 @@ class Catalog:
         self.root = Path(root)
         text = (self.root / '.github/workflows/build_tools.yml').read_text(encoding='utf-8')
         self.devices = dict(re.findall(r'\["([^"]+)"\]="([^"]+)"', text.split('declare -A DEV_MAP=(', 1)[1].split(')', 1)[0]))
-        self.sizes = {k: int(v) for k, v in re.findall(r'\["([^"]+)"\]="(\d+) \d+"', text)}
+        self.region_sizes = {k: (int(cn), int(other)) for k, cn, other in re.findall(r'\["([^"]+)"\]="(\d+) (\d+)"', text)}
+        self.sizes = {k: sizes[0] for k, sizes in self.region_sizes.items()}
         self.builders = {tuple(key.split('|')): value + '.sh' for key, value in re.findall(r'BUILDER_MAP\["([^"]+)"\]="([^"]+)"', text)}
         if not self.devices or not self.builders:
             raise BuildError('The workflow device/builder tables could not be read.')
@@ -67,12 +70,15 @@ class Catalog:
         dev = self.devices[device]
         return [r for r in ('GLO', 'EU', 'IN', 'NA', 'CN') if (kind, dev, r) in self.builders]
 
+    def super_size(self, device, region):
+        return self.region_sizes.get(device, (0, 0))[0 if region == 'CN' else 1]
+
     def selection(self, device, kind, region):
         dev = self.devices.get(device)
         builder = self.builders.get((kind, dev, region))
         if not builder:
             raise BuildError('This device, flasher type and region combination is unsupported.')
-        subtree = 'cos' if region == 'CN' else 'oos'
+        subtree = template_subtree(dev, region)
         template = self.root / 'flasher_scripts' / dev / subtree / ('super' if 'Super' in kind else 'regional')
         if not template.is_dir():
             raise BuildError(f'The workflow lists this combination, but its template is missing: {template}')
@@ -506,10 +512,10 @@ def build(args):
         result = stage(worker, assets, job / 'stage', dev, args.kind, args.region, source)
         print('STEP 3/5 • Extract partitions and build flasher', flush=True)
         result = build_images(worker, assets, result, download, dev, args.kind, args.region,
-                              catalog.sizes.get(dev, 0), builder, odm)
+                              catalog.super_size(dev, args.region), builder, odm)
         if not result.is_dir():
             raise BuildError(f'Builder did not create the expected output: {result}')
-        boot_dir = result / ('COS_FILES_HERE' if args.region == 'CN' else 'OOS_FILES_HERE')
+        boot_dir = result / image_folder(dev, args.region)
         if not (boot_dir / 'boot.img').is_file():
             raise BuildError('Build output has no boot.img. The OTA may be incomplete or incompatible.')
         if 'Super' in args.kind and not (result / 'super.img').is_file():

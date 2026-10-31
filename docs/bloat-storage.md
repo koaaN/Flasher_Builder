@@ -1,14 +1,19 @@
 # Bloat release storage
 
 All bloat images live together in the public `bloat-assets-v1` release of
-`koaaN/Flasher_Builder`. There are 54 deduplicated image attachments covering
-147 device/region image paths, plus `assets-manifest.json` and `SHA256SUMS`.
+`koaaN/Flasher_Builder`. There are 55 deduplicated images covering
+151 device/region image paths. Multipart transport uses 57 image attachments
+in total, plus `assets-manifest.json` and `SHA256SUMS`.
 
 The repository's `bloat/assets-manifest.json` pins the release asset IDs,
 transport sizes and SHA-256 checksums, original image sizes/checksums, and the
 mapping from each image path to an attachment. Identical image contents share
 an attachment. Oversized images are stored as lossless gzip attachments; the
-original image bytes are restored and checked before use.
+original image bytes are restored and checked before use. Transports that remain
+oversized after compression use an ordered `parts` list. Each part has its own
+asset ID, byte count and SHA-256. The downloader fetches parts sequentially,
+checks their combined size/SHA-256, then decompresses and checks the original
+image. Temporary part files are removed on success, failure or cancellation.
 
 ## Builds
 
@@ -56,10 +61,12 @@ folder's hidden `.cache` holds transport objects for repairs.
 
 ## Required local prerequisite
 
-Bloat is step 2, before OTA selection. The OTA controls and
-Build package stay disabled until every required image is locally present and
-verified for the current device/flasher/region/folder. Changing selection or
-losing a required file locks those controls again. The worker independently
+Bloat is step 2 and is required before building. OTA selection, link copying
+and downloads are available before bloat is ready. Build package stays disabled
+until every required image is locally present and verified for the current
+device/flasher/region/folder, the OTA inputs and output folder are ready, and
+any required ODM match is available. Changing selection or losing a required
+file disables building again. The worker independently
 verifies local images before it copies or downloads the OTA, and local-only
 staging rejects missing images without falling back to a release download.
 The explicit bloat download action remains available without an OTA.

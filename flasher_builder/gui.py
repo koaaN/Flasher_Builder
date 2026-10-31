@@ -28,6 +28,7 @@ from .runtime import Runtime
 from . import ota_catalog
 from . import __version__, updates
 from .bloat_storage import BloatStorageError, plan_deletion, delete_bloat
+from .device_layout import coloros
 from scripts.materialize_bloat import AssetError, load_manifest, inspect_downloads
 
 
@@ -1004,14 +1005,14 @@ class App(QMainWindow):
         self.selection_info.setText(text)
         self.refresh_bloat_status()
         self.update_build_gate()
-        self.os_badge.setText('COLOR OS' if self.region == 'CN' else 'OXYGEN OS')
+        self.os_badge.setText('COLOR OS' if coloros(self.catalog.devices[values['device']], self.region) else 'OXYGEN OS')
         if not self.output_available:
             self.update_package_summary(values)
 
     def update_package_summary(self, values):
         self.summary_device.setText(values['device'].replace('Oneplus', 'OnePlus'))
         self.summary_kind.setText(values['kind'])
-        for key, value in dict(os='ColorOS' if values['region'] == 'CN' else 'OxygenOS', region='Global' if values['region'] == 'GLO' else values['region'],
+        for key, value in dict(os='ColorOS' if coloros(self.catalog.devices[values['device']], values['region']) else 'OxygenOS', region='Global' if values['region'] == 'GLO' else values['region'],
                                format='ZIP + SHA-256' if values.get('zip_output', True) else 'Flasher folder', engine='Native Windows' if sys.platform == 'win32' else 'Native Linux').items():
             self.summary_values[key].setText(value)
         try:

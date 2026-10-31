@@ -4,11 +4,13 @@ import io
 import hashlib
 import importlib.util
 import json
+from itertools import groupby
 from pathlib import Path
 from types import SimpleNamespace
 import tempfile
 import unittest
 from unittest.mock import patch
+from flasher_builder.selftest import serve_ranges
 
 spec = importlib.util.spec_from_file_location('materialize_bloat', Path(__file__).resolve().parents[1] / 'scripts/materialize_bloat.py')
 assets = importlib.util.module_from_spec(spec)
@@ -27,6 +29,59 @@ def fixture(raw, encoding='identity'):
 
 
 class ReleaseAssetTests(unittest.TestCase):
+    def multipart_fixture(self):
+        raw = b'Multipart firmware fixture\0' * 4096
+        manifest, obj, transport = fixture(raw, 'gzip')
+        cut = len(transport) // 3
+        chunks = [transport[:cut], transport[cut:2*cut], transport[2*cut:]]
+        obj['parts'] = [dict(asset_id=i+1, asset_name=f'image.part{i+1}', bytes=len(data),
+                            sha256=hashlib.sha256(data).hexdigest()) for i,data in enumerate(chunks)]
+        return manifest, obj, raw, chunks
+
+    def test_multipart_gzip_download_is_serial_verified_and_restores_exact_image(self):
+        manifest, obj, raw, chunks = self.multipart_fixture()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp); served = root/'served'; served.mkdir()
+            for part,data in zip(obj['parts'],chunks): (served/part['asset_name']).write_bytes(data)
+            (root/'manifest.json').write_text(json.dumps(manifest))
+            assets.load_manifest(root/'manifest.json')
+            with serve_ranges(served) as (url, requests), patch.object(assets, 'release_url', side_effect=lambda repo,tag,name:url+'/'+name):
+                assets.materialize(root, root/'cache', manifest, '13', 'SuperHybrid Flasher', 'CN')
+            self.assertEqual((root/'bloat/13/CN_BLOAT/my_preload.img').read_bytes(), raw)
+            self.assertEqual([name for name,_ in groupby(name for name,_,_ in requests)], [p['asset_name'] for p in obj['parts']])
+            self.assertEqual(len(list((root/'cache').iterdir())), 1)
+
+    def test_multipart_cancellation_cleans_temporary_parts_and_preserves_images(self):
+        manifest, obj, raw, chunks = self.multipart_fixture()
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);target=root/'bloat/13/CN_BLOAT/my_preload.img';target.parent.mkdir(parents=True)
+            target.write_bytes(b'keep existing image');calls=[]
+            def download(url, destination, **kwargs):
+                calls.append(url);destination.write_bytes(chunks[len(calls)-1])
+                if len(calls)==2:raise InterruptedError('cancelled')
+            with patch.object(assets,'download_url',side_effect=download), self.assertRaises(InterruptedError):
+                assets.materialize(root,root/'cache',manifest,'13','SuperHybrid Flasher','CN')
+            self.assertEqual(target.read_bytes(),b'keep existing image')
+            self.assertEqual(list((root/'cache').iterdir()),[])
+
+    def test_multipart_combined_checksum_failure_rejects_the_image(self):
+        manifest, obj, raw, chunks = self.multipart_fixture();obj['sha256']='0'*64
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);calls=[]
+            def download(url,destination,**kwargs):
+                destination.write_bytes(chunks[len(calls)]);calls.append(url)
+            with patch.object(assets,'download_url',side_effect=download), self.assertRaisesRegex(assets.AssetError,'SHA-256 mismatch'):
+                assets.materialize(root,root/'cache',manifest,'13','SuperHybrid Flasher','CN')
+            self.assertFalse((root/'bloat/13/CN_BLOAT/my_preload.img').exists())
+            self.assertEqual(list((root/'cache').iterdir()),[])
+
+    def test_multipart_manifest_rejects_invalid_part_size_id_name_and_total(self):
+        for change in ({'bytes':0},{'bytes':'invalid'},{'asset_id':0},{'asset_name':'../image'},{'bytes':10**12}):
+            manifest,obj,raw,chunks=self.multipart_fixture();obj['parts'][0].update(change)
+            with self.subTest(change=change), tempfile.TemporaryDirectory() as tmp:
+                path=Path(tmp)/'manifest.json';path.write_text(json.dumps(manifest))
+                with self.assertRaises(assets.AssetError):assets.load_manifest(path)
+
     def test_verified_gzip_cache_materializes_original_image(self):
         raw = b'Original image bytes\0' * 4096
         manifest, obj, transport = fixture(raw, 'gzip')

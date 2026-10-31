@@ -1,6 +1,6 @@
 # Flasher Builder
 
-A local desktop GUI for this repository's firmware build workflow. Select the device, flasher type and region, choose a **full OTA ZIP** or paste its download URL, and click **Build package**. The GUI supports the same 62 combinations as `.github/workflows/build_tools.yml` and filters the choices as you select a device.
+A local desktop GUI for this repository's firmware build workflow. Select the device, flasher type and region, choose a **full OTA ZIP** or paste its download URL, and click **Build package**. The GUI supports the same 66 combinations as `.github/workflows/build_tools.yml` and filters the choices as you select a device.
 
 Open **Documentation** in the sidebar to read this guide inside the app, with formatted headings, code blocks, section navigation and text search. Bundled documentation works offline; web links open in your browser.
 
@@ -50,7 +50,7 @@ URLs are passed as argument arrays, without shell interpolation.
 
 ## Building a package
 
-- Choose a supported device, flasher type and region. CN means ColorOS; other regions use OxygenOS templates.
+- Choose a supported device, flasher type and region. The app selects ColorOS or OxygenOS templates for the device; the region alone does not determine the firmware family.
 - Complete **step 2 — Bloat files**: choose a folder containing the required images or click **Download bloat**. The app verifies their sizes and SHA-256 hashes. You can select or download an OTA before this step is complete. **Build package** stays disabled until the required bloat, OTA selections, output folder and any required ODM match are ready.
 - In **step 3**, use **Version catalog**, choose a full OTA ZIP, or enter an HTTP(S) URL. Placeholder and incremental OTA files are rejected.
 - Choose the output folder. **ZIP build** is checked by default; uncheck it to keep the finished flasher folder and skip compression. This choice is remembered between launches. Recovery installation requires a ZIP.
@@ -119,7 +119,10 @@ flasher type. Downloads are verified and kept in the chosen folder's `.cache`
 for reuse. Images are verified again before the build starts and as they are
 staged. The native build worker requires local images and does not silently fetch
 missing bloat after step 2. Oversized release attachments are losslessly gzip-compressed;
-the builder restores the original `.img` automatically.
+the builder restores the original `.img` automatically. If compression still exceeds
+GitHub's attachment limit, the transport is split across smaller attachments.
+The app downloads these one at a time, verifies each part and the combined
+transport, then restores and verifies the original image. No manual joining is needed.
 
 The repository and bloat release are public. Set `BLOAT_CACHE_DIR` in the build environment to use a different
 cache location. The cache can be removed when no build is running; the next

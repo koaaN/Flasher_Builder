@@ -24,6 +24,7 @@ on:
           - Oneplus Pad 3 Pro
           - Realme GT 7 Pro
           - Realme NEO8
+          - OPPO Find X9 Ultra
         default: Oneplus 13
       flasher_type:
         description: "Flasher type"
@@ -245,6 +246,7 @@ jobs:
             ["Oneplus Pad 3 Pro"]="Pad3Pro"
             ["Realme GT 7 Pro"]="GT7Pro"
             ["Realme NEO8"]="NEO8"
+            ["OPPO Find X9 Ultra"]="X9U"
           )
           
           dev="${DEV_MAP[$dev_disp]}"
@@ -271,6 +273,7 @@ jobs:
               ["Pad3Pro"]="16626221056 16626221056"
               ["GT7Pro"]="15569256448 15569256448"
               ["NEO8"]="18790481920 18790481920"
+              ["X9U"]="19671285760 20451426304"
             )
 
             entry="${SUPER_SIZE_TABLE[$dev]}"
@@ -357,6 +360,9 @@ jobs:
 
           BUILDER_MAP["Super Flasher|NEO8|CN"]="BUILD_SUPER"
 
+          BUILDER_MAP["Super Flasher|X9U|CN"]="BUILD_SUPER"
+          BUILDER_MAP["Super Flasher|X9U|EU"]="BUILD_SUPER"
+
           BUILDER_MAP["Super Flasher|GT7Pro|CN"]="BUILD_SUPER"
           BUILDER_MAP["Super Flasher|GT7Pro|EU"]="BUILD_SUPER"
 
@@ -374,6 +380,9 @@ jobs:
 
           # ===== Regional Flasher =====
           BUILDER_MAP["Regional Flasher|Ace5|CN"]="BUILD_REGIONAL"
+
+          BUILDER_MAP["Regional Flasher|X9U|CN"]="BUILD_REGIONAL"
+          BUILDER_MAP["Regional Flasher|X9U|EU"]="BUILD_REGIONAL"
           
           BUILDER_MAP["Regional Flasher|Ace5Pro|CN"]="BUILD_REGIONAL"
           
@@ -503,6 +512,7 @@ jobs:
               "Oneplus Pad 3 Pro")  device_model="Pad3Pro" ;;
               "Realme GT 7 Pro")  device_model="GT7Pro" ;;
               "Realme NEO8")      device_model="NEO8" ;;
+              "OPPO Find X9 Ultra") device_model="X9U" ;;
               *)   device_model="$dev_disp" ;;
             esac
 

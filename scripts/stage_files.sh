@@ -78,7 +78,7 @@ get_bloat_folder () {
 get_os_subtree () {
   local dev="$1" ftype="$2" region="$3"
 
-  if [[ "$region" == "CN" ]]; then
+  if [[ "$dev" == "X9U" || "$region" == "CN" ]]; then
     echo "cos"
   else
     echo "oos"
@@ -184,6 +184,9 @@ if [ ! -d "$tpl_base" ]; then
 fi
 
 rsync -a "$tpl_base/" "$work_dir/"
+if [[ "$dev" == "X9U" && "$ftype" != *Hybrid* ]]; then
+  rm -rf "$work_dir/META-INF"
+fi
 
 # -----------------------------
 #      HYBRID: Add META-INF
@@ -332,6 +335,7 @@ if [[ "$ftype" == "Regional Flasher" || "$ftype" == "RegionalHybrid Flasher" ]];
   # -----------------------------
   if [[ "$region" != "CN" ]]; then
     oos_here="$work_dir/OOS_FILES_HERE"
+    [[ "$dev" == "X9U" ]] && oos_here="$work_dir/OTA_FILES_HERE"
     mkdir -p "$oos_here"
 
     bloat_folder_oos="$(get_bloat_folder "$dev" "$region")"
@@ -344,6 +348,7 @@ if [[ "$ftype" == "Regional Flasher" || "$ftype" == "RegionalHybrid Flasher" ]];
   # -----------------------------
   if [[ "$region" = "CN" ]]; then
     cos_here="$work_dir/COS_FILES_HERE"
+    [[ "$dev" == "X9U" ]] && cos_here="$work_dir/OTA_FILES_HERE"
     mkdir -p "$cos_here"
 
     bloat_folder_oos="$(get_bloat_folder "$dev" "$region")"

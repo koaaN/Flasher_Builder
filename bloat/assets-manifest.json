@@ -489,6 +489,35 @@
       "raw_bytes": 12364,
       "raw_sha256": "59603377dca738fda1d8c733b3d87712817e54d8ab9390846387b3bfb86c5730",
       "encoding": "identity"
+    },
+    "a4d3d6502b2ef8a1249296b403eccd91d6b118463c2e5334962e97b90c94cd4b": {
+      "raw_sha256": "a4d3d6502b2ef8a1249296b403eccd91d6b118463c2e5334962e97b90c94cd4b",
+      "raw_bytes": 2399965184,
+      "sha256": "980289fb1815e4f8d32686c6048f120c1a7ce48c130ea52ef68d6c2d2282b7f6",
+      "bytes": 2363292486,
+      "encoding": "gzip",
+      "asset_name": "bloat-X9U-CN_BLOAT-my_preload-a4d3d6502b2e.img.gz",
+      "asset_id": 696237894,
+      "parts": [
+        {
+          "asset_id": 696237894,
+          "asset_name": "bloat-X9U-CN_BLOAT-my_preload-a4d3d6502b2e.img.gz.part01-of-03",
+          "bytes": 1073741824,
+          "sha256": "5f9c4b888c6749e1edb7b00b5811bfc2e9f6fa079996719188d892640f231e67"
+        },
+        {
+          "asset_id": 696239886,
+          "asset_name": "bloat-X9U-CN_BLOAT-my_preload-a4d3d6502b2e.img.gz.part02-of-03",
+          "bytes": 1073741824,
+          "sha256": "b68082ab6eae7a5fc51ae4a450cd9ae1bfa5c7533556db24891f8d0c0625ca36"
+        },
+        {
+          "asset_id": 696241453,
+          "asset_name": "bloat-X9U-CN_BLOAT-my_preload-a4d3d6502b2e.img.gz.part03-of-03",
+          "bytes": 215808838,
+          "sha256": "107dd041c93d44469dc20dbe555dbbbb1ec17bd15dbe78f9ba6137d615625e63"
+        }
+      ]
     }
   },
   "files": {
@@ -638,6 +667,10 @@
     "bloat/Pad3Pro/IN_BLOAT/system_dlkm_oki.img": "95cd2892bf929d4417996c709a6d85f8c7e6c8d299d440d127b7edc5609692a1",
     "bloat/NEO8/CN_BLOAT/my_preload.img": "183688e20dbb34486259f3d3cf9d3e860cb3bc40cb8c5b1d028b17dc9e2476d2",
     "bloat/NEO8/CN_BLOAT/system_dlkm_oki.img": "df5ebddcdbb85a8a7470bc1d5436ad37e446c72b0475361754833735e1022b2d",
-    "bloat/NEO8/CN_BLOAT/my_company.img": "59603377dca738fda1d8c733b3d87712817e54d8ab9390846387b3bfb86c5730"
+    "bloat/NEO8/CN_BLOAT/my_company.img": "59603377dca738fda1d8c733b3d87712817e54d8ab9390846387b3bfb86c5730",
+    "bloat/X9U/CN_BLOAT/my_company.img": "3c673be2229ba248bd7d551785f30d957936fb85aa497b6f99191457034d78d1",
+    "bloat/X9U/EU_BLOAT/my_company.img": "3c673be2229ba248bd7d551785f30d957936fb85aa497b6f99191457034d78d1",
+    "bloat/X9U/CN_BLOAT/my_preload.img": "a4d3d6502b2ef8a1249296b403eccd91d6b118463c2e5334962e97b90c94cd4b",
+    "bloat/X9U/EU_BLOAT/my_preload.img": "b7edd6108aeef9d378bed2d5e06ec281c23a8bf4e1da250cab55e9e2227a2628"
   }
 }

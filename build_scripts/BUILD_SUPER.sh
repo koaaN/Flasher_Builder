@@ -57,6 +57,11 @@ else
 fi
 
 
+if [[ "${DEV:-}" == "X9U" ]]; then
+  cos_here="$super_dest/OTA_FILES_HERE"
+  oos_here="$super_dest/OTA_FILES_HERE"
+fi
+
 if [[ ! -d "$super_src" ]]; then
   echo "ERROR: Template 'SuperHybrid Flasher' NOT FOUND!: $super_src"
   exit 1
@@ -106,8 +111,15 @@ part_list=(
   odm.img product.img system.img system_dlkm.img system_ext.img
   vendor.img vendor_dlkm.img
 )
+if [[ "${DEV:-}" == "X9U" ]]; then
+  part_list+=(my_company.img my_preload.img system_dlkm_oki.img system_dlkm_gki.img)
+fi
 for f in "${part_list[@]}"; do
   if [[ -f "$new_folder/$f" ]]; then
+    if [[ "${DEV:-}" == "X9U" && -f "$super_work/$f" ]]; then
+      rm -f "$new_folder/$f"
+      continue
+    fi
     echo "  moving $f"
     mv -f "$new_folder/$f" "$super_work/"
   fi

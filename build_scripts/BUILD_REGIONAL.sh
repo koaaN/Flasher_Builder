@@ -51,6 +51,11 @@ else
 fi
 
 
+if [[ "${DEV:-}" == "X9U" ]]; then
+  cos_here="$reg_dest/OTA_FILES_HERE"
+  oos_here="$reg_dest/OTA_FILES_HERE"
+fi
+
 if [[ ! -d "$reg_src" ]]; then
   echo "ERROR: Template 'RegionalHybrid Flasher' NOT FOUND!: $reg_src"
   exit 1
@@ -78,6 +83,12 @@ new_folder="${image_dirs[0]}"
 
 #-------------------------------------------
 # Move extracted images into XOS_FILES_HERE
+if [[ "${DEV:-}" == "X9U" ]]; then
+  for image in "$new_folder"/*.img; do
+    [[ -f "$image" ]] || continue
+    if [[ -f "$cos_here/$(basename "$image")" ]]; then rm -f "$image"; fi
+  done
+fi
 #-------------------------------------------
 
 echo "Move extracted images into XOS_FILES_HERE"

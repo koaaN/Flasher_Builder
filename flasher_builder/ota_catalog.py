@@ -26,6 +26,7 @@ DEVICE_NAMES = {
     'Oneplus Pad 2 Pro': 'OP PAD2 PRO', 'Oneplus Pad 3': 'OP PAD3',
     'Oneplus Pad 3 Pro': 'OP PAD3 PRO', 'Realme GT 7 Pro': 'Realme GT7 PRO',
     'Realme NEO8': 'Realme NEO 8',
+    'OPPO Find X9 Ultra': 'OPPO FIND X9 ULTRA',
 }
 
 

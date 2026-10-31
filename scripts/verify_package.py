@@ -51,6 +51,8 @@ def main():
             raise RuntimeError('Packaged aria2 download self-test failed.')
         if 'remote patch-matched ODM only' not in download_log:
             raise RuntimeError('Packaged selective remote ODM self-test failed.')
+        if 'regional super sizes and multipart bloat' not in download_log:
+            raise RuntimeError('Packaged regional-size/multipart self-test failed.')
         logs.append(download_log)
         # Prove that a clean install can download public bloat over HTTPS with
         # the bundled aria2 and without the runner's GitHub credentials.
@@ -79,7 +81,8 @@ def main():
                       native_worker=True, frozen_gui=True, pipeline_passed=True,
                       wsl_required=False, otaripper_version='3.5.0', app_version=smoke['app_version'],
                       bundled_aria2=True, aria2_version='1.37.0', download_pipeline_passed=True,
-                      anonymous_bloat_download=True, remote_odm_streaming=True, documentation_in_app=True)
+                      anonymous_bloat_download=True, remote_odm_streaming=True, documentation_in_app=True,
+                      regional_super_sizes=True, multipart_bloat=True)
         args.report.parent.mkdir(parents=True, exist_ok=True)
         args.report.write_text(json.dumps(report, indent=2)+'\n', encoding='utf-8')
         args.report.with_suffix('.log').write_text('\n'.join(logs), encoding='utf-8')
