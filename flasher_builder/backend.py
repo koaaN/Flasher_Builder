@@ -421,6 +421,7 @@ def build(args):
     if shutil.disk_usage(output).free < GIB and not getattr(args, 'fixture', False):
         raise BuildError('Less than 1 GiB available in the output folder.')
     needs_base = builder == 'BUILD_ACE6_OOS.sh'
+    no_zip = bool(getattr(args, 'no_zip', False))
     if needs_base and not args.base and not getattr(args, 'base_catalog_id', ''):
         raise BuildError('Ace 6 OxygenOS needs the Ace 6 ColorOS BASE full OTA and the 15R India TARGET full OTA.')
     job = output / (time.strftime('%Y%m%d-%H%M%S') + '-' + uuid.uuid4().hex[:6])
@@ -438,7 +439,7 @@ def build(args):
         print(f'OTA version: {version}; target devices: {metadata.get("pre-device", "not specified")}', flush=True)
         # Sparse output + raw images + archive can coexist. Check again
         # after downloading; do not start extraction on a nearly full disk.
-        required = max(2 * GIB, payload_size * (5 if needs_base else 4))
+        required = max(2 * GIB, payload_size * ((5 if needs_base else 4) - int(no_zip)))
         free = shutil.disk_usage(job).free
         if free < required and not getattr(args, 'fixture', False):
             raise BuildError(f'Not enough disk space: {free / GIB:.1f} GiB free; allow at least {required / GIB:.1f} GiB for this payload. Choose another output drive.')
@@ -461,22 +462,30 @@ def build(args):
             raise BuildError('Build output has no boot.img. The OTA may be incomplete or incompatible.')
         if 'Super' in args.kind and not (result / 'super.img').is_file():
             raise BuildError('Build output has no super.img.')
-        print('STEP 4/5 • Package ZIP and calculate SHA-256', flush=True)
         suffix = 'COS' if args.region == 'CN' else args.region
-        filename = ('TEST-DO-NOT-FLASH ' if getattr(args, 'fixture', False) else '') + f'{args.kind} {dev} {suffix} {version}.zip'
+        filename = ('TEST-DO-NOT-FLASH ' if getattr(args, 'fixture', False) else '') + f'{args.kind} {dev} {suffix} {version}'
+        if not no_zip: filename += '.zip'
         dest = job / filename
-        package(worker, result, dest)
+        if no_zip:
+            print('STEP 4/5 • Finalize flasher folder', flush=True)
+            worker.check()
+            result.replace(dest)
+        else:
+            print('STEP 4/5 • Package ZIP and calculate SHA-256', flush=True)
+            package(worker, result, dest)
         worker.check()
         manifest = dict(device=args.device, flasher_type=args.kind, region=args.region,
                         version=version, artifact=filename, created=time.strftime('%Y-%m-%dT%H:%M:%S'),
-                        test_fixture=bool(getattr(args, 'fixture', False)))
+                        test_fixture=bool(getattr(args, 'fixture', False)), output_format='folder' if no_zip else 'zip')
         (job / 'build.json').write_text(json.dumps(manifest, indent=2) + '\n', encoding='utf-8')
         print('Removing temporary working files…', flush=True)
         for directory in (assets, job / 'stage', download):
             shutil.rmtree(directory)
+        worker.check()
         print('STEP 5/5 • Complete', flush=True)
-        print(f'ZIP: {dest}', flush=True)
-        print('@@RESULT ' + json.dumps({'job': str(job), 'zip': str(dest)}), flush=True)
+        print(f'{"Folder" if no_zip else "ZIP"}: {dest}', flush=True)
+        print('@@RESULT ' + json.dumps({'job': str(job), 'folder' if no_zip else 'zip': str(dest),
+                                        'format': 'folder' if no_zip else 'zip'}), flush=True)
         return dest
 
 
@@ -519,6 +528,7 @@ def main():
     parser.add_argument('--ota', default='')
     parser.add_argument('--base', default='')
     parser.add_argument('--output', default=str(ROOT / 'builds'))
+    parser.add_argument('--no-zip', action='store_true', help='Keep the finished flasher folder instead of creating a ZIP.')
     parser.add_argument('--cancel')
     args = parser.parse_args()
     try:

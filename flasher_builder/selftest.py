@@ -7,6 +7,7 @@ from __future__ import annotations
 from argparse import Namespace
 import hashlib
 import io
+import json
 from pathlib import Path
 import shutil
 import struct
@@ -204,5 +205,19 @@ def run_self_test(args):
         expected = dest.with_suffix('.zip.sha256').read_text().split()[0]
         if hashlib.sha256(dest.read_bytes()).hexdigest() != expected:
             raise BuildError('Self-test: package SHA-256 mismatch.')
-    (base / 'SELF-TEST-PASSED.txt').write_text('All six pipeline tests passed with the REAL otaripper, lpmake and avbtool.\nGenerated packages contain test bytes. DO NOT FLASH.\n', encoding='utf-8')
-    print('\nSELF-TEST PASSED: extraction, three builders, sparse super image, vbmeta patching, ZIP integrity and SHA-256.', flush=True)
+    print('\nSELF-TEST: finished flasher folder without ZIP compression', flush=True)
+    folder = build(Namespace(repo=str(fixture), output=str(base / 'results'), device='Oneplus 13',
+                             kind='SuperHybrid Flasher', region='GLO', ota=str(ota), base='',
+                             cancel=args.cancel, fixture=True, no_zip=True))
+    if not folder.is_dir() or (folder / 'OOS_FILES_HERE/boot.img').read_bytes() != partitions['boot']:
+        raise BuildError('Self-test: unzipped flasher boot image differs from payload.')
+    verify_super((folder / 'super.img').read_bytes(), {name: partitions[name] for name in ('system', 'product', 'vendor')})
+    if not (folder / 'Super_Flasher.bat').is_file():
+        raise BuildError('Self-test: unzipped flasher scripts are missing.')
+    info = json.loads((folder.parent / 'build.json').read_text(encoding='utf-8'))
+    if info['output_format'] != 'folder' or info['artifact'] != folder.name:
+        raise BuildError('Self-test: folder build history is incorrect.')
+    if {p.name for p in folder.parent.iterdir()} != {folder.name, 'build.json', 'build.log'}:
+        raise BuildError('Self-test: folder build left an archive or temporary working files.')
+    (base / 'SELF-TEST-PASSED.txt').write_text('All seven pipeline tests passed with the REAL otaripper, lpmake and avbtool.\nGenerated packages contain test bytes. DO NOT FLASH.\n', encoding='utf-8')
+    print('\nSELF-TEST PASSED: extraction, three builders, sparse super image, vbmeta patching, ZIP integrity, SHA-256 and unzipped folder output.', flush=True)

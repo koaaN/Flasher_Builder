@@ -1,5 +1,6 @@
 """Setup fits without scrolling; task output is shown only after work starts."""
 import os
+import json
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 from pathlib import Path
 import sys
@@ -7,10 +8,10 @@ import tempfile
 import time
 import unittest
 from unittest.mock import patch
-from PySide6.QtCore import QPoint, QRect
+from PySide6.QtCore import QPoint, QRect, Qt
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QLineEdit, QPushButton, QScrollArea, QWidget
-from flasher_builder.gui import App, ComboBox, STYLE
+from flasher_builder.gui import App, CheckBox, ComboBox, STYLE
 from flasher_builder.runtime import Runtime
 from flasher_builder.ota_catalog import targets
 
@@ -62,7 +63,7 @@ class WorkspaceLayoutTests(unittest.TestCase):
         self.assertLessEqual(minimum.height(), setup.height())
         self.assertFalse(setup.findChildren(QScrollArea))
         for control in setup.findChildren(QWidget):
-            if isinstance(control, (QLineEdit, QPushButton, ComboBox)) and control.isVisibleTo(setup):
+            if isinstance(control, (QLineEdit, QPushButton, CheckBox, ComboBox)) and control.isVisibleTo(setup):
                 rect = QRect(control.mapTo(setup, QPoint()), control.size())
                 self.assertTrue(setup.rect().contains(rect), control.accessibleName() or control.objectName())
 
@@ -116,6 +117,31 @@ class WorkspaceLayoutTests(unittest.TestCase):
             self.wait_for(lambda: not self.window.busy)
         self.assertIn('cancelled', self.window.status.text().lower())
         self.assertEqual(self.window.pages.currentIndex(), 3)
+
+    def test_zip_option_remembers_choice_and_opens_finished_folder(self):
+        self.window.zip_build.setChecked(True)
+        QTest.mouseClick(self.window.zip_build, Qt.MouseButton.LeftButton)
+        self.assertFalse(self.window.values()['zip_output'])
+        self.assertFalse(json.loads(self.window.settings.read_text())['zip_output'])
+        self.window.zip_build.setChecked(True)
+        self.window.saved = json.loads(self.window.settings.read_text()) | {'zip_output': False}
+        self.window.restore()
+        self.assertFalse(self.window.zip_build.isChecked())
+        output = self.root / 'output'; job = output / 'completed'
+        folder = job / 'Finished flasher'; folder.mkdir(parents=True)
+        (job / 'build.json').write_text(json.dumps(dict(device='Test device', flasher_type='Super Flasher',
+            region='CN', version='1.0', created='2026-10-31T12:00:00', artifact=folder.name, output_format='folder')))
+        self.window.load_history()
+        item = self.window.history.topLevelItem(0)
+        self.assertIn('Folder', item.text(0))
+        self.assertEqual(Path(item.data(0, Qt.ItemDataRole.UserRole)), folder)
+        self.window.current_output = output
+        self.window.events.put(('output-root', str(output)))
+        self.window.events.put(('line', '@@RESULT ' + json.dumps(dict(job=str(job), folder=str(folder), format='folder'))))
+        self.window.poll()
+        self.assertEqual(self.window.last_folder, folder)
+        self.window.view_output_button.show()
+        self.assert_setup_fits()
 
     def test_update_notification_and_manual_retry_do_not_reveal_build_output(self):
         result = dict(version='v9.0.0', url='https://github.com/koaaN/Flasher_Builder/releases/tag/v9.0.0')

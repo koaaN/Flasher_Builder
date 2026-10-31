@@ -20,7 +20,7 @@ from flasher_builder.selftest import make_ota
 
 class BuilderTests(unittest.TestCase):
     def test_cancelled_build_removes_only_its_own_job(self):
-        for phase in ('prepare', 'extract', 'package'):
+        for phase in ('prepare', 'extract', 'package', 'folder'):
             with self.subTest(phase=phase), tempfile.TemporaryDirectory() as tmp:
                 root = Path(tmp); output = root/'output'; output.mkdir()
                 previous = output/'completed'; previous.mkdir()
@@ -29,7 +29,12 @@ class BuilderTests(unittest.TestCase):
                 cancel = root/'cancel'
                 args = SimpleNamespace(repo=str(ROOT), output=str(output), device='Oneplus 13',
                     kind='SuperHybrid Flasher', region='GLO', base='', ota=str(source),
-                    bloat_dir=str(root/'bloat'), cancel=str(cancel), fixture=True)
+                    bloat_dir=str(root/'bloat'), cancel=str(cancel), fixture=True, no_zip=phase == 'folder')
+                replace = Path.replace
+                def finalize(path, destination):
+                    result = replace(path, destination)
+                    cancel.touch()
+                    return result
                 def stop(worker, destination):
                     destination.parent.mkdir(parents=True, exist_ok=True)
                     destination.write_bytes(b'incomplete build data')
@@ -53,6 +58,7 @@ class BuilderTests(unittest.TestCase):
                      patch('flasher_builder.native_pipeline.stage', side_effect=stage), \
                      patch('flasher_builder.native_pipeline.build_images', side_effect=images), \
                      patch('flasher_builder.backend.package', side_effect=lambda worker, result, dest: stop(worker, dest)), \
+                     patch.object(Path, 'replace', finalize if phase == 'folder' else replace), \
                      contextlib.redirect_stdout(io.StringIO()) as log:
                     with self.assertRaises(Cancelled): build(args)
                 self.assertEqual(list(output.iterdir()), [previous])
@@ -110,6 +116,17 @@ class BuilderTests(unittest.TestCase):
         self.assertNotIn('wsl.exe', command)
         self.assertEqual(command[:2], [sys.executable, '-u'])
         self.assertTrue(command[2].endswith('flasher-worker.py'))
+
+    def test_folder_output_flag_is_opt_in_and_only_applies_to_builds(self):
+        values = dict(output='builds', bloat_dir='bloat', device='Oneplus 13',
+                      kind='SuperHybrid Flasher', region='GLO', ota='full.zip', base='',
+                      download_role='ota', download_path='download.zip')
+        runtime = Runtime()
+        self.assertNotIn('--no-zip', runtime.command(values, 'build', 'cancel'))
+        values['zip_output'] = False
+        self.assertIn('--no-zip', runtime.command(values, 'build', 'cancel'))
+        for action in ('check', 'test', 'bloat', 'ota'):
+            self.assertNotIn('--no-zip', runtime.command(values, action, 'cancel'))
 
     def test_release_jobs_copy_manifest_without_other_region_images(self):
         with tempfile.TemporaryDirectory() as tmp:

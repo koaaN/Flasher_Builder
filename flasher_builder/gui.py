@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 import platform
 import queue
 import re
@@ -17,7 +17,7 @@ from PySide6.QtCore import QByteArray, QEvent, QPoint, QPointF, QRectF, QSize, Q
 from PySide6.QtGui import QColor, QDesktopServices, QFont, QFontDatabase, QFontMetrics, QIcon, QPainter, QPen, QPixmap, QTextCursor
 from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import (QApplication, QButtonGroup, QComboBox, QFileDialog, QFrame,
-    QAbstractItemView, QGraphicsDropShadowEffect, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QListView, QMainWindow, QMessageBox, QPlainTextEdit,
+    QAbstractItemView, QCheckBox, QGraphicsDropShadowEffect, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QListView, QMainWindow, QMessageBox, QPlainTextEdit,
     QProgressBar, QPushButton, QScrollArea, QSizePolicy, QStackedWidget,
     QStyle, QStyledItemDelegate, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget)
 
@@ -306,6 +306,32 @@ class RecheckButton(Button):
             self.animation.stop(); self.angle = 0; self.setIcon(icon('refresh'))
 
 
+class CheckBox(QCheckBox):
+    """A themed checkbox with native keyboard and accessibility behavior."""
+    def sizeHint(self):
+        self.ensurePolished()
+        return QSize(self.fontMetrics().horizontalAdvance(self.text()) + 28, 36)
+
+    def minimumSizeHint(self): return self.sizeHint()
+
+    def hitButton(self, point): return self.rect().contains(point)
+
+    def paintEvent(self, event):
+        painter = QPainter(self); painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        active = self.isEnabled(); checked = self.isChecked()
+        border = '#3268d9' if active and checked else '#a8bddf' if active and self.hasFocus() else '#dce3ee'
+        painter.setPen(QPen(QColor(border), 1.5 if self.hasFocus() else 1))
+        painter.setBrush(QColor('#3268d9' if active and checked else '#dce5f3' if checked else '#ffffff' if active else '#f2f4f8'))
+        box = QRectF(1, (self.height()-16)/2, 16, 16); painter.drawRoundedRect(box, 4, 4)
+        if checked:
+            painter.setPen(QPen(QColor('#ffffff'), 1.8, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
+            x, y = box.x()+4, box.center().y()
+            painter.drawLine(QPointF(x,y),QPointF(x+3,y+3));painter.drawLine(QPointF(x+3,y+3),QPointF(x+9,y-4))
+        painter.setPen(QColor('#40536e' if active else '#a5afbf'));painter.setFont(self.font())
+        painter.drawText(self.rect().adjusted(25,0,0,0),Qt.AlignmentFlag.AlignVCenter|Qt.AlignmentFlag.AlignLeft,self.text())
+        painter.end()
+
+
 def button(text, symbol=None, name='', callback=None):
     widget = Button(text)
     widget.setObjectName(name)
@@ -372,6 +398,7 @@ QPushButton#quiet:hover { color: #3268d9; background: #edf2fc; }
 QPushButton#danger { background: transparent; border: none; padding: 7px 8px; color: #b35454; font-size: 11px; }
 QPushButton#danger:hover { color: #9b3434; background: #fff0f0; }
 QPushButton#danger:disabled { color: #a5afbf; background: transparent; }
+QCheckBox#zipOption { background: transparent; font-size: 11px; color: #40536e; }
 QPushButton#region { background: #f7f9fc; padding: 8px 15px; color: #76859b; font-size: 11px; }
 QPushButton#region:checked { background: #eaf0ff; border: 1px solid #9db7ec; color: #285bc0; font-weight: 700; }
 QPushButton#sourceTab { background: #f7f9fc; border: none; padding: 7px 12px; font-size: 11px; color: #8290a4; }
@@ -623,6 +650,12 @@ class App(QMainWindow):
         actions.addWidget(self.fields['output'], 1)
         output_browse = button('Browse', 'folder', callback=self.choose_output)
         self.inputs.append(output_browse); actions.addWidget(output_browse)
+        self.zip_build = CheckBox('ZIP build'); self.zip_build.setObjectName('zipOption')
+        self.zip_build.setChecked(True); self.zip_build.setAccessibleName('Create ZIP archive')
+        self.zip_build.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.zip_build.setToolTip('Compress the finished build into a ZIP. Uncheck to keep the flasher folder. Recovery installation requires a ZIP.')
+        self.zip_build.toggled.connect(self.zip_output_changed)
+        self.inputs.append(self.zip_build); actions.addWidget(self.zip_build)
         self.start_button = button('Build package', 'arrow', 'primary', lambda: self.start('build'))
         actions.addWidget(self.start_button)
         self.view_output_button = button('View output', 'terminal', callback=lambda: self.navigate(3))
@@ -808,10 +841,14 @@ class App(QMainWindow):
         self.device_changed()
         self.fields['kind'].setCurrentText(self.saved.get('kind', 'SuperHybrid Flasher'))
         if self.saved.get('region') in self.available_regions(): self.set_region(self.saved['region'])
+        self.zip_build.blockSignals(True)
+        self.zip_build.setChecked(self.saved.get('zip_output', True) is not False)
+        self.zip_build.blockSignals(False)
         self.update_summary()
 
     def values(self):
         values = {k: widget.currentText() if isinstance(widget, QComboBox) else widget.text().strip() for k, widget in self.fields.items()} | {'region': self.region}
+        values['zip_output'] = self.zip_build.isChecked()
         if self.ota_mode == 'catalog':
             for role in ('ota', 'base'):
                 entry = self.ota_combos[role].currentData()
@@ -867,7 +904,7 @@ class App(QMainWindow):
         self.summary_device.setText(values['device'].replace('Oneplus', 'OnePlus'))
         self.summary_kind.setText(values['kind'])
         for key, value in dict(os='ColorOS' if values['region'] == 'CN' else 'OxygenOS', region='Global' if values['region'] == 'GLO' else values['region'],
-                               format='ZIP + SHA-256', engine='Native Windows' if sys.platform == 'win32' else 'Native Linux').items():
+                               format='ZIP + SHA-256' if values.get('zip_output', True) else 'Flasher folder', engine='Native Windows' if sys.platform == 'win32' else 'Native Linux').items():
             self.summary_values[key].setText(value)
         try:
             p = Path(values['output']).expanduser().resolve()
@@ -1049,9 +1086,14 @@ class App(QMainWindow):
     def save_preferences(self, values):
         try:
             self.settings.write_text(json.dumps({k: values[k] for k in
-                ('device', 'kind', 'region', 'output', 'distro', 'bloat_dir')}, indent=2) + '\n', encoding='utf-8')
+                ('device', 'kind', 'region', 'output', 'distro', 'bloat_dir', 'zip_output')}, indent=2) + '\n', encoding='utf-8')
         except OSError as e:
             self.log.appendPlainText('Could not save preferences: ' + str(e))
+
+    def zip_output_changed(self):
+        self.update_summary()
+        if hasattr(self, 'region'):
+            self.save_preferences(self.values())
 
     def source_mode(self, url):
         self.ota_mode = 'catalog' if url == 'catalog' else 'url' if url else 'file'
@@ -1226,7 +1268,7 @@ class App(QMainWindow):
                              'build': 'Preparing your build', 'bloat': 'Downloading selected bloat', 'ota': 'Downloading selected OTA'}[action])
         labels = ('01  Check files', '02  Download', '03  Verify images', '04  Save files', '05  Ready') if action == 'bloat' else \
                  ('01  Resolve OTA', '02  Download', '03  Verify ZIP', '04  Verify checksum', '05  Ready') if action == 'ota' else \
-                 ('01  Prepare OTA', '02  Stage files', '03  Build images', '04  Package ZIP', '05  Complete')
+                 ('01  Prepare OTA', '02  Stage files', '03  Build images', '04  Package ZIP' if values['zip_output'] else '04  Finalize folder', '05  Complete')
         for widget, text in zip(self.steps, labels): widget.setText(text)
         self.progress.setRange(0, 0)
         self.highlight_step(-1)
@@ -1326,7 +1368,7 @@ class App(QMainWindow):
                     token, data = value
                     if token == self.bloat_scan_token and not self.busy:
                         self.apply_bloat_status(data)
-                elif kind == 'output-root': self.backend_output = PurePosixPath(value)
+                elif kind == 'output-root': self.backend_output = Path(value)
                 elif kind == 'line':
                     if value.startswith('@@BLOAT_RESULT '):
                         self.log.appendPlainText('Bloat files saved and verified in the selected folder.\n')
@@ -1339,7 +1381,7 @@ class App(QMainWindow):
                     elif value.startswith('@@RESULT '):
                         try:
                             result = json.loads(value[len('@@RESULT '):])
-                            relative = PurePosixPath(result['job']).relative_to(self.backend_output)
+                            relative = Path(result.get('folder', result['job'])).relative_to(self.backend_output)
                             self.last_folder = self.current_output.joinpath(*relative.parts)
                         except (ValueError, KeyError): pass
                     else:
@@ -1349,7 +1391,7 @@ class App(QMainWindow):
                         try: self.highlight_step(int(value[5]) - 1)
                         except ValueError: pass
                 elif kind == 'done':
-                    cancelled = self.cancel_file and self.cancel_file.exists()
+                    cancelled = value == 130 or (value != 0 and self.cancel_file and self.cancel_file.exists())
                     self.busy = False
                     self.progress.setRange(0, 5); self.progress.setValue(5 if value == 0 else 0)
                     cancelled_status = ('Download cancelled · completed files kept' if self.action in ('bloat', 'ota') else
@@ -1392,8 +1434,13 @@ class App(QMainWindow):
             try:
                 info = json.loads(path.read_text(encoding='utf-8'))
                 title = ('TEST · ' if info.get('test_fixture') else '') + info['device'] + ' / ' + info['flasher_type']
+                folder = path.parent
+                if info.get('output_format') == 'folder':
+                    title += ' · Folder'
+                    artifact = folder / info['artifact']
+                    if artifact.parent == folder and artifact.is_dir(): folder = artifact
                 item = QTreeWidgetItem([title, info['region'], info['version'], info['created'].replace('T', '  ')])
-                item.setData(0, Qt.ItemDataRole.UserRole, str(path.parent)); self.history.addTopLevelItem(item)
+                item.setData(0, Qt.ItemDataRole.UserRole, str(folder)); self.history.addTopLevelItem(item)
             except (OSError, ValueError, KeyError): pass
 
     def open_history(self, item, column):

@@ -32,6 +32,8 @@ class Runtime:
         if action == 'ota':
             cmd += ['--download-ota', '--download-role', values['download_role'],
                     '--download-path', self.path(values['download_path'])]
+        if action == 'build' and not values.get('zip_output', True):
+            cmd += ['--no-zip']
         for key in ('ota', 'base'):
             if values.get(key + '_catalog_id'):
                 cmd += ['--' + key + '-catalog-id', values[key + '_catalog_id']]

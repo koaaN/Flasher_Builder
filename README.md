@@ -51,12 +51,13 @@ URLs are passed as argument arrays, without shell interpolation.
 - Choose a supported device, flasher type and region. CN means ColorOS; other regions use OxygenOS templates.
 - Complete **step 2 — Bloat files**: choose a folder containing the required images or click **Download bloat**. The app verifies their sizes and SHA-256 hashes. Step 3 and **Build package** stay locked until the selected build's files are verified locally.
 - In **step 3**, use **Version catalog**, choose a full OTA ZIP, or enter an HTTP(S) URL. Placeholder and incremental OTA files are rejected.
-- Choose the output folder and click **Build package**. The app opens **Build output** for progress and logs; **Back to setup** returns to the form. The log reports download, staging, extraction, packing and compression. **Cancel** stops the active native tools and their child processes.
-- **Open output** opens the latest result folder. Each job has a unique name and contains the final ZIP, `.zip.sha256`, `build.json`, and `build.log`. Temporary work files are removed after a successful build. Cancelled builds remove their entire job folder after stopping the native tools, including partial packages and temporary images. Existing completed packages, original OTA files and downloaded bloat are preserved. Failed jobs retain partial work for inspection; those job folders can be deleted when no longer needed.
+- Choose the output folder. **ZIP build** is checked by default; uncheck it to keep the finished flasher folder and skip compression. This choice is remembered between launches. Recovery installation requires a ZIP.
+- Click **Build package**. The app opens **Build output** for progress and logs; **Back to setup** returns to the form. The log reports download, staging, extraction, packing and optional compression. **Cancel** stops the active native tools and their child processes.
+- **Open output** opens the latest result folder. Each job has a unique name and contains either the final ZIP with `.zip.sha256`, or the finished flasher folder, plus `build.json` and `build.log`. Build history also opens folder builds directly. Temporary work files are removed after a successful build. Cancelled builds remove their entire job folder after stopping the native tools, including partial packages and temporary images. Existing completed packages, original OTA files and downloaded bloat are preserved. Failed jobs retain partial work for inspection; those job folders can be deleted when no longer needed.
 
 Budget roughly **40–80 GB free** for full firmware builds, depending on device, OTA compression and the number of inputs. The worker checks available space before extraction, but actual requirements vary. The GUI logs the OTA's declared device identifier; choose firmware appropriate for the selected device. A successful package build does not establish compatibility with a physical phone.
 
-This application builds local ZIPs. SFTP uploads and Telegram announcements remain in the original GitHub Actions workflow. No runner registration or GitHub login is needed for public downloads.
+This application builds local ZIPs or flasher folders. SFTP uploads and Telegram announcements remain in the original GitHub Actions workflow. No runner registration or GitHub login is needed for public downloads.
 
 ### OTA version catalog
 
@@ -138,6 +139,8 @@ python3 flasher_builder/backend.py --device 'DEVICE_NAME' \
 ```
 
 The GitHub Actions scripts extract to explicit directories, normalize script line endings in per-job copies, stop when an asset download fails, and reject super images missing core partitions. Local builds never execute the workflow's runner-workspace cleanup step.
+
+Add `--no-zip` to the command-line build to keep the finished flasher folder instead of creating an archive.
 
 ## Distribution builds
 

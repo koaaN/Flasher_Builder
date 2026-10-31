@@ -104,6 +104,7 @@ def main():
 - Both packages include the GUI, console worker, otaripper-lite 3.5.0, lpmake, aria2c 1.37.0, and GitHub CLI.
 - Public releases, bloat downloads and update checks need no login. Bloat and OTA downloads use aria2c -x8 -s8 with curl fallback, one file at a time; checksums and cancellation cleanup remain enforced.
 - Setup fits without scrolling. Build output opens only when work starts, and successful downloads return to setup automatically.
+- Uncheck ZIP build to keep the finished flasher folder without compression. The setting is remembered, folder builds open directly from history, and cancellation removes unfinished output. Command-line builds support --no-zip.
 - Automatic startup update checks notify you when a newer app release is available. Environment includes a manual check and a link to the update download page.
 - Bloat controls now include a labelled Recheck button that spins during verification, plus Delete bloat with an exact-file confirmation and shared-cache preservation.
 - Cancelling a build removes its partial output and temporary files while preserving completed packages and source downloads.
