@@ -60,6 +60,8 @@ normalize_updater_script_lf () {
 get_bloat_folder () {
   local dev="$1" region="$2"
 
+  if [[ "$dev" == "X9U" ]]; then echo "EU_BLOAT"; return; fi
+
   case "$region" in
     CN|EU|GLO|IN|NA)
       echo "${region}_BLOAT"
@@ -314,7 +316,7 @@ fi
 # CN DEBLOAT (my_preload ONLY)
 # -----------------------------
 
-if [[ "$region" == "CN" ]] && [[ -f "$bloat_base/GLO_BLOAT/my_preload.img" ||
+if [[ "$dev" != "X9U" && "$region" == "CN" ]] && [[ -f "$bloat_base/GLO_BLOAT/my_preload.img" ||
     -f "$bloat_base/GLO_BLOAT/my_preload.img.gz" || -f "$bloat_base/GLO_BLOAT/my_preload" ]]; then
   oos_here="$work_dir/OOS_FILES_HERE"
   mkdir -p "$oos_here"

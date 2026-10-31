@@ -300,7 +300,7 @@ def run_self_test(args):
     # Exercise multipart transport in the actual source/frozen materializer.
     from scripts import materialize_bloat as materializer
     print('\nSELF-TEST: multipart bloat transport with per-part and original-image verification', flush=True)
-    preload = b'X9U CN PRELOAD\n'.ljust(4096, b'C'); transport = gzip.compress(preload, mtime=0)
+    preload = b'X9U SHARED EU PRELOAD\n'.ljust(4096, b'C'); transport = gzip.compress(preload, mtime=0)
     raw_sha = hashlib.sha256(preload).hexdigest(); transport_sha = hashlib.sha256(transport).hexdigest()
     zero = b'\0'*4096; zero_sha = hashlib.sha256(zero).hexdigest()
     chunks = [transport[:len(transport)//2], transport[len(transport)//2:]]
@@ -313,10 +313,10 @@ def run_self_test(args):
                      bytes=len(transport),sha256=transport_sha,parts=parts),
         zero_sha:dict(asset_id=3,asset_name='zero.img',encoding='identity',raw_bytes=len(zero),raw_sha256=zero_sha,
                       bytes=len(zero),sha256=zero_sha)},files={
-        f'bloat/X9U/{region}_BLOAT/{name}.img':raw_sha if (region,name)==('CN','my_preload') else zero_sha
+        f'bloat/X9U/{region}_BLOAT/{name}.img':raw_sha if (region,name)==('EU','my_preload') else zero_sha
         for region in ('CN','EU') for name in ('my_preload','my_company')})
     (fixture/'bloat/assets-manifest.json').write_text(json.dumps(manifest),encoding='utf-8')
-    (fixture/'bloat/X9U/CN_BLOAT/my_preload.img').unlink()
+    (fixture/'bloat/X9U/EU_BLOAT/my_preload.img').unlink()
     with serve_ranges(base) as (address, requests):
         original_url, original_cancel = materializer.release_url, materializer.CANCEL_FILE
         try:
@@ -325,14 +325,14 @@ def run_self_test(args):
             materializer.materialize(fixture,base/'multipart-cache',manifest,'X9U','Super Flasher','CN')
         finally:
             materializer.release_url, materializer.CANCEL_FILE = original_url, original_cancel
-    if (fixture/'bloat/X9U/CN_BLOAT/my_preload.img').read_bytes()!=preload:
+    if (fixture/'bloat/X9U/EU_BLOAT/my_preload.img').read_bytes()!=preload:
         raise BuildError('Self-test: multipart bloat image bytes differ.')
     for kind in ('Super Flasher','Regional Flasher'):
-        for region in ('CN','EU'):
+        for region in ('CN','EU','APC','JP'):
             print(f'\nSELF-TEST: Find X9 Ultra / {kind} / {region}',flush=True)
             dest=build(Namespace(repo=str(fixture),output=str(base/'results'),device='OPPO Find X9 Ultra',
                 kind=kind,region=region,ota=str(ota),base='',cancel=args.cancel,fixture=True))
-            expected_preload=preload if region=='CN' else zero
+            expected_preload=preload
             with zipfile.ZipFile(dest) as archive:
                 if archive.read('OTA_FILES_HERE/boot.img')!=partitions['boot']:
                     raise BuildError('Self-test: X9U boot image folder is incorrect.')
@@ -348,5 +348,5 @@ def run_self_test(args):
                     for name,data in (('my_preload',expected_preload),('my_company',zero)):
                         if archive.read('OTA_FILES_HERE/'+name+'.img')!=data:
                             raise BuildError('Self-test: OTA extraction overwrote staged X9U bloat.')
-    (base / 'SELF-TEST-PASSED.txt').write_text('All thirteen pipeline builds and multipart transport passed with the REAL otaripper, lpmake and avbtool.\nGenerated packages contain test bytes. DO NOT FLASH.\n', encoding='utf-8')
+    (base / 'SELF-TEST-PASSED.txt').write_text('All seventeen pipeline builds and multipart transport passed with the REAL otaripper, lpmake and avbtool.\nGenerated packages contain test bytes. DO NOT FLASH.\n', encoding='utf-8')
     print('\nSELF-TEST PASSED: extraction, three builders, sparse super image, vbmeta patching, ZIP integrity, SHA-256, unzipped folder output, remote patch-matched ODM only, regional super sizes and multipart bloat.', flush=True)

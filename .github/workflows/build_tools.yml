@@ -46,6 +46,15 @@ on:
           - IN
           - NA
           - CN
+          - APC
+          - ID
+          - JP
+          - MX
+          - MY
+          - SG
+          - TH
+          - TW
+          - VN
         default: GLO
       ota_url:
         description: "FULL OTA.zip URL (leave empty for placeholder)"
@@ -360,8 +369,18 @@ jobs:
 
           BUILDER_MAP["Super Flasher|NEO8|CN"]="BUILD_SUPER"
 
+          BUILDER_MAP["Super Flasher|X9U|APC"]="BUILD_SUPER"
           BUILDER_MAP["Super Flasher|X9U|CN"]="BUILD_SUPER"
           BUILDER_MAP["Super Flasher|X9U|EU"]="BUILD_SUPER"
+          BUILDER_MAP["Super Flasher|X9U|ID"]="BUILD_SUPER"
+          BUILDER_MAP["Super Flasher|X9U|IN"]="BUILD_SUPER"
+          BUILDER_MAP["Super Flasher|X9U|JP"]="BUILD_SUPER"
+          BUILDER_MAP["Super Flasher|X9U|MX"]="BUILD_SUPER"
+          BUILDER_MAP["Super Flasher|X9U|MY"]="BUILD_SUPER"
+          BUILDER_MAP["Super Flasher|X9U|SG"]="BUILD_SUPER"
+          BUILDER_MAP["Super Flasher|X9U|TH"]="BUILD_SUPER"
+          BUILDER_MAP["Super Flasher|X9U|TW"]="BUILD_SUPER"
+          BUILDER_MAP["Super Flasher|X9U|VN"]="BUILD_SUPER"
 
           BUILDER_MAP["Super Flasher|GT7Pro|CN"]="BUILD_SUPER"
           BUILDER_MAP["Super Flasher|GT7Pro|EU"]="BUILD_SUPER"
@@ -381,8 +400,18 @@ jobs:
           # ===== Regional Flasher =====
           BUILDER_MAP["Regional Flasher|Ace5|CN"]="BUILD_REGIONAL"
 
+          BUILDER_MAP["Regional Flasher|X9U|APC"]="BUILD_REGIONAL"
           BUILDER_MAP["Regional Flasher|X9U|CN"]="BUILD_REGIONAL"
           BUILDER_MAP["Regional Flasher|X9U|EU"]="BUILD_REGIONAL"
+          BUILDER_MAP["Regional Flasher|X9U|ID"]="BUILD_REGIONAL"
+          BUILDER_MAP["Regional Flasher|X9U|IN"]="BUILD_REGIONAL"
+          BUILDER_MAP["Regional Flasher|X9U|JP"]="BUILD_REGIONAL"
+          BUILDER_MAP["Regional Flasher|X9U|MX"]="BUILD_REGIONAL"
+          BUILDER_MAP["Regional Flasher|X9U|MY"]="BUILD_REGIONAL"
+          BUILDER_MAP["Regional Flasher|X9U|SG"]="BUILD_REGIONAL"
+          BUILDER_MAP["Regional Flasher|X9U|TH"]="BUILD_REGIONAL"
+          BUILDER_MAP["Regional Flasher|X9U|TW"]="BUILD_REGIONAL"
+          BUILDER_MAP["Regional Flasher|X9U|VN"]="BUILD_REGIONAL"
           
           BUILDER_MAP["Regional Flasher|Ace5Pro|CN"]="BUILD_REGIONAL"
           

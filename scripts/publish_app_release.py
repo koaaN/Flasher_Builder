@@ -104,7 +104,8 @@ def main():
     files.append(checksums)
     notes = '''Native desktop release for x86-64 Linux and Windows.
 
-- Added OPPO Find X9 Ultra Super and Regional fastboot builds for CN and EU. Both use ColorOS templates and OTA_FILES_HERE. Physical super sizes are 19671285760 bytes for CN and 20451426304 for non-CN regions.
+- OPPO Find X9 Ultra Super and Regional fastboot builds support every currently listed catalog region: APC, CN, EU, ID, IN, JP, MX, MY, SG, TH, TW and VN. A styled region dropdown keeps the setup form compact.
+- All Find X9 Ultra regions use the supplied EU bloat for now, including CN. Physical super sizes remain 19671285760 bytes for CN and 20451426304 for every non-CN region. ColorOS templates and OTA_FILES_HERE are used throughout.
 - Oversized bloat transports can span verified release attachments. Downloads remain sequential; each part, the combined transport and the original image are SHA-256 checked. The app restores the image automatically and removes temporary parts on cancellation or failure.
 - Added real-tool checks for both regional super sizes, staged bloat preservation, multipart transport, and the supplied Linux/Windows host scripts using fake fastboot. Hybrid/recovery options are not enabled for the new device.
 - Documentation opens inside the app with styled headings, code blocks, section navigation and text search. Local Markdown links stay in the viewer; web links open in the browser.

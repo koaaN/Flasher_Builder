@@ -1,6 +1,6 @@
 # Flasher Builder
 
-A local desktop GUI for this repository's firmware build workflow. Select the device, flasher type and region, choose a **full OTA ZIP** or paste its download URL, and click **Build package**. The GUI supports the same 66 combinations as `.github/workflows/build_tools.yml` and filters the choices as you select a device.
+A local desktop GUI for this repository's firmware build workflow. Select the device, flasher type and region, choose a **full OTA ZIP** or paste its download URL, and click **Build package**. The GUI supports the same 86 combinations as `.github/workflows/build_tools.yml` and filters the choices as you select a device.
 
 Open **Documentation** in the sidebar to read this guide inside the app, with formatted headings, code blocks, section navigation and text search. Bundled documentation works offline; web links open in your browser.
 

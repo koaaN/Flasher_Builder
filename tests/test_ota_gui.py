@@ -138,5 +138,25 @@ class OtaGuiTests(unittest.TestCase):
         self.assertEqual(self.window.values()['ota_catalog_id'], '')
         self.assertEqual(self.window.status.text(), 'OTA downloaded · ready to build')
 
+    def test_x9u_region_dropdown_exposes_every_catalog_region_and_preserves_selection(self):
+        regions=['APC','CN','EU','ID','IN','JP','MX','MY','SG','TH','TW','VN']
+        self.catalog['releases'].extend(entry('x9u-'+region,'OPPO FIND X9 ULTRA',region) for region in regions)
+        self.window.fields['device'].setCurrentText('OPPO Find X9 Ultra')
+        self.assertFalse(self.window.region_combo.isHidden())
+        self.assertTrue(self.window.region_buttons_panel.isHidden())
+        self.assertEqual([self.window.region_combo.itemData(i) for i in range(self.window.region_combo.count())],regions)
+        for region in regions:
+            self.window.region_combo.setCurrentIndex(self.window.region_combo.findData(region))
+            self.assertEqual(self.window.values()['region'],region)
+            self.assertEqual(self.window.values()['ota_catalog_id'],'x9u-'+region)
+            self.assertEqual(self.window.os_badge.text(),'COLOR OS')
+            self.assertIn('EU bloat',self.window.selection_info.text())
+        self.window.fields['kind'].setCurrentText('Regional Flasher')
+        self.assertEqual(self.window.values()['region'],'VN')
+        self.assertEqual(self.window.region_combo.currentData(),'VN')
+        self.window.fields['device'].setCurrentText('Oneplus 13')
+        self.assertTrue(self.window.region_combo.isHidden())
+        self.assertFalse(self.window.region_buttons_panel.isHidden())
+
 
 if __name__ == '__main__': unittest.main()

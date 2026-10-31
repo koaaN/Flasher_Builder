@@ -12,7 +12,7 @@ else:
     from __main__ import BuildError, ROOT
     from host import tool, helper_command
     from device_layout import template_subtree, image_folder
-from scripts.materialize_bloat import load_manifest, selected_paths
+from scripts.materialize_bloat import bloat_folder, load_manifest, selected_paths
 
 SUPER_PARTS = ('my_bigball', 'my_carrier', 'my_company', 'my_engineering', 'my_heytap',
     'my_manifest', 'my_preload', 'my_product', 'my_region', 'my_stock', 'odm', 'product',
@@ -51,7 +51,7 @@ def stage(worker, assets, destination, dev, kind, region, source):
     else:
         # Synthetic self-test fixtures (and legacy local image checkouts).
         manifest = {'files': {p.relative_to(assets).as_posix(): '' for p in (assets / 'bloat' / dev).rglob('*.img')}}
-    main = 'OOS_BLOAT' if dev == 'Ace6' and kind == 'SuperHybrid Flasher' and region == 'IN' else region + '_BLOAT'
+    main = bloat_folder(dev, kind, region)
     for relative in selected_paths(manifest, dev, kind, region):
         path = PurePosixPath(relative)
         if len(path.parts) != 4:

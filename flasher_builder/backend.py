@@ -68,7 +68,10 @@ class Catalog:
 
     def regions(self, device, kind):
         dev = self.devices[device]
-        return [r for r in ('GLO', 'EU', 'IN', 'NA', 'CN') if (kind, dev, r) in self.builders]
+        available = {r for t, d, r in self.builders if (t, d) == (kind, dev)}
+        standard = ('GLO', 'EU', 'IN', 'NA', 'CN')
+        if available.difference(standard): return sorted(available)
+        return [r for r in standard if r in available]
 
     def super_size(self, device, region):
         return self.region_sizes.get(device, (0, 0))[0 if region == 'CN' else 1]

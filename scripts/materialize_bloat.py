@@ -92,13 +92,21 @@ def load_manifest(path):
     return data
 
 
+def bloat_folder(device, kind, region):
+    if device == 'X9U': return 'EU_BLOAT'
+    if device == 'Ace6' and kind == 'SuperHybrid Flasher' and region == 'IN': return 'OOS_BLOAT'
+    return region + '_BLOAT'
+
+
 def selected_paths(manifest, device, kind, region, static_odm=False):
     if not re.fullmatch(r'[A-Za-z0-9]+', device):
         raise AssetError('Invalid device ID')
-    main = 'OOS_BLOAT' if device == 'Ace6' and kind == 'SuperHybrid Flasher' and region == 'IN' else region + '_BLOAT'
+    if not re.fullmatch(r'[A-Z]{2,3}', region):
+        raise AssetError('Invalid region code')
+    main = bloat_folder(device, kind, region)
     prefix = f'bloat/{device}/'
     extra = set()
-    if region == 'CN':
+    if region == 'CN' and device != 'X9U':
         extra.add(prefix + 'GLO_BLOAT/my_preload.img')
     if device == '13' and kind == 'SuperHybrid Flasher' and region != 'CN':
         extra |= {prefix + 'COS_FILES_HERE/' + name + '.img' for name in ('my_region', 'oplusstanvbk')}
@@ -261,7 +269,7 @@ def main():
     parser.add_argument('--cancel', type=Path)
     parser.add_argument('--device', required=True)
     parser.add_argument('--kind', required=True, choices=['Super Flasher', 'SuperHybrid Flasher', 'Regional Flasher', 'RegionalHybrid Flasher'])
-    parser.add_argument('--region', required=True, choices=['GLO', 'EU', 'IN', 'NA', 'CN'])
+    parser.add_argument('--region', required=True)
     args = parser.parse_args()
     CANCEL_FILE = args.cancel
     try:

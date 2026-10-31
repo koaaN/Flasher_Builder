@@ -71,12 +71,12 @@ class WorkspaceLayoutTests(unittest.TestCase):
         self.assertTrue(self.window.nav[3].isHidden())
         self.assertFalse(self.window.log.isVisible())
         entries = {}
-        for device in self.window.catalog.devices:
-            for region in ('GLO', 'EU', 'IN', 'NA', 'CN'):
-                for name, code in targets(device, 'SuperHybrid Flasher', region).values():
-                    entries[name+code] = dict(id=name+code, device=name, region=code,
-                        version='CPH2653_16.0.10.600(EX01)', model='CPH2653', size=8325705068,
-                        security_patch='2026-09-01', is_latest=True, source_url='https://example.invalid/full.zip')
+        for kind, dev, region in self.window.catalog.builders:
+            device = next(k for k,v in self.window.catalog.devices.items() if v == dev)
+            for name, code in targets(device, kind, region).values():
+                entries[name+code] = dict(id=name+code, device=name, region=code,
+                    version='CPH2653_16.0.10.600(EX01)', model='CPH2653', size=8325705068,
+                    security_patch='2026-09-01', is_latest=True, source_url='https://example.invalid/full.zip')
         self.window.ota_data = {'releases': list(entries.values())}
         for kind, dev, region in self.window.catalog.builders:
             device = next(k for k,v in self.window.catalog.devices.items() if v == dev)

@@ -569,14 +569,19 @@ class App(QMainWindow):
             grid.setColumnStretch(col, 1)
         form.addLayout(grid)
         form.addWidget(label('REGION', 'fieldLabel'))
-        regions = QHBoxLayout(); regions.setSpacing(7)
+        self.region_buttons_panel = QWidget(); self.region_buttons_panel.setObjectName('innerPanel')
+        regions = QHBoxLayout(self.region_buttons_panel); regions.setContentsMargins(0, 0, 0, 0); regions.setSpacing(7)
         self.region_group = QButtonGroup(self)
         self.region_buttons = {}
         for region in ('GLO', 'EU', 'IN', 'NA', 'CN'):
             b = button('Global' if region == 'GLO' else region, name='region', callback=lambda checked=False, r=region: self.set_region(r))
             b.setCheckable(True); self.region_group.addButton(b)
             self.region_buttons[region] = b; self.inputs.append(b); regions.addWidget(b)
-        regions.addStretch(); form.addLayout(regions)
+        regions.addStretch(); form.addWidget(self.region_buttons_panel)
+        self.region_combo = ComboBox(); self.region_combo.setAccessibleName('Region')
+        self.region_combo.setStyleSheet('padding: 6px 11px;')
+        self.region_combo.currentIndexChanged.connect(lambda: self.set_region(self.region_combo.currentData()) if self.region_combo.currentData() else None)
+        self.inputs.append(self.region_combo); form.addWidget(self.region_combo); self.region_combo.hide()
         self.selection_info = label('Select a device and region to get started.', 'hint', True)
         form.addWidget(self.selection_info)
         top.addWidget(configure, 1)
@@ -972,6 +977,11 @@ class App(QMainWindow):
     def kind_changed(self):
         regions = self.available_regions()
         self.region = self.region if hasattr(self, 'region') and self.region in regions else regions[0]
+        use_combo = len(regions) > 5 or any(region not in self.region_buttons for region in regions)
+        self.region_buttons_panel.setVisible(not use_combo); self.region_combo.setVisible(use_combo)
+        self.region_combo.blockSignals(True); self.region_combo.clear()
+        for region in regions: self.region_combo.addItem('Global' if region == 'GLO' else region, region)
+        self.region_combo.setCurrentIndex(self.region_combo.findData(self.region)); self.region_combo.blockSignals(False)
         for region, b in self.region_buttons.items():
             b.setVisible(region in regions)
             b.setEnabled(region in regions and not self.busy)
@@ -980,7 +990,10 @@ class App(QMainWindow):
 
     def set_region(self, region):
         self.region = region
-        self.region_buttons[region].setChecked(True)
+        if region in self.region_buttons: self.region_buttons[region].setChecked(True)
+        self.region_combo.blockSignals(True)
+        self.region_combo.setCurrentIndex(self.region_combo.findData(region))
+        self.region_combo.blockSignals(False)
         self.update_summary()
 
     def update_summary(self):
@@ -992,6 +1005,8 @@ class App(QMainWindow):
         try:
             self.catalog.selection(values['device'], values['kind'], self.region)
             text = 'Target: OnePlus 15R India OxygenOS OTA · Base: Ace 6 ColorOS OTA' if needs_base else 'Only combinations supported by the build workflow are available.'
+            if self.catalog.devices[values['device']] == 'X9U':
+                text = 'ColorOS · EU bloat is shared by every region, including CN.'
             if ota_catalog.needs_matched_odm(values['device'], values['kind'], self.region):
                 text = 'Target: OnePlus 15R · ODM: Ace 6T CN · Exact patch match required.'
                 self.source_hint.setText('Only odm.img is streamed; the donor must have the same security patch.')

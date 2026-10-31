@@ -15,27 +15,28 @@ from flasher_builder.native_pipeline import SUPER_PARTS
 from flasher_builder.ota_catalog import targets
 from scripts.materialize_bloat import load_manifest, selected_paths
 
+REGIONS = ['APC','CN','EU','ID','IN','JP','MX','MY','SG','TH','TW','VN']
 
 class FindX9UltraTests(unittest.TestCase):
     def test_supported_regions_templates_sizes_and_catalog_mapping(self):
         catalog=Catalog()
         self.assertEqual(catalog.types('OPPO Find X9 Ultra'),['Super Flasher','Regional Flasher'])
         for kind in catalog.types('OPPO Find X9 Ultra'):
-            self.assertEqual(catalog.regions('OPPO Find X9 Ultra',kind),['EU','CN'])
-            for region in ('CN','EU'):
+            self.assertEqual(catalog.regions('OPPO Find X9 Ultra',kind),REGIONS)
+            for region in REGIONS:
                 dev,builder,template=catalog.selection('OPPO Find X9 Ultra',kind,region)
                 self.assertEqual(dev,'X9U');self.assertIn('/cos/',template.as_posix())
                 self.assertTrue(coloros(dev,region));self.assertEqual(image_folder(dev,region),'OTA_FILES_HERE')
                 self.assertEqual(targets('OPPO Find X9 Ultra',kind,region),{'ota':('OPPO FIND X9 ULTRA',region)})
         self.assertEqual(catalog.super_size('X9U','CN'),19671285760)
-        for region in ('EU','GLO','IN','NA'):
+        for region in (r for r in REGIONS if r!='CN'):
             self.assertEqual(catalog.super_size('X9U',region),20451426304)
 
     def test_bloat_manifest_includes_verified_cn_multipart_and_exact_eu_assets(self):
         manifest=load_manifest(ROOT/'bloat/assets-manifest.json')
-        for region in ('CN','EU'):
+        for region in REGIONS:
             selected=selected_paths(manifest,'X9U','Super Flasher',region)
-            self.assertEqual(set(selected),{f'bloat/X9U/{region}_BLOAT/{name}.img' for name in ('my_company','my_preload')})
+            self.assertEqual(set(selected),{f'bloat/X9U/EU_BLOAT/{name}.img' for name in ('my_company','my_preload')})
         asset=manifest['assets'][manifest['files']['bloat/X9U/CN_BLOAT/my_preload.img']]
         self.assertEqual(asset['raw_bytes'],2399965184)
         self.assertEqual(len(asset['parts']),3)
