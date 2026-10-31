@@ -8,7 +8,7 @@ from flasher_builder.bloat_storage import BloatStorageError, plan_deletion, dele
 
 class BloatStorageTests(unittest.TestCase):
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory(); self.root = Path(self.tmp.name)/'bloat'
+        self.tmp = tempfile.TemporaryDirectory(); self.root = (Path(self.tmp.name)/'bloat').resolve()
         self.sha = hashlib.sha256(b'fixture').hexdigest()
         self.asset = dict(raw_sha256=self.sha, sha256=self.sha, encoding='identity')
         self.manifest = dict(files={'bloat/13/GLO_BLOAT/my_preload.img': self.sha}, assets={self.sha: self.asset})
