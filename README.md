@@ -4,7 +4,7 @@ A local desktop GUI for this repository's firmware build workflow. Select the de
 
 ## Linux and Windows releases
 
-Download the matching package from the private repository's [Releases](https://github.com/koaaN/Flasher_Builder/releases):
+Download the matching package from the repository's [Releases](https://github.com/koaaN/Flasher_Builder/releases):
 
 - **Windows 10/11 x64:** extract `FlasherBuilder-windows-x86_64.zip` and run `FlasherBuilder.exe`.
 - **Linux x86-64:** extract `FlasherBuilder-linux-x86_64.tar.gz` and run `./FlasherBuilder`.
@@ -46,7 +46,6 @@ URLs are passed as argument arrays, without shell interpolation.
 - Choose a supported device, flasher type and region. CN means ColorOS; other regions use OxygenOS templates.
 - Complete **step 2 — Bloat files**: choose a folder containing the required images or click **Download bloat**. The app verifies their sizes and SHA-256 hashes. Step 3 and **Build package** stay locked until the selected build's files are verified locally.
 - In **step 3**, use **Version catalog**, choose a full OTA ZIP, or enter an HTTP(S) URL. Placeholder and incremental OTA files are rejected.
-- **Ace 6 / SuperHybrid / IN** additionally requires the Ace 6 ColorOS **BASE** OTA. Its primary OTA must be the OnePlus 15R India OxygenOS **TARGET** OTA.
 - Choose the output folder and click **Build package**. The app opens **Build output** for progress and logs; **Back to setup** returns to the form. The log reports download, staging, extraction, packing and compression. **Cancel** stops the active native tools and their child processes.
 - **Open output** opens the latest result folder. Each job has a unique name and contains the final ZIP, `.zip.sha256`, `build.json`, and `build.log`. Temporary work files are removed after a successful build. Cancelled builds remove their entire job folder after stopping the native tools, including partial packages and temporary images. Existing completed packages, original OTA files and downloaded bloat are preserved. Failed jobs retain partial work for inspection; those job folders can be deleted when no longer needed.
 
@@ -102,9 +101,8 @@ Step 2 fetches only the images needed by the selected device, region and
 flasher type. Downloads are verified and kept in the chosen folder's `.cache`
 for reuse. Images are verified again before the build starts and as they are
 staged. The native build worker requires local images and does not silently fetch
-missing bloat after step 2. The Ace 6T ODM attachment is
-losslessly gzip-compressed to fit GitHub's 2 GiB release-asset limit; the builder
-restores the original `.img` automatically.
+missing bloat after step 2. Oversized release attachments are losslessly gzip-compressed;
+the builder restores the original `.img` automatically.
 
 The repository remains private. GitHub CLI authentication must have read access
 to `koaaN/Flasher_Builder`. Set `BLOAT_CACHE_DIR` in the build environment to use a different
@@ -140,7 +138,7 @@ The GitHub Actions scripts extract to explicit directories, normalize script lin
 
 ## Distribution builds
 
-The setup form fits without scrolling, including the Ace 6 target/base OTA selectors. Build output stays hidden until a task starts and uses its own view, so logs never shrink the setup form. Successful bloat and OTA downloads return to setup automatically; **View output** reopens their logs.
+The setup form fits without scrolling, including supported target/base OTA selectors. Build output stays hidden until a task starts and uses its own view, so logs never shrink the setup form. Successful bloat and OTA downloads return to setup automatically; **View output** reopens their logs.
 
 The app checks for newer stable app releases in the background on startup. When an update is available, an **Update v…** button appears in the sidebar and opens the release download page. **Environment → Check for updates** checks again manually and displays your installed version. For this private repository, update checks use your existing GitHub CLI login (the same login used for bloat downloads); connection or login problems appear in Environment and do not block builds. Checks ignore bloat releases, drafts, prereleases and releases missing your platform's package. Extract the new package to update; automatic installation is not performed.
 
@@ -173,6 +171,5 @@ arguments in Python. The original shell scripts remain for the separate firmware
 GitHub Actions workflow. See [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) for
 tool origins, versions and licenses.
 
-Realme NEO8 supports **Super Flasher → CN (ColorOS) only**, with a physical super size of **18,790,481,920 bytes**. Its required bloat images are `my_preload.img`, `my_company.img` and `system_dlkm_oki.img`; all three are packed into super. The OTA catalog maps to **Realme NEO 8 / CN (RMX8899)**. Generated packages include Windows and Linux fastboot scripts for the CN firmware, with no OxygenOS conversion or optional debloat-image step.
 
 **Delete bloat** removes the image files required by the current selection and their unused download-cache copies from the selected bloat folder. A confirmation lists the device, region, folder and exact image paths. Other files remain in place; cache objects shared with another locally stored image are preserved. Deleting required files locks step 3/build until **Download bloat** restores them. Delete/recheck controls are disabled during builds and downloads.
