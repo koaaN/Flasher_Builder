@@ -11,13 +11,55 @@ import time
 import unittest
 from unittest.mock import patch
 import zipfile
+from types import SimpleNamespace
 
-from flasher_builder.backend import BuildError, Cancelled, Catalog, ROOT, Worker, clean_source, validate_ota, normalize_assets
+from flasher_builder.backend import BuildError, Cancelled, Catalog, ROOT, Worker, build, clean_source, validate_ota, normalize_assets
 from flasher_builder.runtime import Runtime
 from flasher_builder.selftest import make_ota
 
 
 class BuilderTests(unittest.TestCase):
+    def test_cancelled_build_removes_only_its_own_job(self):
+        for phase in ('prepare', 'extract', 'package'):
+            with self.subTest(phase=phase), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp); output = root/'output'; output.mkdir()
+                previous = output/'completed'; previous.mkdir()
+                (previous/'package.zip').write_bytes(b'completed package')
+                source = root/'original.zip'; source.write_bytes(b'original OTA')
+                cancel = root/'cancel'
+                args = SimpleNamespace(repo=str(ROOT), output=str(output), device='Oneplus 13',
+                    kind='SuperHybrid Flasher', region='GLO', base='', ota=str(source),
+                    bloat_dir=str(root/'bloat'), cancel=str(cancel), fixture=True)
+                def stop(worker, destination):
+                    destination.parent.mkdir(parents=True, exist_ok=True)
+                    destination.write_bytes(b'incomplete build data')
+                    cancel.touch(); worker.check()
+                def prepare(worker, args, role, destination):
+                    if phase == 'prepare': stop(worker, destination)
+                    destination.write_bytes(b'copied OTA')
+                    return '1.2.3.4', 32, {}
+                def normalize(repo, assets, dev, template): assets.mkdir()
+                def stage(worker, assets, destination, *args):
+                    destination.mkdir(); return destination
+                def images(worker, assets, result, *args):
+                    if phase == 'extract': stop(worker, result/'partial.img')
+                    boot = result/'OOS_FILES_HERE'; boot.mkdir()
+                    (boot/'boot.img').write_bytes(b'boot'); (result/'super.img').write_bytes(b'super')
+                    return result
+                with patch('flasher_builder.backend.check_environment'), \
+                     patch('flasher_builder.backend.require_local_bloat'), \
+                     patch('flasher_builder.backend.prepare_ota', side_effect=prepare), \
+                     patch('flasher_builder.backend.normalize_assets', side_effect=normalize), \
+                     patch('flasher_builder.native_pipeline.stage', side_effect=stage), \
+                     patch('flasher_builder.native_pipeline.build_images', side_effect=images), \
+                     patch('flasher_builder.backend.package', side_effect=lambda worker, result, dest: stop(worker, dest)), \
+                     contextlib.redirect_stdout(io.StringIO()) as log:
+                    with self.assertRaises(Cancelled): build(args)
+                self.assertEqual(list(output.iterdir()), [previous])
+                self.assertEqual((previous/'package.zip').read_bytes(), b'completed package')
+                self.assertEqual(source.read_bytes(), b'original OTA')
+                self.assertIn('Cancelled build output removed.', log.getvalue())
+
     def test_every_workflow_combination_has_assets(self):
         catalog = Catalog()
         self.assertEqual(len(catalog.builders), 61)

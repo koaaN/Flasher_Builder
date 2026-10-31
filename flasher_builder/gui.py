@@ -1193,7 +1193,10 @@ class App(QMainWindow):
                     cancelled = self.cancel_file and self.cancel_file.exists()
                     self.busy = False
                     self.progress.setRange(0, 5); self.progress.setValue(5 if value == 0 else 0)
-                    self.status.setText(('Download cancelled · completed files kept' if self.action in ('bloat', 'ota') else 'Build cancelled · partial files retained') if cancelled else
+                    cancelled_status = ('Download cancelled · completed files kept' if self.action in ('bloat', 'ota') else
+                                        'Build cancelled · output cleaned' if self.action == 'build' and value == 130 else
+                                        'Task cancelled' if value == 130 else 'Task stopped · see output for details')
+                    self.status.setText(cancelled_status if cancelled else
                                         ('Bloat downloaded · all files verified' if self.action == 'bloat' else 'OTA downloaded · ready to build' if self.action == 'ota' else 'Environment ready' if self.action == 'check' else 'Self-test passed · test data only' if self.action == 'test' else 'Package complete · ready in your output folder') if value == 0 else 'Download failed · see output below' if self.action in ('bloat', 'ota') else 'Build failed · see output below')
                     self.highlight_step(4 if value == 0 else -1)
                     self.set_busy(False)

@@ -45,6 +45,9 @@ jobs:
         shell: bash
     env:
       QT_QPA_PLATFORM: offscreen
+      # The Windows offscreen plugin uses FreeType rather than the native font
+      # database. Point it at real system fonts for meaningful layout tests.
+      QT_QPA_FONTDIR: ${{ matrix.platform == 'windows' && 'C:/Windows/Fonts' || '' }}
       PYTHONUTF8: '1'
     steps:
       - uses: actions/checkout@v4

@@ -6,6 +6,7 @@ use GitHub CLI authentication on the current system.
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
 import hashlib
 import json
 import os
@@ -113,7 +114,7 @@ class Worker:
 
     def check(self):
         if self.cancel and self.cancel.exists():
-            raise Cancelled('Build cancelled. Partial files have been retained in the job folder.')
+            raise Cancelled('Task cancelled.')
 
     def metadata(self, function, *args):
         """Keep cancellation responsive during bounded catalog/link HTTP requests."""
@@ -372,6 +373,37 @@ def download_ota(args):
     print('@@OTA_RESULT ' + json.dumps({'role': role, 'file': str(destination)}), flush=True)
 
 
+@contextmanager
+def build_log(job):
+    """Keep failed-build diagnostics; remove a cancelled build's own job only."""
+    # Tee every worker message and child output into a persistent log.
+    class Tee:
+        def __init__(self, original, log):
+            self.original, self.log = original, log
+        def write(self, text):
+            self.original.write(text)
+            self.log.write(text)
+        def flush(self):
+            self.original.flush()
+            self.log.flush()
+    old_out, old_err = sys.stdout, sys.stderr
+    try:
+        with (job / 'build.log').open('w', encoding='utf-8') as logfile:
+            sys.stdout = sys.stderr = Tee(old_out, logfile)
+            try:
+                yield
+            except BaseException as e:
+                print(f'ERROR: {e}', flush=True)
+                raise
+            finally:
+                sys.stdout, sys.stderr = old_out, old_err
+    except Cancelled:
+        print('Removing cancelled build output…', flush=True)
+        shutil.rmtree(job)
+        print('Cancelled build output removed.', flush=True)
+        raise
+
+
 def build(args):
     repo = Path(args.repo).resolve()
     check_environment(repo)
@@ -388,75 +420,58 @@ def build(args):
     job = output / (time.strftime('%Y%m%d-%H%M%S') + '-' + uuid.uuid4().hex[:6])
     job.mkdir()
     print(f'Job folder: {job}', flush=True)
-    # Tee every worker message and child output into a persistent log.
-    class Tee:
-        def __init__(self, original, log):
-            self.original, self.log = original, log
-        def write(self, text):
-            self.original.write(text)
-            self.log.write(text)
-        def flush(self):
-            self.original.flush()
-            self.log.flush()
-    old_out, old_err = sys.stdout, sys.stderr
-    with (job / 'build.log').open('w', encoding='utf-8') as logfile:
-        sys.stdout = sys.stderr = Tee(old_out, logfile)
-        try:
-            worker = Worker(args.cancel)
-            download = job / 'download'
-            download.mkdir()
-            print('STEP 1/5 • Prepare OTA', flush=True)
-            version, payload_size, metadata = prepare_ota(worker, args, 'ota', download / 'OTA.zip')
-            if needs_base:
-                _, base_size, _ = prepare_ota(worker, args, 'base', download / 'BASE.zip')
-                payload_size += base_size
-            print(f'OTA version: {version}; target devices: {metadata.get("pre-device", "not specified")}', flush=True)
-            # Sparse output + raw images + archive can coexist. Check again
-            # after downloading; do not start extraction on a nearly full disk.
-            required = max(2 * GIB, payload_size * (5 if needs_base else 4))
-            free = shutil.disk_usage(job).free
-            if free < required and not getattr(args, 'fixture', False):
-                raise BuildError(f'Not enough disk space: {free / GIB:.1f} GiB free; allow at least {required / GIB:.1f} GiB for this payload. Choose another output drive.')
-            print('STEP 2/5 • Stage flasher and device assets', flush=True)
-            assets = job / 'assets'
-            normalize_assets(repo, assets, dev, template)
-            if __package__:
-                from .native_pipeline import stage, build_images
-            else:
-                from native_pipeline import stage, build_images
-            source = Path(getattr(args, 'bloat_dir', '') or os.environ.get('BLOAT_SOURCE_DIR', str(repo / 'bloat'))).expanduser().resolve()
-            result = stage(worker, assets, job / 'stage', dev, args.kind, args.region, source)
-            print('STEP 3/5 • Extract partitions and build flasher', flush=True)
-            result = build_images(worker, assets, result, download, dev, args.kind, args.region,
-                                  catalog.sizes.get(dev, 0), builder)
-            if not result.is_dir():
-                raise BuildError(f'Builder did not create the expected output: {result}')
-            boot_dir = result / ('COS_FILES_HERE' if args.region == 'CN' else 'OOS_FILES_HERE')
-            if not (boot_dir / 'boot.img').is_file():
-                raise BuildError('Build output has no boot.img. The OTA may be incomplete or incompatible.')
-            if 'Super' in args.kind and not (result / 'super.img').is_file():
-                raise BuildError('Build output has no super.img.')
-            print('STEP 4/5 • Package ZIP and calculate SHA-256', flush=True)
-            suffix = 'COS' if args.region == 'CN' else args.region
-            filename = ('TEST-DO-NOT-FLASH ' if getattr(args, 'fixture', False) else '') + f'{args.kind} {dev} {suffix} {version}.zip'
-            dest = job / filename
-            package(worker, result, dest)
-            manifest = dict(device=args.device, flasher_type=args.kind, region=args.region,
-                            version=version, artifact=filename, created=time.strftime('%Y-%m-%dT%H:%M:%S'),
-                            test_fixture=bool(getattr(args, 'fixture', False)))
-            (job / 'build.json').write_text(json.dumps(manifest, indent=2) + '\n', encoding='utf-8')
-            print('Removing temporary working files…', flush=True)
-            for directory in (assets, job / 'stage', download):
-                shutil.rmtree(directory)
-            print('STEP 5/5 • Complete', flush=True)
-            print(f'ZIP: {dest}', flush=True)
-            print('@@RESULT ' + json.dumps({'job': str(job), 'zip': str(dest)}), flush=True)
-            return dest
-        except BaseException as e:
-            print(f'ERROR: {e}', flush=True)
-            raise
-        finally:
-            sys.stdout, sys.stderr = old_out, old_err
+    with build_log(job):
+        worker = Worker(args.cancel)
+        download = job / 'download'
+        download.mkdir()
+        print('STEP 1/5 • Prepare OTA', flush=True)
+        version, payload_size, metadata = prepare_ota(worker, args, 'ota', download / 'OTA.zip')
+        if needs_base:
+            _, base_size, _ = prepare_ota(worker, args, 'base', download / 'BASE.zip')
+            payload_size += base_size
+        print(f'OTA version: {version}; target devices: {metadata.get("pre-device", "not specified")}', flush=True)
+        # Sparse output + raw images + archive can coexist. Check again
+        # after downloading; do not start extraction on a nearly full disk.
+        required = max(2 * GIB, payload_size * (5 if needs_base else 4))
+        free = shutil.disk_usage(job).free
+        if free < required and not getattr(args, 'fixture', False):
+            raise BuildError(f'Not enough disk space: {free / GIB:.1f} GiB free; allow at least {required / GIB:.1f} GiB for this payload. Choose another output drive.')
+        print('STEP 2/5 • Stage flasher and device assets', flush=True)
+        assets = job / 'assets'
+        normalize_assets(repo, assets, dev, template)
+        if __package__:
+            from .native_pipeline import stage, build_images
+        else:
+            from native_pipeline import stage, build_images
+        source = Path(getattr(args, 'bloat_dir', '') or os.environ.get('BLOAT_SOURCE_DIR', str(repo / 'bloat'))).expanduser().resolve()
+        result = stage(worker, assets, job / 'stage', dev, args.kind, args.region, source)
+        print('STEP 3/5 • Extract partitions and build flasher', flush=True)
+        result = build_images(worker, assets, result, download, dev, args.kind, args.region,
+                              catalog.sizes.get(dev, 0), builder)
+        if not result.is_dir():
+            raise BuildError(f'Builder did not create the expected output: {result}')
+        boot_dir = result / ('COS_FILES_HERE' if args.region == 'CN' else 'OOS_FILES_HERE')
+        if not (boot_dir / 'boot.img').is_file():
+            raise BuildError('Build output has no boot.img. The OTA may be incomplete or incompatible.')
+        if 'Super' in args.kind and not (result / 'super.img').is_file():
+            raise BuildError('Build output has no super.img.')
+        print('STEP 4/5 • Package ZIP and calculate SHA-256', flush=True)
+        suffix = 'COS' if args.region == 'CN' else args.region
+        filename = ('TEST-DO-NOT-FLASH ' if getattr(args, 'fixture', False) else '') + f'{args.kind} {dev} {suffix} {version}.zip'
+        dest = job / filename
+        package(worker, result, dest)
+        worker.check()
+        manifest = dict(device=args.device, flasher_type=args.kind, region=args.region,
+                        version=version, artifact=filename, created=time.strftime('%Y-%m-%dT%H:%M:%S'),
+                        test_fixture=bool(getattr(args, 'fixture', False)))
+        (job / 'build.json').write_text(json.dumps(manifest, indent=2) + '\n', encoding='utf-8')
+        print('Removing temporary working files…', flush=True)
+        for directory in (assets, job / 'stage', download):
+            shutil.rmtree(directory)
+        print('STEP 5/5 • Complete', flush=True)
+        print(f'ZIP: {dest}', flush=True)
+        print('@@RESULT ' + json.dumps({'job': str(job), 'zip': str(dest)}), flush=True)
+        return dest
 
 
 
