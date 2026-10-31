@@ -103,7 +103,7 @@ def main():
 - Both packages include the GUI, console worker, otaripper-lite 3.5.0, lpmake, and GitHub CLI.
 - Setup fits without scrolling. Build output opens only when work starts, and successful downloads return to setup automatically.
 - Automatic startup update checks notify you when a newer app release is available. Environment includes a manual check and a link to the update download page.
-- Selected region buttons reserve room for bold text, including Global.
+- Bloat controls now include a labelled Recheck button that spins during verification, plus Delete bloat with an exact-file confirmation and shared-cache preservation.
 - Cancelling a build removes its partial output and temporary files while preserving completed packages and source downloads.
 - Bloat remains required step 2; OTA catalog selection, downloads, and local builds are included.
 - Linux and Windows packages passed native runner tests and their extracted, frozen GUI pipeline self-tests. Validation receipts and SHA256SUMS are attached.

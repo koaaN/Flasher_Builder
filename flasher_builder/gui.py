@@ -25,13 +25,16 @@ from .backend import ROOT, BuildError, Catalog
 from .runtime import Runtime
 from . import ota_catalog
 from . import __version__, updates
-from scripts.materialize_bloat import load_manifest, inspect_downloads
+from .bloat_storage import BloatStorageError, plan_deletion, delete_bloat
+from scripts.materialize_bloat import AssetError, load_manifest, inspect_downloads
 
 
 ICONS = {
     'layers': '<path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="m3 12 9 5 9-5M3 16l9 5 9-5"/>',
     'build': '<rect x="4" y="3" width="16" height="18" rx="3"/><path d="M8 8h8M8 12h8M8 16h4"/>',
     'clock': '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+    'refresh': '<path d="M20 7v5h-5M4 17v-5h5"/><path d="M6.1 6a8 8 0 0 1 13.4 4M4.5 14a8 8 0 0 0 13.4 4"/>',
+    'trash': '<path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7"/>',
     'settings': '<path d="M4 6h16M4 12h16M4 18h16"/><circle cx="9" cy="6" r="2"/><circle cx="15" cy="12" r="2"/><circle cx="9" cy="18" r="2"/>',
     'folder': '<path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v10H3V7Z"/>',
     'arrow': '<path d="M5 12h14m-5-5 5 5-5 5"/>',
@@ -47,11 +50,12 @@ ICONS = {
 }
 
 
-def icon(name, color='#617188', size=20):
+def icon(name, color='#617188', size=20, angle=0):
     svg = f'<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="{color}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">{ICONS[name]}</svg>'
     pixmap = QPixmap(size * 2, size * 2)
     pixmap.fill(Qt.GlobalColor.transparent)
     painter = QPainter(pixmap)
+    painter.translate(size, size); painter.rotate(angle); painter.translate(-size, -size)
     QSvgRenderer(QByteArray(svg.encode())).render(painter)
     painter.end()
     pixmap.setDevicePixelRatio(2)
@@ -254,7 +258,7 @@ class Button(QPushButton):
     """Size styled controls from their content, without platform button minima."""
     def sizeHint(self):
         self.ensurePolished()
-        horizontal, vertical = {'primary': (20, 12), 'quiet': (8, 7),
+        horizontal, vertical = {'primary': (20, 12), 'quiet': (8, 7), 'danger': (8, 7),
                                 'region': (15, 8), 'sourceTab': (12, 7)}.get(self.objectName(), (14, 10))
         ancestor = self.parentWidget()
         while ancestor is not None:
@@ -279,12 +283,35 @@ class Button(QPushButton):
         return self.sizeHint()
 
 
+class RecheckButton(Button):
+    def __init__(self, callback):
+        super().__init__('Recheck')
+        self.setObjectName('quiet'); self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setAccessibleName('Recheck bloat files')
+        self.setIconSize(QSize(18, 18)); self.angle = 0
+        self.animation = QTimer(self); self.animation.setInterval(80)
+        self.animation.timeout.connect(self.advance)
+        self.clicked.connect(callback); self.set_scanning(False)
+
+    def advance(self):
+        self.angle = (self.angle + 24) % 360
+        self.setIcon(icon('refresh', '#3268d9', angle=self.angle))
+
+    def set_scanning(self, scanning):
+        self.setToolTip('Checking downloaded bloat files…' if scanning else
+                        'Recheck that the selected bloat files are downloaded and valid.')
+        if scanning:
+            self.setEnabled(False); self.animation.start()
+        else:
+            self.animation.stop(); self.angle = 0; self.setIcon(icon('refresh'))
+
+
 def button(text, symbol=None, name='', callback=None):
     widget = Button(text)
     widget.setObjectName(name)
     widget.setCursor(Qt.CursorShape.PointingHandCursor)
     if symbol:
-        widget.setIcon(icon(symbol, '#ffffff' if name == 'primary' else '#617188'))
+        widget.setIcon(icon(symbol, '#ffffff' if name == 'primary' else '#b35454' if name == 'danger' else '#617188'))
         widget.setIconSize(QSize(18, 18))
     if callback:
         widget.clicked.connect(callback)
@@ -342,6 +369,9 @@ QPushButton#primary:hover { background: #245ac9; }
 QPushButton#primary:disabled { background: #a0b8e8; border-color: #a0b8e8; color: #f0f4ff; }
 QPushButton#quiet { background: transparent; border: none; padding: 7px 8px; color: #7b889a; font-size: 11px; }
 QPushButton#quiet:hover { color: #3268d9; background: #edf2fc; }
+QPushButton#danger { background: transparent; border: none; padding: 7px 8px; color: #b35454; font-size: 11px; }
+QPushButton#danger:hover { color: #9b3434; background: #fff0f0; }
+QPushButton#danger:disabled { color: #a5afbf; background: transparent; }
 QPushButton#region { background: #f7f9fc; padding: 8px 15px; color: #76859b; font-size: 11px; }
 QPushButton#region:checked { background: #eaf0ff; border: 1px solid #9db7ec; color: #285bc0; font-weight: 700; }
 QPushButton#sourceTab { background: #f7f9fc; border: none; padding: 7px 12px; font-size: 11px; color: #8290a4; }
@@ -408,6 +438,8 @@ class App(QMainWindow):
         self.bloat_probe_key = None
         self.bloat_data = None
         self.bloat_active_token = None
+        self.bloat_scan_threads = []
+        self.bloat_deleting = False
         self.bloat_check_timer = QTimer(self)
         self.bloat_check_timer.setSingleShot(True)
         self.bloat_check_timer.timeout.connect(self.scan_bloat_status)
@@ -614,7 +646,10 @@ class App(QMainWindow):
         heading = QHBoxLayout()
         heading.addWidget(label('02', 'sectionNumber'))
         heading.addWidget(label('Bloat files', 'cardTitle')); heading.addStretch()
-        heading.addWidget(button('', 'clock', 'quiet', lambda: self.refresh_bloat_status(force=True)))
+        self.bloat_open = button('Open folder', 'folder', 'quiet', self.open_bloat_folder)
+        heading.addWidget(self.bloat_open)
+        self.bloat_recheck = RecheckButton(lambda: self.refresh_bloat_status(force=True))
+        heading.addWidget(self.bloat_recheck)
         self.bloat_status = label('Checking local files…', 'hint')
         nl.addLayout(heading)
         self.bloat_info = label('For the selected device and region', 'hint', True)
@@ -638,9 +673,10 @@ class App(QMainWindow):
         self.bloat_download.setEnabled(False)
         bloat_actions = QHBoxLayout()
         bloat_actions.addWidget(self.bloat_download)
-        self.bloat_open = button('Open folder', 'folder', 'quiet', self.open_bloat_folder)
-        bloat_actions.addWidget(self.bloat_open)
         bloat_actions.addStretch()
+        self.bloat_delete = button('Delete bloat', 'trash', 'danger', self.delete_selected_bloat)
+        self.bloat_delete.setToolTip('Delete the selected bloat images and unused cached downloads.')
+        self.bloat_delete.setEnabled(False); bloat_actions.addWidget(self.bloat_delete)
         nl.addLayout(bloat_actions)
         self.bloat_card = notes
         top.addWidget(notes, 1)
@@ -850,7 +886,7 @@ class App(QMainWindow):
 
     def update_build_gate(self):
         ready = self.local_bloat_ready()
-        enabled = ready and not self.busy
+        enabled = ready and not self.busy and not self.bloat_deleting
         self.ota_card.setEnabled(enabled)
         self.start_button.setEnabled(enabled)
         self.ota_gate_hint.setVisible(not ready)
@@ -858,7 +894,7 @@ class App(QMainWindow):
         self.update_ota_controls()
 
     def refresh_bloat_status(self, *args, force=False):
-        if self.busy or 'bloat_dir' not in self.fields or not hasattr(self, 'region'):
+        if self.busy or self.bloat_deleting or 'bloat_dir' not in self.fields or not hasattr(self, 'region'):
             return
         values = self.values()
         key = tuple(values[k] for k in ('device', 'kind', 'region', 'bloat_dir'))
@@ -867,6 +903,8 @@ class App(QMainWindow):
             self.bloat_check_timer.stop()
             self.bloat_status.setText('Selection unavailable')
             self.bloat_download.setEnabled(False)
+            self.bloat_recheck.set_scanning(False); self.bloat_recheck.setEnabled(False)
+            self.bloat_delete.setEnabled(False)
             self.update_build_gate()
             return
         if key == self.bloat_probe_key and self.bloat_active_token == self.bloat_scan_token and not force:
@@ -882,12 +920,13 @@ class App(QMainWindow):
             self.bloat_status.setStyleSheet('color: #7d8b9e;')
             self.bloat_download.setText('Download bloat')
             self.bloat_download.setEnabled(False)
+            self.bloat_recheck.set_scanning(True); self.bloat_delete.setEnabled(False)
         self.fields['bloat_dir'].setToolTip(values['bloat_dir'])
         self.bloat_check_timer.start(150)
         self.update_build_gate()
 
     def scan_bloat_status(self):
-        if self.busy:
+        if self.busy or self.bloat_deleting:
             return
         token = self.bloat_scan_token
         self.bloat_active_token = token
@@ -905,10 +944,13 @@ class App(QMainWindow):
                 self.events.put(('bloat-status', (token, {'error': str(e)})))
             finally:
                 self.events.put(('bloat-scan-finished', token))
-        threading.Thread(target=inspect, daemon=True).start()
+        thread = threading.Thread(target=inspect, daemon=True)
+        self.bloat_scan_threads = [t for t in self.bloat_scan_threads if t.is_alive()] + [thread]
+        thread.start()
 
     def apply_bloat_status(self, data):
         self.bloat_data = data
+        self.update_bloat_delete()
         if 'error' in data:
             self.bloat_status.setText('Could not check local files')
             self.bloat_status.setToolTip(data['error'])
@@ -938,6 +980,60 @@ class App(QMainWindow):
         self.bloat_download.setIcon(icon('check' if data['ready'] else 'download'))
         self.bloat_download.setEnabled(bool(data['total']) and not data['ready'] and not self.busy)
         self.update_build_gate()
+
+    def update_bloat_delete(self):
+        enabled = False
+        tooltip = 'Delete the selected bloat images and unused cached downloads.'
+        if not self.busy and not self.bloat_deleting and self.selection_valid:
+            try:
+                values = self.values()
+                plan = plan_deletion(load_manifest(ROOT / 'bloat/assets-manifest.json'), values['bloat_dir'],
+                    self.catalog.devices[values['device']], values['kind'], values['region'])
+                enabled = bool(plan.files or plan.cache)
+            except (OSError, ValueError, RuntimeError, AssetError, BloatStorageError) as e:
+                tooltip = 'Could not prepare deletion: ' + str(e)
+        self.bloat_delete.setEnabled(enabled)
+        self.bloat_delete.setToolTip(tooltip)
+
+    def delete_selected_bloat(self):
+        if self.busy or self.bloat_deleting:
+            return
+        values = self.values()
+        try:
+            plan = plan_deletion(load_manifest(ROOT / 'bloat/assets-manifest.json'), values['bloat_dir'],
+                self.catalog.devices[values['device']], values['kind'], values['region'])
+        except (OSError, ValueError, RuntimeError, AssetError, BloatStorageError) as e:
+            QMessageBox.warning(self, 'Could not delete bloat', str(e)); return
+        if not plan.files and not plan.cache:
+            self.refresh_bloat_status(force=True); return
+        names = '\n'.join(p.relative_to(plan.root).as_posix() for p in plan.files)
+        message = (f'Delete local bloat for {values["device"]} / {values["region"]}?\n\n'
+            f'{len(plan.files)} image file(s) and {len(plan.cache)} unused download cache file(s) '
+            f'({plan.bytes / 1024**3:.2f} GB) will be removed from:\n{plan.root}\n\n'
+            + (f'Selected image files:\n{names}\n\n' if names else '') +
+            'You will need to download the bloat again before building.')
+        answer = QMessageBox.question(self, 'Delete selected bloat?', message,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        self.bloat_deleting = True; self.bloat_scan_token += 1
+        self.bloat_check_timer.stop(); self.bloat_data = None
+        self.bloat_recheck.set_scanning(False); self.bloat_recheck.setEnabled(False)
+        self.bloat_delete.setEnabled(False); self.bloat_download.setEnabled(False)
+        self.bloat_status.setText('Deleting local files…')
+        for control in self.inputs: control.setEnabled(False)
+        self.check_button.setEnabled(False); self.test_button.setEnabled(False)
+        self.update_build_gate()
+        scans = list(self.bloat_scan_threads)
+        def task():
+            error = ''
+            try:
+                for scan in scans: scan.join()
+                delete_bloat(plan)
+            except (OSError, BloatStorageError) as e:
+                error = str(e)
+            self.events.put(('bloat-deleted', error))
+        threading.Thread(target=task, daemon=True).start()
 
     def choose_bloat_folder(self):
         folder = QFileDialog.getExistingDirectory(self, 'Choose bloat download folder', self.fields['bloat_dir'].text())
@@ -1091,6 +1187,8 @@ class App(QMainWindow):
         if path: self.fields['output'].setText(path); self.update_summary()
 
     def start(self, action):
+        if self.bloat_deleting:
+            return
         if self.busy: return
         values = self.values()
         if action in ('build', 'ota') and not self.local_bloat_ready():
@@ -1158,6 +1256,8 @@ class App(QMainWindow):
         if busy:
             self.bloat_scan_token += 1
             self.bloat_check_timer.stop()
+            self.bloat_recheck.set_scanning(False); self.bloat_recheck.setEnabled(False)
+            self.bloat_delete.setEnabled(False)
         if busy and self.action == 'bloat':
             self.bloat_status.setText('Downloading and verifying…')
             self.bloat_download.setText('Downloading…')
@@ -1212,8 +1312,16 @@ class App(QMainWindow):
                         else:
                             self.ota_details[role].setText(error)
                         self.update_ota_controls()
+                elif kind == 'bloat-deleted':
+                    self.bloat_deleting = False; self.bloat_verified.clear()
+                    self.set_busy(False)
+                    self.refresh_bloat_status(force=True)
+                    if value: QMessageBox.warning(self, 'Could not delete all bloat files', value)
                 elif kind == 'bloat-scan-finished':
                     if self.bloat_active_token == value: self.bloat_active_token = None
+                    if self.bloat_scan_token == value and not self.busy and not self.bloat_deleting:
+                        self.bloat_recheck.set_scanning(False)
+                        self.bloat_recheck.setEnabled(self.selection_valid)
                 elif kind == 'bloat-status':
                     token, data = value
                     if token == self.bloat_scan_token and not self.busy:
@@ -1292,6 +1400,8 @@ class App(QMainWindow):
         QDesktopServices.openUrl(QUrl.fromLocalFile(item.data(0, Qt.ItemDataRole.UserRole)))
 
     def closeEvent(self, event):
+        if self.bloat_deleting:
+            event.ignore(); return
         if self.busy:
             if self.closing:
                 event.ignore(); return

@@ -7,10 +7,11 @@ from pathlib import Path
 import sys
 import tempfile
 import time
+import threading
 import unittest
 from unittest.mock import patch
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QMessageBox
 from flasher_builder.gui import App, STYLE
 from flasher_builder.runtime import Runtime
 
@@ -122,6 +123,43 @@ class BloatGuiTests(unittest.TestCase):
         self.assertIn('--download-bloat', cmd)
         self.assertEqual(cmd[cmd.index('--bloat-dir') + 1], '/mapped/' + str(self.folder))
         self.assertNotIn('--ota', cmd)
+
+    def test_recheck_is_labelled_and_spins_until_verification_finishes(self):
+        gate=threading.Event()
+        def inspect(*args,**kwargs):
+            gate.wait(3)
+            return dict(total=1,downloaded=0,bytes=len(self.raw),ready=False)
+        with patch('flasher_builder.gui.inspect_downloads',side_effect=inspect):
+            self.window.bloat_recheck.click()
+            self.assertEqual(self.window.bloat_recheck.text(),'Recheck')
+            self.assertTrue(self.window.bloat_recheck.animation.isActive())
+            self.assertIn('Checking',self.window.bloat_recheck.toolTip())
+            QTest.qWait(180)
+            self.assertNotEqual(self.window.bloat_recheck.angle,0)
+            gate.set()
+            self.wait_for(lambda:not self.window.bloat_recheck.animation.isActive())
+        self.assertTrue(self.window.bloat_recheck.isEnabled())
+        self.assertIn('downloaded and valid',self.window.bloat_recheck.toolTip())
+
+    def test_delete_cancel_preserves_files_and_confirmed_delete_locks_build(self):
+        target=self.folder/'13/GLO_BLOAT/my_preload.img';target.parent.mkdir(parents=True);target.write_bytes(self.raw)
+        other=self.folder/'13/EU_BLOAT/my_preload.img';other.parent.mkdir(parents=True);other.write_bytes(b'other region')
+        sha=next(iter(self.manifest['assets']));cache=self.folder/'.cache'/(sha+'.img')
+        cache.parent.mkdir();cache.write_bytes(self.raw)
+        self.window.refresh_bloat_status(force=True);self.wait_for(self.window.local_bloat_ready)
+        self.assertTrue(self.window.bloat_delete.isEnabled())
+        with patch('flasher_builder.gui.QMessageBox.question',return_value=QMessageBox.StandardButton.No):
+            self.window.bloat_delete.click()
+        self.assertTrue(target.exists());self.assertTrue(cache.exists())
+        with patch('flasher_builder.gui.QMessageBox.question',return_value=QMessageBox.StandardButton.Yes) as question:
+            self.window.bloat_delete.click()
+            self.assertIn('Oneplus 13 / GLO',question.call_args.args[2])
+            self.assertFalse(self.window.start_button.isEnabled())
+            self.wait_for(lambda:not self.window.bloat_deleting and self.window.bloat_data is not None and self.window.bloat_active_token is None)
+        self.assertFalse(target.exists());self.assertFalse(cache.exists());self.assertEqual(other.read_bytes(),b'other region')
+        self.assertFalse(self.window.local_bloat_ready());self.assertFalse(self.window.ota_card.isEnabled())
+        self.assertTrue(self.window.bloat_download.isEnabled());self.assertFalse(self.window.bloat_delete.isEnabled())
+        self.assertFalse(self.window.output_available)
 
 
 if __name__ == '__main__':

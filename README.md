@@ -88,7 +88,7 @@ The **Bloat files** panel follows the selected device, region and flasher type.
 Use its folder button to choose where to keep the images, then click
 **Download bloat**. No OTA is needed for this download. The panel reports
 **Already downloaded** when all selected images have the correct sizes and
-SHA-256 checksums, or shows how many files are missing. Use the refresh button
+SHA-256 checksums, or shows how many files are missing. Use **Recheck** (the refresh icon spins while verifying)
 to recheck files manually; status also updates when the selection or folder
 changes. The chosen folder is remembered between sessions.
 
@@ -174,3 +174,5 @@ GitHub Actions workflow. See [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) fo
 tool origins, versions and licenses.
 
 Realme NEO8 supports **Super Flasher → CN (ColorOS) only**, with a physical super size of **18,790,481,920 bytes**. Its required bloat images are `my_preload.img`, `my_company.img` and `system_dlkm_oki.img`; all three are packed into super. The OTA catalog maps to **Realme NEO 8 / CN (RMX8899)**. Generated packages include Windows and Linux fastboot scripts for the CN firmware, with no OxygenOS conversion or optional debloat-image step.
+
+**Delete bloat** removes the image files required by the current selection and their unused download-cache copies from the selected bloat folder. A confirmation lists the device, region, folder and exact image paths. Other files remain in place; cache objects shared with another locally stored image are preserved. Deleting required files locks step 3/build until **Download bloat** restores them. Delete/recheck controls are disabled during builds and downloads.
