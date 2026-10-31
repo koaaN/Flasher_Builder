@@ -54,7 +54,6 @@ class BloatGuiTests(unittest.TestCase):
     def test_download_button_needs_no_ota_and_switches_to_already_downloaded(self):
         self.assertEqual(self.window.bloat_status.text(), 'Not downloaded')
         self.assertTrue(self.window.bloat_download.isEnabled())
-        self.assertFalse(self.window.bloat_continue.isEnabled())
         self.assertFalse(self.window.ota_card.isEnabled())
         self.assertFalse(self.window.start_button.isEnabled())
         self.assertEqual(self.window.fields['ota'].text(), '')
@@ -65,10 +64,11 @@ class BloatGuiTests(unittest.TestCase):
         with patch.object(Runtime, 'command', return_value=[sys.executable, '-u', '-c', code]):
             self.window.bloat_download.click()
             self.assertTrue(self.window.busy)
+            self.assertEqual(self.window.pages.currentIndex(), 3)
             self.wait_for(lambda: not self.window.busy and bool(self.window.bloat_data and self.window.bloat_data.get('ready')))
         self.assertEqual(self.window.bloat_status.text(), 'Already downloaded')
+        self.assertEqual(self.window.pages.currentIndex(), 0)
         self.assertFalse(self.window.bloat_download.isEnabled())
-        self.assertTrue(self.window.bloat_continue.isEnabled())
         self.assertTrue(self.window.ota_card.isEnabled())
         self.assertTrue(self.window.start_button.isEnabled())
         saved = json.loads(self.window.settings.read_text())
@@ -76,7 +76,6 @@ class BloatGuiTests(unittest.TestCase):
         target.unlink(); self.window.refresh_bloat_status()
         self.wait_for(lambda: self.window.bloat_data is not None and not self.window.bloat_data.get('ready') and self.window.bloat_active_token is None)
         self.assertTrue(self.window.bloat_download.isEnabled())
-        self.assertFalse(self.window.bloat_continue.isEnabled())
         self.assertFalse(self.window.ota_card.isEnabled())
         self.assertFalse(self.window.start_button.isEnabled())
 
@@ -100,6 +99,7 @@ class BloatGuiTests(unittest.TestCase):
         self.assertEqual(warning.call_args.args[1], 'Bloat files required')
         command.assert_not_called()
         self.assertFalse(self.window.busy)
+        self.assertFalse(self.window.output_available)
 
     def test_region_change_locks_step_three_until_its_files_exist(self):
         sha = next(iter(self.manifest['assets']))
@@ -111,7 +111,6 @@ class BloatGuiTests(unittest.TestCase):
         self.assertTrue(self.window.ota_card.isEnabled())
         self.window.set_region('EU')
         self.assertFalse(self.window.ota_card.isEnabled())
-        self.assertFalse(self.window.bloat_continue.isEnabled())
         self.wait_for(lambda: self.window.bloat_data is not None and self.window.bloat_active_token is None)
         self.assertFalse(self.window.start_button.isEnabled())
 

@@ -44,10 +44,10 @@ URLs are passed as argument arrays, without shell interpolation.
 ## Building a package
 
 - Choose a supported device, flasher type and region. CN means ColorOS; other regions use OxygenOS templates.
-- Complete **step 2 — Bloat files**: choose a folder containing the required images or click **Download bloat**. The app verifies their sizes and SHA-256 hashes. **Continue to OTA**, step 3, and **Build package** stay locked until the selected build's files are verified locally.
+- Complete **step 2 — Bloat files**: choose a folder containing the required images or click **Download bloat**. The app verifies their sizes and SHA-256 hashes. Step 3 and **Build package** stay locked until the selected build's files are verified locally.
 - In **step 3**, use **Version catalog**, choose a full OTA ZIP, or enter an HTTP(S) URL. Placeholder and incremental OTA files are rejected.
 - **Ace 6 / SuperHybrid / IN** additionally requires the Ace 6 ColorOS **BASE** OTA. Its primary OTA must be the OnePlus 15R India OxygenOS **TARGET** OTA.
-- Choose the output folder and click **Build package**. The log reports download, staging, extraction, packing and compression. **Cancel** stops the active native tools and their child processes.
+- Choose the output folder and click **Build package**. The app opens **Build output** for progress and logs; **Back to setup** returns to the form. The log reports download, staging, extraction, packing and compression. **Cancel** stops the active native tools and their child processes.
 - **Open output** opens the latest result folder. Each job has a unique name and contains the final ZIP, `.zip.sha256`, `build.json`, and `build.log`. Temporary work files are removed after a successful build. Failed or cancelled jobs retain partial work for inspection; those job folders can be deleted when no longer needed.
 
 Budget roughly **40–80 GB free** for full firmware builds, depending on device, OTA compression and the number of inputs. The worker checks available space before extraction, but actual requirements vary. The GUI logs the OTA's declared device identifier; choose firmware appropriate for the selected device. A successful package build does not establish compatibility with a physical phone.
@@ -140,7 +140,9 @@ The GitHub Actions scripts extract to explicit directories, normalize script lin
 
 ## Distribution builds
 
-The UI uses PySide6 (Qt 6). The build worker uses Python's standard library. Build history, environment checks, resizable logs and package summaries are built into the desktop interface. Create a portable source ZIP with:
+The setup form fits without scrolling, including the Ace 6 target/base OTA selectors. Build output stays hidden until a task starts and uses its own view, so logs never shrink the setup form. Successful bloat and OTA downloads return to setup automatically; **View output** reopens their logs.
+
+The UI uses PySide6 (Qt 6). The build worker uses Python's standard library. Build history, environment checks, task logs and package summaries are built into the desktop interface. Create a portable source ZIP with:
 
 ```sh
 python3 scripts/fetch_tools.py --platform all

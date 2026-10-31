@@ -98,6 +98,7 @@ def main():
 
 - Windows runs natively, with no WSL, Bash, or separate Python installation.
 - Both packages include the GUI, console worker, otaripper-lite 3.5.0, lpmake, and GitHub CLI.
+- Setup fits without scrolling. Build output opens only when work starts, and successful downloads return to setup automatically.
 - Bloat remains required step 2; OTA catalog selection, downloads, and local builds are included.
 - Linux and Windows packages passed native runner tests and their extracted, frozen GUI pipeline self-tests. Validation receipts and SHA256SUMS are attached.
 

@@ -18,7 +18,7 @@ from PySide6.QtGui import QColor, QDesktopServices, QFont, QFontDatabase, QIcon,
 from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import (QApplication, QButtonGroup, QComboBox, QFileDialog, QFrame,
     QAbstractItemView, QGraphicsDropShadowEffect, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QListView, QMainWindow, QMessageBox, QPlainTextEdit,
-    QProgressBar, QPushButton, QScrollArea, QSizePolicy, QSplitter, QStackedWidget,
+    QProgressBar, QPushButton, QScrollArea, QSizePolicy, QStackedWidget,
     QStyle, QStyledItemDelegate, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget)
 
 from .backend import ROOT, BuildError, Catalog
@@ -327,7 +327,6 @@ QScrollArea { border: none; background: transparent; }
 QScrollBar:vertical { width: 7px; background: transparent; margin: 0; }
 QScrollBar::handle:vertical { background: #c4cddc; border-radius: 3px; min-height: 30px; }
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
-QSplitter::handle { background: transparent; height: 12px; }
 QTreeWidget { background: white; border: 0; alternate-background-color: #f8fafd; color: #40536e; padding: 4px; }
 QTreeWidget::item { padding: 12px 6px; border-bottom: 1px solid #eef1f6; }
 QTreeWidget::item:selected { background: #eaf0ff; color: #2c5fba; }
@@ -341,8 +340,8 @@ class App(QMainWindow):
         super().__init__()
         self.setWindowTitle('Flasher Builder')
         self.setWindowIcon(icon('layers', '#3268d9', 64))
-        self.resize(1400, 940)
-        self.setMinimumSize(1120, 780)
+        self.resize(1280, 820)
+        self.setMinimumSize(1120, 720)
         self.catalog = Catalog()
         self.events = queue.Queue()
         self.busy = False
@@ -350,6 +349,7 @@ class App(QMainWindow):
         self.cancel_file = None
         self.last_folder = ROOT / 'builds'
         self.action = None
+        self.output_available = False
         self.started = None
         self.settings = ROOT / '.flasher-builder.json'
         self.saved = {}
@@ -409,7 +409,7 @@ class App(QMainWindow):
         side.addSpacing(5)
         self.nav = []
         self.nav_group = QButtonGroup(self)
-        for i, (text, symbol) in enumerate((('New package', 'build'), ('Build history', 'clock'), ('Environment', 'settings'))):
+        for i, (text, symbol) in enumerate((('New package', 'build'), ('Build history', 'clock'), ('Environment', 'settings'), ('Build output', 'terminal'))):
             b = button('  ' + text, callback=lambda checked=False, index=i: self.navigate(index))
             b.setIcon(icon(symbol, '#8da9d3'))
             b.setCheckable(True)
@@ -417,6 +417,7 @@ class App(QMainWindow):
             self.nav.append(b)
             side.addWidget(b)
         self.nav[0].setChecked(True)
+        self.nav[3].hide()
         side.addStretch()
         engine = QFrame(); engine.setObjectName('engineCard')
         el = QVBoxLayout(engine); el.setContentsMargins(13, 14, 13, 14); el.setSpacing(6)
@@ -431,26 +432,22 @@ class App(QMainWindow):
         horizontal.addWidget(sidebar)
         content = QWidget()
         body = QVBoxLayout(content)
-        body.setContentsMargins(32, 26, 32, 20)
-        body.setSpacing(17)
+        body.setContentsMargins(32, 20, 32, 16)
+        body.setSpacing(12)
         header = QHBoxLayout()
         heading = QVBoxLayout(); heading.setSpacing(6)
-        heading.addWidget(label('WORKSPACE  /  FIRMWARE TOOLS', 'eyebrow'))
         self.title_label = label('New package', 'title'); heading.addWidget(self.title_label)
         self.subtitle = label('Turn a full OTA into a ready-to-use flasher package.', 'subtitle'); heading.addWidget(self.subtitle)
         header.addLayout(heading); header.addStretch()
         header.addWidget(label('●  Running locally', 'badge'), alignment=Qt.AlignmentFlag.AlignTop)
         body.addLayout(header)
-        self.splitter = QSplitter(Qt.Orientation.Vertical)
         self.pages = QStackedWidget()
         self.pages.addWidget(self.build_page())
         self.pages.addWidget(self.history_page())
         self.pages.addWidget(self.environment_page())
-        self.splitter.addWidget(self.pages)
-        self.splitter.addWidget(self.console())
-        self.splitter.setChildrenCollapsible(False)
-        self.splitter.setSizes([600, 195])
-        body.addWidget(self.splitter, 1)
+        self.output_page = self.console()
+        self.pages.addWidget(self.output_page)
+        body.addWidget(self.pages, 1)
         footer = QHBoxLayout()
         footer.addWidget(label('CONFIGURE → BLOAT FILES → OTA → BUILD', 'eyebrow'))
         footer.addStretch()
@@ -459,11 +456,9 @@ class App(QMainWindow):
         horizontal.addWidget(content, 1)
 
     def build_page(self):
-        scroll = QScrollArea(); scroll.setWidgetResizable(True)
-        self.build_scroll = scroll
-        panel = QWidget(); scroll.setWidget(panel)
-        layout = QHBoxLayout(panel); layout.setContentsMargins(0, 0, 0, 0); layout.setSpacing(20)
-        left = QVBoxLayout(); left.setSpacing(14)
+        page = QWidget(); page.setObjectName('innerPanel')
+        layout = QVBoxLayout(page); layout.setContentsMargins(0, 0, 0, 0); layout.setSpacing(14)
+        top = QHBoxLayout(); top.setSpacing(16)
         configure, form = card()
         title = QHBoxLayout()
         title.addWidget(label('01', 'sectionNumber'))
@@ -489,7 +484,8 @@ class App(QMainWindow):
         regions.addStretch(); form.addLayout(regions)
         self.selection_info = label('Select a device and region to get started.', 'hint', True)
         form.addWidget(self.selection_info)
-        left.addWidget(configure)
+        top.addWidget(configure, 1)
+        self.configure_card = configure
         source_card, source_layout = card()
         self.ota_card = source_card
         self.ota_card.setEnabled(False)
@@ -497,28 +493,28 @@ class App(QMainWindow):
         source_head.addWidget(label('03', 'sectionNumber'))
         source_head.addWidget(label('OTA source', 'cardTitle'))
         source_head.addStretch()
-        source_tabs = QHBoxLayout(); source_tabs.setSpacing(8)
         self.source_group = QButtonGroup(self)
         self.file_tab = button('Local file', 'file', 'sourceTab', lambda: self.source_mode(False))
         self.url_tab = button('Download URL', 'link', 'sourceTab', lambda: self.source_mode(True))
         self.catalog_tab = button('Version catalog', 'download', 'sourceTab', lambda: self.source_mode('catalog'))
         for b in (self.file_tab, self.url_tab, self.catalog_tab):
-            b.setCheckable(True); self.source_group.addButton(b); source_tabs.addWidget(b); self.inputs.append(b)
+            b.setCheckable(True); self.source_group.addButton(b); source_head.addWidget(b); self.inputs.append(b)
         self.file_tab.setChecked(True)
         source_layout.addLayout(source_head)
-        source_tabs.addStretch(); source_layout.addLayout(source_tabs)
         self.ota_gate_hint = label('Complete step 2 to unlock OTA selection.', 'hint', True)
         source_layout.addWidget(self.ota_gate_hint)
         self.catalog_panel = QWidget()
         self.catalog_panel.setObjectName('innerPanel')
         catalog_layout = QVBoxLayout(self.catalog_panel); catalog_layout.setContentsMargins(0, 0, 0, 0); catalog_layout.setSpacing(8)
         catalog_head = QHBoxLayout()
-        catalog_head.addWidget(label('DANIEL SPRINGER · OTA CATALOG', 'fieldLabel'), 1)
+        self.ota_catalog_status = label('Fetch OTA versions for this device and region.', 'hint', True)
+        catalog_head.addWidget(self.ota_catalog_status, 1)
         self.ota_fetch_button = button('Fetch versions', 'download', callback=self.fetch_ota_versions)
         self.inputs.append(self.ota_fetch_button); catalog_head.addWidget(self.ota_fetch_button)
         catalog_layout.addLayout(catalog_head)
-        self.ota_catalog_status = label('Fetch available full OTA versions for your device and region.', 'hint', True)
-        catalog_layout.addWidget(self.ota_catalog_status)
+        self.catalog_roles = QGridLayout(); self.catalog_roles.setContentsMargins(0, 0, 0, 0); self.catalog_roles.setHorizontalSpacing(20)
+        self.catalog_roles.setColumnStretch(0, 1); self.catalog_roles.setColumnStretch(1, 1)
+        catalog_layout.addLayout(self.catalog_roles)
         self.ota_combos = {}; self.ota_details = {}; self.ota_download_buttons = {}; self.ota_copy_buttons = {}; self.ota_role_panels = {}
         for role, title in (('ota', 'TARGET OTA'), ('base', 'ACE 6 COLOROS BASE OTA')):
             panel = QWidget(); panel.setObjectName('innerPanel')
@@ -533,36 +529,36 @@ class App(QMainWindow):
             copy = button('Copy download link', 'link', callback=lambda checked=False, r=role: self.copy_ota_link(r))
             self.ota_download_buttons[role] = download; self.ota_copy_buttons[role] = copy
             self.inputs.extend((download, copy)); row.addWidget(download); row.addWidget(copy); row.addStretch(); pl.addLayout(row)
-            self.ota_role_panels[role] = panel; catalog_layout.addWidget(panel)
+            self.ota_role_panels[role] = panel; self.catalog_roles.addWidget(panel, 0, 0 if role == 'ota' else 1)
         source_layout.addWidget(self.catalog_panel); self.catalog_panel.hide()
-        self.fields['ota'], self.browse_ota = self.source_input(source_layout, 'Choose a full OTA .zip file', 'ota')
-        self.source_hint = label('Use a full OTA package. Incremental updates are not supported.', 'hint', True)
-        source_layout.addWidget(self.source_hint)
+        self.manual_panel = QWidget(); self.manual_panel.setObjectName('innerPanel')
+        manual_layout = QHBoxLayout(self.manual_panel); manual_layout.setContentsMargins(0, 0, 0, 0); manual_layout.setSpacing(20)
+        target_panel = QWidget(); target_panel.setObjectName('innerPanel')
+        target_layout = QVBoxLayout(target_panel); target_layout.setContentsMargins(0, 0, 0, 0); target_layout.setSpacing(8)
+        target_layout.addWidget(label('FULL OTA PACKAGE', 'fieldLabel'))
+        self.fields['ota'], self.browse_ota = self.source_input(target_layout, 'Choose a full OTA .zip file', 'ota')
+        manual_layout.addWidget(target_panel, 1)
         self.base_panel = QWidget(); self.base_panel.setObjectName('innerPanel')
-        base_layout = QVBoxLayout(self.base_panel); base_layout.setContentsMargins(0, 5, 0, 0); base_layout.setSpacing(8)
+        base_layout = QVBoxLayout(self.base_panel); base_layout.setContentsMargins(0, 0, 0, 0); base_layout.setSpacing(8)
         base_layout.addWidget(label('ACE 6 COLOROS BASE OTA', 'fieldLabel'))
         self.fields['base'], self.browse_base = self.source_input(base_layout, 'Choose BASE OTA or paste its download URL', 'base')
-        source_layout.addWidget(self.base_panel)
-        line = QFrame(); line.setObjectName('line'); source_layout.addWidget(line)
-        source_layout.addWidget(label('SAVE PACKAGE TO', 'fieldLabel'))
-        output_row = QHBoxLayout(); output_row.setSpacing(8)
+        manual_layout.addWidget(self.base_panel, 1)
+        source_layout.addWidget(self.manual_panel)
+        self.source_hint = label('Use a full OTA package. Incremental updates are not supported.', 'hint', True)
+        source_layout.addWidget(self.source_hint)
+        actions = QHBoxLayout(); actions.setSpacing(8)
+        actions.addWidget(label('Save package to', 'fieldLabel'))
         self.fields['output'] = QLineEdit(str(ROOT / 'builds')); self.inputs.append(self.fields['output'])
         self.fields['output'].editingFinished.connect(self.update_summary)
-        output_row.addWidget(self.fields['output'], 1)
+        actions.addWidget(self.fields['output'], 1)
         output_browse = button('Browse', 'folder', callback=self.choose_output)
-        self.inputs.append(output_browse); output_row.addWidget(output_browse)
-        source_layout.addLayout(output_row)
-        left.addWidget(source_card)
-        actions = QHBoxLayout(); actions.setSpacing(10)
+        self.inputs.append(output_browse); actions.addWidget(output_browse)
         self.start_button = button('Build package', 'arrow', 'primary', lambda: self.start('build'))
-        self.start_button.setMinimumWidth(175)
         actions.addWidget(self.start_button)
+        self.view_output_button = button('View output', 'terminal', callback=lambda: self.navigate(3))
+        self.view_output_button.hide(); actions.addWidget(self.view_output_button)
         self.cancel_button = button('Cancel build', 'stop', callback=self.cancel); self.cancel_button.setEnabled(False)
-        actions.addWidget(self.cancel_button); actions.addStretch()
-        self.output_button = button('Open output', 'folder', 'quiet', self.open_output); actions.addWidget(self.output_button)
-        left.addStretch()
-        layout.addLayout(left, 1)
-        right = QVBoxLayout(); right.setSpacing(14)
+        self.output_button = button('Open output folder', 'folder', callback=self.open_output)
         summary, summary_layout = card(); summary.setFixedWidth(276); summary_layout.setSpacing(8)
         summary_layout.addWidget(label('YOUR PACKAGE', 'eyebrow'))
         self.summary_device = label('OnePlus 13', 'summaryDevice', True); summary_layout.addWidget(self.summary_device)
@@ -575,17 +571,19 @@ class App(QMainWindow):
             summary_layout.addLayout(row)
         line = QFrame(); line.setObjectName('line'); summary_layout.addWidget(line)
         self.space = label('', 'hint', True); summary_layout.addWidget(self.space)
-        right.addWidget(summary)
+        self.package_summary_card = summary
         notes, nl = card(); nl.setSpacing(8); nl.setContentsMargins(24, 14, 24, 14)
         heading = QHBoxLayout()
         heading.addWidget(label('02', 'sectionNumber'))
         heading.addWidget(label('Bloat files', 'cardTitle')); heading.addStretch()
         heading.addWidget(button('', 'clock', 'quiet', lambda: self.refresh_bloat_status(force=True)))
         self.bloat_status = label('Checking local files…', 'hint')
-        heading.addWidget(self.bloat_status)
         nl.addLayout(heading)
         self.bloat_info = label('For the selected device and region', 'hint', True)
-        nl.addWidget(self.bloat_info)
+        self.bloat_status.setWordWrap(True)
+        bloat_metadata = QHBoxLayout(); bloat_metadata.setSpacing(12)
+        bloat_metadata.addWidget(self.bloat_status, 1); bloat_metadata.addWidget(self.bloat_info, 1)
+        nl.addLayout(bloat_metadata)
         folder_row = QHBoxLayout(); folder_row.setSpacing(6)
         self.fields['bloat_dir'] = QLineEdit(str(ROOT / 'bloat'))
         self.fields['bloat_dir'].setReadOnly(True)
@@ -605,21 +603,20 @@ class App(QMainWindow):
         self.bloat_open = button('Open folder', 'folder', 'quiet', self.open_bloat_folder)
         bloat_actions.addWidget(self.bloat_open)
         bloat_actions.addStretch()
-        self.bloat_continue = button('Continue to OTA', 'arrow', 'primary',
-            lambda: self.build_scroll.ensureWidgetVisible(self.ota_card, 0, 20))
-        self.bloat_continue.setEnabled(False)
-        bloat_actions.addWidget(self.bloat_continue)
         nl.addLayout(bloat_actions)
-        left.insertWidget(1, notes)
-        right.addStretch()
-        layout.addLayout(right)
+        self.bloat_card = notes
+        top.addWidget(notes, 1)
+        for frame in (configure, notes, source_card):
+            frame.layout().setContentsMargins(18, 14, 18, 14)
+            frame.layout().setSpacing(8)
+        layout.addLayout(top)
+        layout.addWidget(source_card)
+        layout.addStretch(1)
+        layout.addLayout(actions)
         self.fields['device'].addItems(list(self.catalog.devices))
         self.fields['device'].currentTextChanged.connect(self.device_changed)
         self.fields['kind'].currentTextChanged.connect(self.kind_changed)
-        wrapper = QWidget()
-        wrapped = QVBoxLayout(wrapper); wrapped.setContentsMargins(0, 0, 0, 0); wrapped.setSpacing(12)
-        wrapped.addWidget(scroll, 1); wrapped.addLayout(actions)
-        return wrapper
+        return page
 
     def source_input(self, parent_layout, placeholder, key):
         row = QHBoxLayout(); row.setSpacing(8)
@@ -665,7 +662,7 @@ class App(QMainWindow):
         return scroll
 
     def console(self):
-        area = QWidget(); area.setMinimumHeight(165)
+        area = QWidget(); area.setObjectName('innerPanel')
         vertical = QVBoxLayout(area); vertical.setContentsMargins(0, 0, 0, 0); vertical.setSpacing(9)
         status_row = QHBoxLayout()
         self.status = label('Ready when you are', 'cardTitle'); status_row.addWidget(self.status)
@@ -688,7 +685,18 @@ class App(QMainWindow):
         row.addWidget(button('Save log', name='quiet', callback=self.save_log)); cl.addLayout(row)
         self.log = QPlainTextEdit(); self.log.setReadOnly(True); self.log.setMaximumBlockCount(12000)
         self.log.setPlaceholderText('Waiting for a build. Configure your package above, then select Build package.')
-        cl.addWidget(self.log, 1); vertical.addWidget(console, 1)
+        cl.addWidget(self.log, 1)
+        content = QHBoxLayout(); content.setSpacing(20)
+        content.addWidget(console, 1)
+        summary_column = QVBoxLayout()
+        summary_column.addWidget(self.package_summary_card); summary_column.addStretch()
+        content.addLayout(summary_column)
+        vertical.addLayout(content, 1)
+        actions = QHBoxLayout()
+        actions.addWidget(button('Back to setup', 'arrow', callback=lambda: self.navigate(0)))
+        actions.addWidget(self.cancel_button)
+        actions.addStretch(); actions.addWidget(self.output_button)
+        vertical.addLayout(actions)
         return area
 
     def restore(self):
@@ -752,9 +760,13 @@ class App(QMainWindow):
         self.refresh_bloat_status()
         self.update_build_gate()
         self.os_badge.setText('COLOR OS' if self.region == 'CN' else 'OXYGEN OS')
+        if not self.output_available:
+            self.update_package_summary(values)
+
+    def update_package_summary(self, values):
         self.summary_device.setText(values['device'].replace('Oneplus', 'OnePlus'))
         self.summary_kind.setText(values['kind'])
-        for key, value in dict(os='ColorOS' if self.region == 'CN' else 'OxygenOS', region='Global' if self.region == 'GLO' else self.region,
+        for key, value in dict(os='ColorOS' if values['region'] == 'CN' else 'OxygenOS', region='Global' if values['region'] == 'GLO' else values['region'],
                                format='ZIP + SHA-256', engine='Native Windows' if sys.platform == 'win32' else 'Native Linux').items():
             self.summary_values[key].setText(value)
         try:
@@ -777,7 +789,6 @@ class App(QMainWindow):
         enabled = ready and not self.busy
         self.ota_card.setEnabled(enabled)
         self.start_button.setEnabled(enabled)
-        self.bloat_continue.setEnabled(enabled)
         self.ota_gate_hint.setVisible(not ready)
         self.start_button.setToolTip('Build the package' if ready else 'Complete step 2: required bloat files must be verified locally.')
         self.update_ota_controls()
@@ -886,6 +897,7 @@ class App(QMainWindow):
         self.ota_mode = 'catalog' if url == 'catalog' else 'url' if url else 'file'
         catalog = self.ota_mode == 'catalog'
         self.catalog_panel.setVisible(catalog)
+        self.manual_panel.setVisible(not catalog)
         self.fields['ota'].setVisible(not catalog)
         self.fields['ota'].setPlaceholderText('https://… / full-OTA.zip' if url else 'Choose a full OTA .zip file')
         self.browse_ota.setVisible(self.ota_mode == 'file')
@@ -904,6 +916,8 @@ class App(QMainWindow):
             self.populate_ota_versions()
         roles = ota_catalog.targets(*context)
         self.ota_role_panels['base'].setVisible('base' in roles)
+        self.catalog_roles.removeWidget(self.ota_role_panels['ota'])
+        self.catalog_roles.addWidget(self.ota_role_panels['ota'], 0, 0, 1, 1 if 'base' in roles else 2)
 
     def populate_ota_versions(self):
         counts = []
@@ -942,13 +956,15 @@ class App(QMainWindow):
         self.ota_link_token += 1; self.ota_link_pending = False
         entry = self.ota_combos[role].currentData()
         if not entry:
+            self.ota_details[role].setToolTip('')
             self.ota_details[role].setText('No version selected. Fetch versions or use a local file / direct URL.')
         else:
             details = [f'{entry["device"]} / {entry["region"]}', entry.get('model', '')]
             if isinstance(entry.get('size'), int): details.append(f'{entry["size"] / 1024**3:.2f} GiB')
             if entry.get('security_patch'): details.append('Patch ' + entry['security_patch'])
             local = self.ota_local.get(entry['id'])
-            if local and Path(local).is_file(): details.append('Downloaded: ' + local)
+            if local and Path(local).is_file(): details.append('Saved locally')
+            self.ota_details[role].setToolTip(local or '')
             self.ota_details[role].setText(' · '.join(d for d in details if d))
         self.update_ota_controls()
 
@@ -961,6 +977,7 @@ class App(QMainWindow):
             local = self.ota_local.get(entry['id']) if entry else None
             downloaded = bool(local and Path(local).is_file())
             self.ota_download_buttons[role].setText('Already downloaded' if downloaded else 'Download OTA')
+            self.ota_download_buttons[role].setToolTip(local if downloaded else 'Save the selected full OTA ZIP')
             self.ota_download_buttons[role].setEnabled(enabled and not downloaded)
             self.ota_copy_buttons[role].setEnabled(enabled)
 
@@ -990,10 +1007,12 @@ class App(QMainWindow):
         self.start('ota')
 
     def navigate(self, index):
+        if index == 3 and not self.output_available: return
         self.pages.setCurrentIndex(index); self.nav[index].setChecked(True)
         titles = [('New package', 'Turn a full OTA into a ready-to-use flasher package.'),
                   ('Build history', 'Your packages, checksums and build records in one place.'),
-                  ('Environment', 'Check your local engine and verify the build pipeline.')]
+                  ('Environment', 'Check your local engine and verify the build pipeline.'),
+                  ('Build output', 'Progress, results and logs for your latest task.')]
         self.title_label.setText(titles[index][0]); self.subtitle.setText(titles[index][1])
         if index == 1: self.load_history()
 
@@ -1028,11 +1047,18 @@ class App(QMainWindow):
             if action != 'bloat':
                 values['output'] = str(output)
                 self.current_output = self.last_folder = output
+            else:
+                self.last_folder = output
             self.cancel_file = output / ('.cancel-' + uuid.uuid4().hex)
             self.save_preferences(values)
         except OSError as e:
             QMessageBox.warning(self, 'Output folder unavailable', str(e)); return
         self.busy = True; self.action = action; self.started = time.monotonic()
+        self.output_available = True
+        self.nav[3].show(); self.view_output_button.show()
+        self.update_package_summary(values)
+        self.package_summary_card.setVisible(action in ('build', 'bloat', 'ota'))
+        self.navigate(3)
         self.set_busy(True); self.log.clear()
         self.status.setText({'check': 'Checking your environment', 'test': 'Running pipeline self-test',
                              'build': 'Preparing your build', 'bloat': 'Downloading selected bloat', 'ota': 'Downloading selected OTA'}[action])
@@ -1145,6 +1171,8 @@ class App(QMainWindow):
                     self.set_busy(False)
                     if self.cancel_file: self.cancel_file.unlink(missing_ok=True)
                     if self.pages.currentIndex() == 1: self.load_history()
+                    if value == 0 and self.action in ('bloat', 'ota') and self.pages.currentIndex() == 3:
+                        self.navigate(0)
                     if self.closing: self.close(); return
         except queue.Empty: pass
 
