@@ -315,6 +315,19 @@ def run_self_test(args):
                       bytes=len(zero),sha256=zero_sha)},files={
         f'bloat/X9U/{region}_BLOAT/{name}.img':raw_sha if (region,name)==('EU','my_preload') else zero_sha
         for region in ('CN','EU') for name in ('my_preload','my_company')})
+    regions = ('APC','CN','EU','ID','IN','JP','MX','MY','SG','TH','TW','VN')
+    regional_preloads = {'CN':preload, 'EU':preload}
+    for region in (r for r in regions if r not in ('CN','EU')):
+        data = f'X9U {region} PRELOAD\n'.encode().ljust(4096,b'R')
+        checksum = hashlib.sha256(data).hexdigest()
+        regional_preloads[region] = data
+        folder = fixture/'bloat/X9U'/f'{region}_BLOAT'; folder.mkdir(exist_ok=True)
+        (folder/'my_preload.img').write_bytes(data)
+        (folder/'my_company.img').write_bytes(zero)
+        manifest['assets'][checksum] = dict(asset_id=4,asset_name=f'{region}-preload.img',encoding='identity',
+            raw_bytes=len(data),raw_sha256=checksum,bytes=len(data),sha256=checksum)
+        manifest['files'][f'bloat/X9U/{region}_BLOAT/my_preload.img'] = checksum
+        manifest['files'][f'bloat/X9U/{region}_BLOAT/my_company.img'] = zero_sha
     (fixture/'bloat/assets-manifest.json').write_text(json.dumps(manifest),encoding='utf-8')
     (fixture/'bloat/X9U/EU_BLOAT/my_preload.img').unlink()
     with serve_ranges(base) as (address, requests):
@@ -328,11 +341,11 @@ def run_self_test(args):
     if (fixture/'bloat/X9U/EU_BLOAT/my_preload.img').read_bytes()!=preload:
         raise BuildError('Self-test: multipart bloat image bytes differ.')
     for kind in ('Super Flasher','Regional Flasher'):
-        for region in ('CN','EU','APC','JP'):
+        for region in regions:
             print(f'\nSELF-TEST: Find X9 Ultra / {kind} / {region}',flush=True)
             dest=build(Namespace(repo=str(fixture),output=str(base/'results'),device='OPPO Find X9 Ultra',
                 kind=kind,region=region,ota=str(ota),base='',cancel=args.cancel,fixture=True))
-            expected_preload=preload
+            expected_preload=regional_preloads[region]
             with zipfile.ZipFile(dest) as archive:
                 if archive.read('OTA_FILES_HERE/boot.img')!=partitions['boot']:
                     raise BuildError('Self-test: X9U boot image folder is incorrect.')
@@ -348,5 +361,5 @@ def run_self_test(args):
                     for name,data in (('my_preload',expected_preload),('my_company',zero)):
                         if archive.read('OTA_FILES_HERE/'+name+'.img')!=data:
                             raise BuildError('Self-test: OTA extraction overwrote staged X9U bloat.')
-    (base / 'SELF-TEST-PASSED.txt').write_text('All seventeen pipeline builds and multipart transport passed with the REAL otaripper, lpmake and avbtool.\nGenerated packages contain test bytes. DO NOT FLASH.\n', encoding='utf-8')
-    print('\nSELF-TEST PASSED: extraction, three builders, sparse super image, vbmeta patching, ZIP integrity, SHA-256, unzipped folder output, remote patch-matched ODM only, regional super sizes and multipart bloat.', flush=True)
+    (base / 'SELF-TEST-PASSED.txt').write_text('All pipeline builds, regional bloat mapping and multipart transport passed with the REAL otaripper, lpmake and avbtool.\nGenerated packages contain test bytes. DO NOT FLASH.\n', encoding='utf-8')
+    print('\nSELF-TEST PASSED: extraction, three builders, sparse super image, vbmeta patching, ZIP integrity, SHA-256, unzipped folder output, remote patch-matched ODM only, regional super sizes and multipart bloat, regional bloat mapping.', flush=True)

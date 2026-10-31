@@ -87,7 +87,7 @@ def main():
             raise ValueError('Native package verification failed: ' + platform)
         if report.get('documentation_in_app') is not True:
             raise ValueError('Packaged documentation verification failed: ' + platform)
-        if not all(report.get(k) is True for k in ('regional_super_sizes','multipart_bloat')):
+        if not all(report.get(k) is True for k in ('regional_super_sizes','multipart_bloat','regional_bloat')):
             raise ValueError('Packaged regional-size/multipart verification failed: ' + platform)
         if report.get('app_version') != args.tag.removeprefix('v'):
             raise ValueError('Packaged app version does not match release tag: ' + platform)
@@ -104,30 +104,14 @@ def main():
     files.append(checksums)
     notes = '''Native desktop release for x86-64 Linux and Windows.
 
-- OPPO Find X9 Ultra Super and Regional fastboot builds support every currently listed catalog region: APC, CN, EU, ID, IN, JP, MX, MY, SG, TH, TW and VN. A styled region dropdown keeps the setup form compact.
-- All Find X9 Ultra regions use the supplied EU bloat for now, including CN. Physical super sizes remain 19671285760 bytes for CN and 20451426304 for every non-CN region. ColorOS templates and OTA_FILES_HERE are used throughout.
-- Oversized bloat transports can span verified release attachments. Downloads remain sequential; each part, the combined transport and the original image are SHA-256 checked. The app restores the image automatically and removes temporary parts on cancellation or failure.
-- Added real-tool checks for both regional super sizes, staged bloat preservation, multipart transport, and the supplied Linux/Windows host scripts using fake fastboot. Hybrid/recovery options are not enabled for the new device.
-- Documentation opens inside the app with styled headings, code blocks, section navigation and text search. Local Markdown links stay in the viewer; web links open in the browser.
-- OTA selection, link copying and downloads are available before bloat is downloaded. Build package stays disabled until the required bloat, OTA inputs, output folder and any required ODM match are ready.
-- Removed the Running locally badge and Local engine sidebar panel.
-- Windows runs natively, with no WSL, Bash, or separate Python installation.
-- Both packages include the GUI, console worker, full otaripper 3.5.0 with remote HTTP streaming, lpmake, aria2c 1.37.0, and GitHub CLI.
-- Conversions that require a patch-matched ODM automatically select the donor OTA by the exact security patch date, including older targets. Only odm.img is streamed, with payload SHA-256 verification and donor provenance in build.json. Missing matches stop the build; the fixed GitHub ODM is no longer required for these desktop selections.
-- Public releases, bloat downloads and update checks need no login. Bloat and OTA downloads use aria2c -x8 -s8 with curl fallback, one file at a time; checksums and cancellation cleanup remain enforced.
-- Setup fits without scrolling. Build output opens only when work starts, and successful downloads return to setup automatically.
-- Uncheck ZIP build to keep the finished flasher folder without compression. The setting is remembered, folder builds open directly from history, and cancellation removes unfinished output. Command-line builds support --no-zip.
-- Automatic startup update checks notify you when a newer app release is available. Environment includes a manual check and a link to the update download page.
-- Bloat controls now include a labelled Recheck button that spins during verification, plus Delete bloat with an exact-file confirmation and shared-cache preservation.
-- Cancelling a build removes its partial output and temporary files while preserving completed packages and source downloads.
-- Bloat remains required step 2; OTA catalog selection, downloads, and local builds are included.
-- Linux and Windows packages passed native runner tests and their extracted, frozen GUI pipeline self-tests. Validation receipts and SHA256SUMS are attached.
+- Find X9 Ultra now uses the matching regional preload for APC, ID, IN, JP, MX, MY, SG, TH, TW and VN. Images are downloaded as my_preload.img, with size and SHA-256 verification. CN keeps the EU bloat fallback; EU is unchanged.
+- Both Super and Regional builds use the selected region's preload. The configuration hint shows which bloat is used. Existing super partition sizes are unchanged.
+- Source and extracted native packages are tested with distinct preload fixtures for all twelve regions and both build types, verifying that OTA extraction preserves the selected bloat. Both packages include validation receipts and SHA256SUMS.
+- Bundled native otaripper, lpmake and aria2c remain included. Windows runs without WSL or a separate Python installation. Public bloat downloads and update checks need no GitHub login.
 
 Extract the entire platform archive and run FlasherBuilder (Linux) or FlasherBuilder.exe (Windows). Keep the bundled folders and worker beside it. Windows 10/11 x64; Linux x86-64 with curl and Qt runtime libraries (see README).
 
-Public downloads require no login. Private forks can use an existing GitHub CLI login. No account token is shipped in these packages. Existing verified local bloat works offline.
-
-The source ZIP supports both systems. aria2 and GPL/LGPL dependency sources are included under tools/aria2/sources/. Third-party licenses, pinned tool checksums, and build instructions are included. Test fixtures are synthetic and must never be flashed.
+The source ZIP supports both systems and includes dependency sources and third-party licenses. Generated test fixtures must never be flashed.
 '''
     release = find_release(args.tag)
     if release is None or not release.get('draft'): raise ValueError('Expected an unpublished draft release.')
