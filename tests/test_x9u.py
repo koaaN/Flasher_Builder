@@ -82,11 +82,13 @@ class FindX9UltraTests(unittest.TestCase):
                     if pending<len(prompts) and prompts[pending][0] in text[start:]:
                         process.stdin.write(prompts[pending][1]);process.stdin.flush()
                         pending+=1;start=len(text)
-                if process.poll() is None:process.kill()
-                process.wait(timeout=3)
+                try:process.wait(timeout=max(1,deadline-time.monotonic()))
+                except subprocess.TimeoutExpired:
+                    process.kill();process.wait(timeout=3)
                 result=SimpleNamespace(returncode=process.returncode,stdout=text,stderr='')
             finally:
-                process.stdin.close();process.stdout.close();reader.join(timeout=1)
+                if process.poll() is None:process.kill();process.wait(timeout=3)
+                process.stdin.close();reader.join(timeout=1);process.stdout.close()
         else:
             result=subprocess.run(command,cwd=package,env=env,input='\nY\nN\n\n',capture_output=True,text=True,timeout=15)
         return result,log.read_text() if log.exists() else ''
