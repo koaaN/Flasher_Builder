@@ -117,5 +117,26 @@ class WorkspaceLayoutTests(unittest.TestCase):
         self.assertIn('cancelled', self.window.status.text().lower())
         self.assertEqual(self.window.pages.currentIndex(), 3)
 
+    def test_update_notification_and_manual_retry_do_not_reveal_build_output(self):
+        result = dict(version='v9.0.0', url='https://github.com/koaaN/Flasher_Builder/releases/tag/v9.0.0')
+        with patch('flasher_builder.gui.updates.check_for_updates', return_value=result), \
+             patch('flasher_builder.gui.QDesktopServices.openUrl') as open_url:
+            self.window.check_updates()
+            self.wait_for(lambda: not self.window.update_checking)
+            self.assertFalse(self.window.update_notice.isHidden())
+            self.assertIn('v9.0.0', self.window.update_status.text())
+            self.window.update_notice.click()
+            self.assertEqual(open_url.call_args.args[0].toString(), result['url'])
+        self.assertFalse(self.window.output_available)
+        self.assertTrue(self.window.nav[3].isHidden())
+        self.window.navigate(2)
+        self.app.processEvents()
+        environment = self.window.pages.widget(2)
+        self.assertLessEqual(environment.minimumSizeHint().height(), environment.height())
+        with patch('flasher_builder.gui.updates.check_for_updates', return_value=None):
+            self.window.update_check_button.click()
+            self.wait_for(lambda: not self.window.update_checking)
+        self.assertIn('up to date', self.window.update_status.text())
+
 
 if __name__ == '__main__': unittest.main()

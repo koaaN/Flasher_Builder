@@ -47,7 +47,7 @@ def main():
         report = dict(platform=sys.platform, artifact=args.archive.name,
                       sha256=hashlib.sha256(args.archive.read_bytes()).hexdigest(),
                       native_worker=True, frozen_gui=True, pipeline_passed=True,
-                      wsl_required=False, otaripper_version='3.5.0')
+                      wsl_required=False, otaripper_version='3.5.0', app_version=smoke['app_version'])
         args.report.parent.mkdir(parents=True, exist_ok=True)
         args.report.write_text(json.dumps(report, indent=2)+'\n', encoding='utf-8')
         args.report.with_suffix('.log').write_text('\n'.join(logs), encoding='utf-8')

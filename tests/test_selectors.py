@@ -4,8 +4,9 @@ os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 import unittest
 from PySide6.QtCore import Qt
 from PySide6.QtTest import QSignalSpy, QTest
-from PySide6.QtWidgets import QApplication, QVBoxLayout, QWidget
-from flasher_builder.gui import ComboBox, STYLE
+from PySide6.QtGui import QFont, QFontMetrics
+from PySide6.QtWidgets import QApplication, QVBoxLayout, QWidget, QStyle, QStyleOptionButton
+from flasher_builder.gui import ComboBox, STYLE, button
 
 
 class SelectorTests(unittest.TestCase):
@@ -41,6 +42,21 @@ class SelectorTests(unittest.TestCase):
         self.assertEqual(self.combo.currentText(), 'OnePlus 13R')
         self.assertEqual(spy.count(), 1)
         self.assertFalse(self.combo.menu.isVisible())
+
+    def test_region_labels_fit_selected_bold_text_without_resizing(self):
+        for text in ('Global', 'EU', 'IN', 'NA', 'CN'):
+            control = button(text, name='region'); control.setCheckable(True)
+            self.window.layout().addWidget(control)
+            self.app.processEvents()
+            size = control.sizeHint()
+            for selected in (False, True):
+                control.setChecked(selected); self.app.processEvents()
+                control.resize(size)
+                option = QStyleOptionButton(); control.initStyleOption(option)
+                contents = control.style().subElementRect(QStyle.SubElement.SE_PushButtonContents, option, control)
+                font = QFont(control.font()); font.setWeight(QFont.Weight.Bold)
+                self.assertGreaterEqual(contents.width(), QFontMetrics(font).horizontalAdvance(text) + 2, text)
+                self.assertEqual(size, control.sizeHint(), text)
 
     def test_keyboard_navigation_and_escape(self):
         self.combo.setFocus()

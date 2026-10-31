@@ -85,6 +85,8 @@ def main():
         report = json.loads((directory / f'validation-{platform}.json').read_text())
         if not all(report.get(k) is True for k in ('native_worker', 'frozen_gui', 'pipeline_passed')) or report.get('wsl_required') is not False:
             raise ValueError('Native package verification failed: ' + platform)
+        if report.get('app_version') != args.tag.removeprefix('v'):
+            raise ValueError('Packaged app version does not match release tag: ' + platform)
         digest = hashlib.sha256((directory / artifact).read_bytes()).hexdigest()
         if report.get('sha256') != digest or report.get('artifact') != artifact:
             raise ValueError('Validation receipt does not match package: ' + platform)
@@ -99,6 +101,8 @@ def main():
 - Windows runs natively, with no WSL, Bash, or separate Python installation.
 - Both packages include the GUI, console worker, otaripper-lite 3.5.0, lpmake, and GitHub CLI.
 - Setup fits without scrolling. Build output opens only when work starts, and successful downloads return to setup automatically.
+- Automatic startup update checks notify you when a newer app release is available. Environment includes a manual check and a link to the update download page.
+- Selected region buttons reserve room for bold text, including Global.
 - Cancelling a build removes its partial output and temporary files while preserving completed packages and source downloads.
 - Bloat remains required step 2; OTA catalog selection, downloads, and local builds are included.
 - Linux and Windows packages passed native runner tests and their extracted, frozen GUI pipeline self-tests. Validation receipts and SHA256SUMS are attached.

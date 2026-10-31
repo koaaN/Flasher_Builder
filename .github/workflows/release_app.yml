@@ -5,7 +5,7 @@ on:
       tag:
         description: Release version (v1.0.0)
         required: true
-        default: v1.0.0
+        default: v1.0.2
 permissions:
   contents: read
 concurrency:
@@ -23,7 +23,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ inputs.tag }}
           RELEASE_COMMIT: ${{ github.sha }}
-        run: python3 scripts/publish_app_release.py --prepare --tag "$RELEASE_TAG" --commit "$RELEASE_COMMIT"
+        run: |
+          python3 -c 'import os; from flasher_builder import __version__; assert "v" + __version__ == os.environ["RELEASE_TAG"], "Release tag must match the app version"'
+          python3 scripts/publish_app_release.py --prepare --tag "$RELEASE_TAG" --commit "$RELEASE_COMMIT"
   build:
     needs: prepare
     permissions:

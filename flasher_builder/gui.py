@@ -14,7 +14,7 @@ import time
 import uuid
 
 from PySide6.QtCore import QByteArray, QEvent, QPoint, QPointF, QRectF, QSize, Qt, QTimer, QUrl
-from PySide6.QtGui import QColor, QDesktopServices, QFont, QFontDatabase, QIcon, QPainter, QPen, QPixmap, QTextCursor
+from PySide6.QtGui import QColor, QDesktopServices, QFont, QFontDatabase, QFontMetrics, QIcon, QPainter, QPen, QPixmap, QTextCursor
 from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import (QApplication, QButtonGroup, QComboBox, QFileDialog, QFrame,
     QAbstractItemView, QGraphicsDropShadowEffect, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QListView, QMainWindow, QMessageBox, QPlainTextEdit,
@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (QApplication, QButtonGroup, QComboBox, QFileDialo
 from .backend import ROOT, BuildError, Catalog
 from .runtime import Runtime
 from . import ota_catalog
+from . import __version__, updates
 from scripts.materialize_bloat import load_manifest, inspect_downloads
 
 
@@ -261,8 +262,13 @@ class Button(QPushButton):
                 horizontal, vertical = 16, 13
                 break
             ancestor = ancestor.parentWidget()
-        metrics = self.fontMetrics()
-        width = metrics.horizontalAdvance(self.text())
+        font = QFont(self.font())
+        if self.isCheckable():
+            # Qt paints checked region text bold without changing self.font().
+            # Reserve that width in both states so selection never clips/jumps.
+            font.setWeight(QFont.Weight.Bold)
+        metrics = QFontMetrics(font)
+        width = max(metrics.horizontalAdvance(self.text()), metrics.boundingRect(self.text()).width()) + 2
         height = metrics.height()
         if not self.icon().isNull():
             width += self.iconSize().width() + (6 if self.text() else 0)
@@ -378,6 +384,8 @@ class App(QMainWindow):
         self.last_folder = ROOT / 'builds'
         self.action = None
         self.output_available = False
+        self.update_checking = False
+        self.latest_update = None
         self.started = None
         self.settings = ROOT / '.flasher-builder.json'
         self.saved = {}
@@ -447,6 +455,8 @@ class App(QMainWindow):
         self.nav[0].setChecked(True)
         self.nav[3].hide()
         side.addStretch()
+        self.update_notice = button('Update available', 'download', callback=self.open_update)
+        self.update_notice.hide(); side.addWidget(self.update_notice)
         engine = QFrame(); engine.setObjectName('engineCard')
         el = QVBoxLayout(engine); el.setContentsMargins(13, 14, 13, 14); el.setSpacing(6)
         el.addWidget(label('●  LOCAL ENGINE', 'engineTitle'))
@@ -675,7 +685,7 @@ class App(QMainWindow):
         layout.addWidget(label('Build environment', 'cardTitle'))
         layout.addWidget(label('Check the local tools before starting a firmware build.', 'muted'))
         details = QGridLayout(); details.setVerticalSpacing(22); details.setColumnStretch(1, 1)
-        for row, (title, value) in enumerate((('BUILD BACKEND', 'Native Windows' if sys.platform == 'win32' else 'Native Linux'), ('ARCHITECTURE', platform.machine()), ('BUILD TOOLS', 'otaripper  /  lpmake  /  avbtool'), ('WORKFLOW CATALOG', f'{len(self.catalog.builders)} supported device, flasher and region combinations'))):
+        for row, (title, value) in enumerate((('APP VERSION', __version__), ('BUILD BACKEND', 'Native Windows' if sys.platform == 'win32' else 'Native Linux'), ('ARCHITECTURE', platform.machine()), ('BUILD TOOLS', 'otaripper  /  lpmake  /  avbtool'), ('WORKFLOW CATALOG', f'{len(self.catalog.builders)} supported device, flasher and region combinations'))):
             details.addWidget(label(title, 'fieldLabel'), row, 0)
             details.addWidget(label(value, 'summaryValue', True), row, 1)
         layout.addLayout(details)
@@ -686,8 +696,34 @@ class App(QMainWindow):
         self.test_button = button('Run pipeline self-test', 'terminal', callback=lambda: self.start('test'))
         actions.addWidget(self.check_button); actions.addWidget(self.test_button); actions.addStretch(); layout.addLayout(actions)
         layout.addWidget(label('The self-test creates a tiny synthetic OTA and checks the real extraction, packing and ZIP pipeline. Test packages contain synthetic data and must never be flashed.', 'hint', True))
+        line = QFrame(); line.setObjectName('line'); layout.addWidget(line)
+        self.update_status = label('Updates are checked automatically when the app starts.', 'hint', True)
+        layout.addWidget(self.update_status)
+        update_actions = QHBoxLayout()
+        self.update_check_button = button('Check for updates', 'clock', callback=self.check_updates)
+        self.update_open_button = button('Open update release', 'download', callback=self.open_update)
+        self.update_open_button.hide()
+        update_actions.addWidget(self.update_check_button); update_actions.addWidget(self.update_open_button)
+        update_actions.addStretch(); layout.addLayout(update_actions)
         layout.addStretch()
         return scroll
+
+    def check_updates(self):
+        if self.update_checking:
+            return
+        self.update_checking = True; self.update_check_button.setEnabled(False)
+        self.update_status.setText('Checking for app updates…')
+        def task():
+            try:
+                result = updates.check_for_updates(ROOT)
+                self.events.put(('app-update', (result, '')))
+            except updates.UpdateError as e:
+                self.events.put(('app-update', (None, str(e))))
+        threading.Thread(target=task, daemon=True).start()
+
+    def open_update(self):
+        if self.latest_update:
+            QDesktopServices.openUrl(QUrl(self.latest_update['url']))
 
     def console(self):
         area = QWidget(); area.setObjectName('innerPanel')
@@ -1141,7 +1177,22 @@ class App(QMainWindow):
         try:
             for _ in range(300):
                 kind, value = self.events.get_nowait()
-                if kind == 'ota-catalog':
+                if kind == 'app-update':
+                    result, error = value
+                    self.update_checking = False; self.update_check_button.setEnabled(True)
+                    if error:
+                        self.update_status.setText(error)
+                    elif result:
+                        self.latest_update = result
+                        self.update_status.setText(f'Flasher Builder {result["version"]} is available. You have v{__version__}. Open the release to download the new package.')
+                        self.update_notice.setText('Update ' + result['version'])
+                        self.update_notice.setToolTip('A newer Flasher Builder release is available. Open its download page.')
+                        self.update_notice.show(); self.update_open_button.show()
+                    else:
+                        self.latest_update = None
+                        self.update_status.setText(f'Flasher Builder v{__version__} is up to date.')
+                        self.update_notice.hide(); self.update_open_button.hide()
+                elif kind == 'ota-catalog':
                     token, data, error = value
                     if token == self.ota_fetch_token:
                         self.ota_fetching = False
@@ -1253,6 +1304,7 @@ class App(QMainWindow):
 def main():
     application = QApplication(sys.argv)
     application.setApplicationName('Flasher Builder')
+    application.setApplicationVersion(__version__)
     application.setStyle('Fusion')
     application.setStyleSheet(STYLE)
     font = QFont('Inter' if 'Inter' in QFontDatabase.families() else 'Segoe UI' if sys.platform == 'win32' else 'DejaVu Sans', 10)
@@ -1272,7 +1324,7 @@ def main():
                     return
                 success = not window.busy and window.status.text() == 'Self-test passed · test data only'
                 (output / 'qt-smoke-test.log').write_text(window.log.toPlainText(), encoding='utf-8')
-                (output / 'qt-smoke-test.json').write_text(json.dumps({'passed': success, 'status': window.status.text(), 'frozen': bool(getattr(sys, 'frozen', False))}, indent=2) + '\n', encoding='utf-8')
+                (output / 'qt-smoke-test.json').write_text(json.dumps({'passed': success, 'status': window.status.text(), 'frozen': bool(getattr(sys, 'frozen', False)), 'app_version': __version__}, indent=2) + '\n', encoding='utf-8')
                 window.navigate(0)
                 window.grab().save(str(output / 'qt-preview.png'))
                 application.exit(0 if success else 1)
@@ -1280,6 +1332,8 @@ def main():
             smoke_timer.timeout.connect(finish_test)
             QTimer.singleShot(100, launch_test)
             smoke_timer.start(300)
+        else:
+            QTimer.singleShot(1500, window.check_updates)
     except Exception as e:
         QMessageBox.critical(None, 'Flasher Builder could not start', str(e)); return 1
     return application.exec()

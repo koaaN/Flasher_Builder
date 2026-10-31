@@ -142,6 +142,8 @@ The GitHub Actions scripts extract to explicit directories, normalize script lin
 
 The setup form fits without scrolling, including the Ace 6 target/base OTA selectors. Build output stays hidden until a task starts and uses its own view, so logs never shrink the setup form. Successful bloat and OTA downloads return to setup automatically; **View output** reopens their logs.
 
+The app checks for newer stable app releases in the background on startup. When an update is available, an **Update v…** button appears in the sidebar and opens the release download page. **Environment → Check for updates** checks again manually and displays your installed version. For this private repository, update checks use your existing GitHub CLI login (the same login used for bloat downloads); connection or login problems appear in Environment and do not block builds. Checks ignore bloat releases, drafts, prereleases and releases missing your platform's package. Extract the new package to update; automatic installation is not performed.
+
 The UI uses PySide6 (Qt 6). The build worker uses Python's standard library. Build history, environment checks, task logs and package summaries are built into the desktop interface. Create a portable source ZIP with:
 
 ```sh
