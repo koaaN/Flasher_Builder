@@ -892,8 +892,8 @@ class App(QMainWindow):
             self.catalog.selection(values['device'], values['kind'], self.region)
             text = 'Target: OnePlus 15R India OxygenOS OTA · Base: Ace 6 ColorOS OTA' if needs_base else 'Only combinations supported by the build workflow are available.'
             if ota_catalog.needs_matched_odm(values['device'], values['kind'], self.region):
-                text = 'Target: OnePlus 15R OTA · ODM: Ace 6T CN OTA with the exact same security patch.'
-                self.source_hint.setText('Only odm.img is streamed from the matching Ace 6T OTA. No matching patch means the build is unavailable.')
+                text = 'Target: OnePlus 15R · ODM: Ace 6T CN · Exact patch match required.'
+                self.source_hint.setText('Only odm.img is streamed; the donor must have the same security patch.')
             else:
                 self.source_hint.setText('Choose a version to download or build. Temporary links are refreshed automatically.' if self.ota_mode == 'catalog' else
                                          'Paste the direct HTTP(S) link to a full OTA ZIP.' if self.ota_mode == 'url' else
