@@ -80,7 +80,8 @@ class OtaCatalogTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             source = root / 'fixture.zip'; make_ota(source, {'boot': b'boot' * 1024})
-            entry = release(size=source.stat().st_size, md5=hashlib.md5(source.read_bytes()).hexdigest())
+            entry = release(size=source.stat().st_size, md5=hashlib.md5(source.read_bytes()).hexdigest(),
+                            sha256=hashlib.sha256(source.read_bytes()).hexdigest())
             args = Namespace(repo=str(backend.ROOT), device='Oneplus 13', kind='SuperHybrid Flasher', region='GLO',
                 ota='', base='', ota_catalog_id='stable-id', base_catalog_id='', cancel=None,
                 download_role='ota', download_path=str(root / 'saved.zip'), bloat_dir=str(root / 'bloat'))
@@ -93,6 +94,10 @@ class OtaCatalogTests(unittest.TestCase):
                 with self.assertRaisesRegex(BuildError, 'checksum'): backend.download_ota(args)
                 self.assertFalse((root / 'bad.zip').exists())
                 self.assertFalse(list(root.glob('.ota-download-*')))
+                entry['md5'] = hashlib.md5(source.read_bytes()).hexdigest()
+                entry['sha256'] = '0' * 64
+                with self.assertRaisesRegex(BuildError, 'checksum'): backend.download_ota(args)
+                self.assertFalse((root / 'bad.zip').exists())
                 entry['size'] += 1
                 with self.assertRaisesRegex(BuildError, 'size'): backend.download_ota(args)
                 self.assertFalse((root / 'bad.zip').exists())

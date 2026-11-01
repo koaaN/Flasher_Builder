@@ -1286,10 +1286,14 @@ class App(QMainWindow):
     def refresh_ota_context(self):
         context = (self.fields['device'].currentText(), self.fields['kind'].currentText(), self.region)
         if context != self.ota_context:
+            if self.ota_context and ota_catalog.uses_na_api(context[0], context[2]) != ota_catalog.uses_na_api(self.ota_context[0], self.ota_context[2]):
+                self.ota_data = None
             self.ota_context = context
             self.ota_fetch_token += 1; self.ota_fetching = False
             self.ota_link_token += 1; self.ota_link_pending = False
             self.populate_ota_versions()
+            if self.ota_mode == 'catalog' and self.ota_data is None:
+                self.fetch_ota_versions()
         roles = ota_catalog.targets(*context)
         self.ota_role_panels['base'].setVisible('base' in roles)
         self.catalog_roles.removeWidget(self.ota_role_panels['ota'])
@@ -1321,9 +1325,10 @@ class App(QMainWindow):
         self.ota_fetching = True
         self.ota_catalog_status.setText('Fetching available versions…')
         self.update_ota_controls()
+        na = ota_catalog.uses_na_api(self.ota_context[0], self.ota_context[2])
         def task():
             try:
-                self.events.put(('ota-catalog', (token, ota_catalog.load_catalog(ROOT / '.ota-catalog'), None)))
+                self.events.put(('ota-catalog', (token, ota_catalog.load_catalog(ROOT / '.ota-catalog', na=na), None)))
             except Exception as e:
                 self.events.put(('ota-catalog', (token, None, str(e))))
         threading.Thread(target=task, daemon=True).start()
@@ -1338,6 +1343,7 @@ class App(QMainWindow):
             details = [f'{entry["device"]} / {entry["region"]}', entry.get('model', '')]
             if isinstance(entry.get('size'), int): details.append(f'{entry["size"] / 1024**3:.2f} GiB')
             if entry.get('security_patch'): details.append('Patch ' + entry['security_patch'])
+            if entry.get('package_type') == 'reconstructed_full': details.append('Reconstructed full package')
             local = self.ota_local.get(entry['id'])
             if local and Path(local).is_file(): details.append('Saved locally')
             self.ota_details[role].setToolTip(local or '')

@@ -111,8 +111,17 @@ def validate_ota(path):
     except (OSError, zipfile.BadZipFile, KeyError, UnicodeError) as e:
         raise BuildError(f'Choose a full Android OTA ZIP containing payload.bin and metadata: {e}') from e
     fields = dict(line.split('=', 1) for line in metadata.splitlines() if '=' in line)
-    if fields.get('ota-type', 'AB') != 'AB' or fields.get('pre-build') or fields.get('pre-build-incremental'):
+    if fields.get('ota-type', 'AB') != 'AB':
         raise BuildError('This appears to be an incremental OTA. A FULL OTA is required.')
+    if fields.get('pre-build') or fields.get('pre-build-incremental'):
+        # Reconstructed full packages can retain their original delta metadata.
+        # Accept them only when every partition is self-contained and complete.
+        from flasher_builder.payload import verify_full_payload
+        try:
+            with zipfile.ZipFile(path) as z, z.open('payload.bin') as stream:
+                verify_full_payload(stream, info.file_size)
+        except (ValueError, TypeError, OSError, zipfile.BadZipFile) as e:
+            raise BuildError(f'This appears to be an incremental OTA. A FULL OTA is required: {e}') from e
     version = fields.get('version_name') or fields.get('ota_version') or fields.get('post-build-incremental', '')
     matches = re.findall(r'\d+(?:\.\d+){1,4}', version)
     version = max(matches, key=len) if matches else re.sub(r'[^\w.()+-]', '_', version)[:80]
@@ -351,18 +360,19 @@ def prepare_ota(worker, args, role, destination):
         size = entry.get('size')
         if isinstance(size, int) and size > 0 and destination.stat().st_size != size:
             raise BuildError('Downloaded OTA size does not match the catalog. Retry the download.')
-        md5 = entry.get('md5', '')
-        if md5:
-            if not re.fullmatch(r'[0-9a-fA-F]{32}', md5):
+        checksums = {name: entry[name] for name in ('md5', 'sha256') if entry.get(name)}
+        if checksums:
+            if any(not isinstance(value, str) or not re.fullmatch(r'[0-9a-fA-F]{' + str(32 if name == 'md5' else 64) + '}', value)
+                   for name, value in checksums.items()):
                 raise BuildError('The catalog has an invalid OTA checksum.')
-            print('Verifying catalog MD5 checksum…', flush=True)
+            print('Verifying catalog ' + ' and '.join(name.upper() for name in checksums) + ' checksums…', flush=True)
             if standalone: print('STEP 4/5 • Verify catalog checksum', flush=True)
-            digest = hashlib.md5()
+            digests = {name: hashlib.new(name) for name in checksums}
             with destination.open('rb') as f:
                 while chunk := f.read(4 * 1024 * 1024):
                     worker.check()
-                    digest.update(chunk)
-            if digest.hexdigest().lower() != md5.lower():
+                    for digest in digests.values(): digest.update(chunk)
+            if any(digests[name].hexdigest().lower() != value.lower() for name, value in checksums.items()):
                 raise BuildError('Downloaded OTA checksum does not match the catalog. Retry the download.')
     return result
 

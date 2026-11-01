@@ -16,6 +16,7 @@ from urllib.request import Request, build_opener, HTTPCookieProcessor
 
 SITE = 'https://roms.danielspringer.at/index.php?view=ota'
 API = 'https://roms.danielspringer.at/api/ota.php'
+NA_API = 'https://roms.danielspringer.at/api/na.php'
 TTL = 900
 MAX_RESPONSE = 16 * 1024 * 1024
 DEVICE_NAMES = {
@@ -32,6 +33,10 @@ DEVICE_NAMES = {
 
 class CatalogError(Exception):
     pass
+
+
+def uses_na_api(device, region):
+    return region == 'NA' and DEVICE_NAMES.get(device, device) in ('OP 13', 'OP 15')
 
 
 def targets(device, kind, region):
@@ -112,9 +117,9 @@ def validate_catalog(data):
     return data
 
 
-def load_catalog(cache_dir, force=False):
+def load_catalog(cache_dir, force=False, na=False):
     """Share a 15-minute, ETag-aware cache across GUI and worker processes."""
-    path = Path(cache_dir) / 'catalog.json'
+    path = Path(cache_dir) / ('na-catalog.json' if na else 'catalog.json')
     cached = None
     try:
         cached = json.loads(path.read_text(encoding='utf-8'))
@@ -125,7 +130,7 @@ def load_catalog(cache_dir, force=False):
         cached = None
     headers = {'If-None-Match': cached['etag']} if cached and cached.get('etag') else {}
     try:
-        body, response_headers = request(build_opener(), API, headers=headers)
+        body, response_headers = request(build_opener(), NA_API if na else API, headers=headers)
         if body is None:
             if not cached:
                 raise CatalogError('The OTA service returned an empty catalog.')
@@ -168,7 +173,7 @@ def releases_for(data, device, region):
 
 
 def find_release(cache_dir, release_id, device, region):
-    data = load_catalog(cache_dir)
+    data = load_catalog(cache_dir, na=uses_na_api(device, region))
     matches = [e for e in releases_for(data, device, region) if e['id'] == release_id]
     if not matches:
         raise CatalogError('The selected OTA version is no longer listed for this device/region. Fetch versions again.')
@@ -217,6 +222,10 @@ def resolve_link(entry):
     source = entry['source_url']
     # Unsigned direct ZIPs need no session. Signed links are refreshed via the site.
     parts = urlsplit(source)
+    if (uses_na_api(entry['device'], entry['region']) and entry.get('package_type') == 'reconstructed_full'
+            and parts.scheme == 'https' and parts.netloc == urlsplit(NA_API).netloc
+            and parts.path == '/download.php' and usable_link(source)):
+        return source
     if parts.path.lower().endswith('.zip') and not any(k in parse_qs(parts.query)
             for k in ('Expires', 'expires', 'x-oss-expires', 'Signature', 'x-oss-signature')) and usable_link(source):
         return source

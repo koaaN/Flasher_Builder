@@ -88,6 +88,7 @@ class BuilderTests(unittest.TestCase):
                 validate_ota(ota)
             make_ota(ota, {'boot': b'\0' * 4096})
             self.assertEqual(validate_ota(ota)[0], '1.2.3.4')
+            make_ota(ota, {'boot': b'\0' * 4096}, operation_type=4)
             with zipfile.ZipFile(ota) as z:
                 payload = z.read('payload.bin')
             with zipfile.ZipFile(ota, 'w') as z:

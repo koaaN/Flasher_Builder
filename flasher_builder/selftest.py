@@ -46,13 +46,13 @@ def blob(field, data):
     return varint((field << 3) | 2) + varint(len(data)) + data
 
 
-def make_ota(path, partitions, metadata=None):
+def make_ota(path, partitions, metadata=None, operation_type=0):
     manifest = number(3, 4096) + number(12, 0)
     payload_data = b''
     for name, data in partitions.items():
         assert len(data) % 4096 == 0
         extent = number(1, 0) + number(2, len(data) // 4096)
-        operation = (number(1, 0) + number(2, len(payload_data)) + number(3, len(data))
+        operation = (number(1, operation_type) + number(2, len(payload_data)) + number(3, len(data))
                      + blob(6, extent) + number(7, len(data)) + blob(8, hashlib.sha256(data).digest()))
         info = number(1, len(data)) + blob(2, hashlib.sha256(data).digest())
         partition = blob(1, name.encode()) + blob(7, info) + blob(8, operation)
@@ -173,9 +173,9 @@ def run_self_test(args):
     print(f'Self-test folder: {base}', flush=True)
     for directory in ('.github', 'build_scripts', 'scripts', 'otaripper', 'lpmake', 'build_tools_assets', 'Platform-Tools'):
         shutil.copytree(repo / directory, fixture / directory)
-    for dev in ('13', 'Ace6', 'Ace6T', 'NEO8', 'X9U'):
+    for dev in ('13', '15', 'Ace6', 'Ace6T', 'NEO8', 'X9U'):
         shutil.copytree(repo / 'flasher_scripts' / dev, fixture / 'flasher_scripts' / dev)
-        for region in ('GLO_BLOAT', 'EU_BLOAT', 'IN_BLOAT', 'CN_BLOAT', 'OOS_BLOAT', 'COS_FILES_HERE'):
+        for region in ('GLO_BLOAT', 'EU_BLOAT', 'IN_BLOAT', 'NA_BLOAT', 'CN_BLOAT', 'OOS_BLOAT', 'COS_FILES_HERE'):
             folder = fixture / 'bloat' / dev / region
             folder.mkdir(parents=True)
             for name in ('my_preload', 'my_company', 'my_region', 'oplusstanvbk', 'system_dlkm_oki'):
@@ -208,18 +208,24 @@ def run_self_test(args):
                         product=b'TARGET PRODUCT\0'.ljust(4096, b'P'))
     target_ota = base / 'TEST-ONLY-target-OTA.zip'
     make_ota(target_ota, target_parts)
+    na_ota = base/'TEST-ONLY-reconstructed-NA.zip'
+    make_ota(na_ota,partitions,'ota-type=AB\npre-build=older-build\npre-build-incremental=older\nversion_name=TEST_1.2.3.4\n')
     cases = [('Oneplus 13', 'SuperHybrid Flasher', 'GLO'),
              ('Oneplus 13', 'RegionalHybrid Flasher', 'CN'),
              ('Oneplus 13', 'RegionalHybrid Flasher', 'GLO'),
              ('Oneplus Ace 6', 'Super Flasher', 'CN'),
              ('Oneplus Ace 6', 'SuperHybrid Flasher', 'IN'),
-             ('Realme NEO8', 'Super Flasher', 'CN')]
+             ('Realme NEO8', 'Super Flasher', 'CN'),
+             ('Oneplus 13', 'SuperHybrid Flasher', 'NA'),
+             ('Oneplus 13', 'RegionalHybrid Flasher', 'NA'),
+             ('Oneplus 15', 'SuperHybrid Flasher', 'NA'),
+             ('Oneplus 15', 'RegionalHybrid Flasher', 'NA')]
     for device, kind, region in cases:
         worker.check()
         print(f'\nSELF-TEST: {device} / {kind} / {region}', flush=True)
         conversion = device == 'Oneplus Ace 6' and region == 'IN'
         dest = build(Namespace(repo=str(fixture), output=str(base / 'results'), device=device, kind=kind,
-                               region=region, ota=str(target_ota if conversion else ota), base=str(ota), cancel=args.cancel, fixture=True))
+                               region=region, ota=str(na_ota if region == 'NA' else target_ota if conversion else ota), base=str(ota), cancel=args.cancel, fixture=True))
         with zipfile.ZipFile(dest) as z:
             boot = ('COS_FILES_HERE' if region == 'CN' else 'OOS_FILES_HERE') + '/boot.img'
             if z.read(boot) != partitions['boot']:
@@ -362,4 +368,4 @@ def run_self_test(args):
                         if archive.read('OTA_FILES_HERE/'+name+'.img')!=data:
                             raise BuildError('Self-test: OTA extraction overwrote staged X9U bloat.')
     (base / 'SELF-TEST-PASSED.txt').write_text('All pipeline builds, regional bloat mapping and multipart transport passed with the REAL otaripper, lpmake and avbtool.\nGenerated packages contain test bytes. DO NOT FLASH.\n', encoding='utf-8')
-    print('\nSELF-TEST PASSED: extraction, three builders, sparse super image, vbmeta patching, ZIP integrity, SHA-256, unzipped folder output, remote patch-matched ODM only, regional super sizes and multipart bloat, regional bloat mapping.', flush=True)
+    print('\nSELF-TEST PASSED: extraction, three builders, sparse super image, vbmeta patching, ZIP integrity, SHA-256, unzipped folder output, remote patch-matched ODM only, regional super sizes and multipart bloat, regional bloat mapping, reconstructed NA packages.', flush=True)

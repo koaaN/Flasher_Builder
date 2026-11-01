@@ -87,7 +87,7 @@ def main():
             raise ValueError('Native package verification failed: ' + platform)
         if report.get('documentation_in_app') is not True:
             raise ValueError('Packaged documentation verification failed: ' + platform)
-        if not all(report.get(k) is True for k in ('regional_super_sizes','multipart_bloat','regional_bloat')):
+        if not all(report.get(k) is True for k in ('regional_super_sizes','multipart_bloat','regional_bloat','reconstructed_na')):
             raise ValueError('Packaged regional-size/multipart verification failed: ' + platform)
         if report.get('app_version') != args.tag.removeprefix('v'):
             raise ValueError('Packaged app version does not match release tag: ' + platform)
@@ -104,10 +104,11 @@ def main():
     files.append(checksums)
     notes = '''Native desktop release for x86-64 Linux and Windows.
 
-- Find X9 Ultra now uses the matching regional preload for APC, ID, IN, JP, MX, MY, SG, TH, TW and VN. Images are downloaded as my_preload.img, with size and SHA-256 verification. CN keeps the EU bloat fallback; EU is unchanged.
-- Both Super and Regional builds use the selected region's preload. The configuration hint shows which bloat is used. Existing super partition sizes are unchanged.
-- Source and extracted native packages are tested with distinct preload fixtures for all twelve regions and both build types, verifying that OTA extraction preserves the selected bloat. Both packages include validation receipts and SHA256SUMS.
-- Bundled native otaripper, lpmake and aria2c remain included. Windows runs without WSL or a separate Python installation. Public bloat downloads and update checks need no GitHub login.
+- OnePlus 13 and OnePlus 15 NA selections now use Daniel Springer's NA API for the latest reconstructed full firmware packages. Direct download links work without the regular OTA website's link-resolution session.
+- NA and regular OTA catalogs have separate fifteen-minute caches and ETags. Changing regions automatically switches feeds, and saved catalog data remains available offline.
+- Reconstructed full packages work even when they retain original incremental metadata: the app checks that every payload partition contains complete image data without source-dependent operations. Genuine incremental payloads remain unsupported. Downloaded and local reconstructed ZIPs use the same check.
+- Catalog downloads verify the complete ZIP's size and all supplied MD5 and SHA-256 checksums. NA bloat continues to use the existing verified GitHub assets.
+- Both native packages test NA SuperHybrid and RegionalHybrid builds for both devices, alongside the existing build and download checks. Validation receipts and SHA256SUMS are attached.
 
 Extract the entire platform archive and run FlasherBuilder (Linux) or FlasherBuilder.exe (Windows). Keep the bundled folders and worker beside it. Windows 10/11 x64; Linux x86-64 with curl and Qt runtime libraries (see README).
 

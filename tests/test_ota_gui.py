@@ -63,6 +63,20 @@ class OtaGuiTests(unittest.TestCase):
         self.assertEqual(self.window.values()['ota'], '/tmp/manual.zip')
         self.fetch.assert_called_once()
 
+    def test_na_feed_switches_for_both_devices_and_returns_to_regular_catalog(self):
+        for device,id in (('OP 13','na13'),('OP 15','na15')):
+            self.catalog['releases'].append(dict(entry(id,device,'NA'),package_type='reconstructed_full'))
+        self.window.set_region('NA')
+        self.wait_for(lambda:not self.window.ota_fetching and self.window.values().get('ota_catalog_id')=='na13')
+        self.assertTrue(self.fetch.call_args.kwargs['na'])
+        self.assertIn('Reconstructed full package',self.window.ota_details['ota'].text())
+        self.window.fields['device'].setCurrentText('Oneplus 15')
+        self.wait_for(lambda:self.window.values().get('ota_catalog_id')=='na15')
+        self.window.fields['device'].setCurrentText('Oneplus 13')
+        self.window.set_region('GLO')
+        self.wait_for(lambda:not self.window.ota_fetching and self.window.values().get('ota_catalog_id')=='glo')
+        self.assertFalse(self.fetch.call_args.kwargs['na'])
+
     def test_conversion_populates_target_and_base_without_mixing_devices(self):
         self.window.fields['device'].setCurrentText('Oneplus Ace 6'); self.window.set_region('IN')
         values = self.window.values()
