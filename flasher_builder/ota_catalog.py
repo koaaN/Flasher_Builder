@@ -117,7 +117,7 @@ def validate_catalog(data):
     return data
 
 
-def load_catalog(cache_dir, force=False, na=False):
+def _load_feed(cache_dir, force=False, na=False):
     """Share a 15-minute, ETag-aware cache across GUI and worker processes."""
     path = Path(cache_dir) / ('na-catalog.json' if na else 'catalog.json')
     cached = None
@@ -161,6 +161,31 @@ def load_catalog(cache_dir, force=False, na=False):
         if cached:
             return dict(cached['data'], _stale=True)
         raise
+
+
+def load_catalog(cache_dir, force=False, na=False):
+    """Combine NA rebuilds with regular OP15 NA releases, never regular OP13 NA."""
+    if not na:
+        return _load_feed(cache_dir, force=force)
+    feeds, errors = {}, {}
+    for name, dedicated in (('na', True), ('regular', False)):
+        try:
+            feeds[name] = _load_feed(cache_dir, force=force, na=dedicated)
+        except CatalogError as error:
+            errors[name] = str(error)
+    if not feeds:
+        raise CatalogError(errors['na'])
+    data = dict(feeds.get('na', {'api_version': '1'}))
+    entries = {e['id']: e for e in feeds.get('na', {}).get('releases', [])
+               if uses_na_api(e['device'], e['region'])}
+    for entry in feeds.get('regular', {}).get('releases', []):
+        if (entry['device'], entry['region']) == ('OP 15', 'NA'):
+            entries.setdefault(entry['id'], entry)
+    data['releases'] = list(entries.values())
+    if 'count' in data: data['count'] = len(entries)
+    if any(feed.get('_stale') for feed in feeds.values()): data['_stale'] = True
+    if errors: data['_feed_errors'] = errors
+    return data
 
 
 def releases_for(data, device, region):

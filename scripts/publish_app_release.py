@@ -102,17 +102,11 @@ def main():
     checksums = directory / 'SHA256SUMS'
     checksums.write_text(''.join(f'{hashlib.sha256(p.read_bytes()).hexdigest()}  {p.name}\n' for p in files), encoding='utf-8')
     files.append(checksums)
-    notes = '''Native desktop release for x86-64 Linux and Windows.
+    notes = '''Added OnePlus 15 NA firmware versions from the normal OTA API alongside the dedicated NA feed.
 
-- OnePlus 13 and OnePlus 15 NA selections now use Daniel Springer's NA API for the latest reconstructed full firmware packages. Direct download links work without the regular OTA website's link-resolution session.
-- NA and regular OTA catalogs have separate fifteen-minute caches and ETags. Changing regions automatically switches feeds, and saved catalog data remains available offline.
-- Reconstructed full packages work even when they retain original incremental metadata: the app checks that every payload partition contains complete image data without source-dependent operations. Genuine incremental payloads remain unsupported. Downloaded and local reconstructed ZIPs use the same check.
-- Catalog downloads verify the complete ZIP's size and all supplied MD5 and SHA-256 checksums. NA bloat continues to use the existing verified GitHub assets.
-- Both native packages test NA SuperHybrid and RegionalHybrid builds for both devices, alongside the existing build and download checks. Validation receipts and SHA256SUMS are attached.
+OnePlus 13 NA continues to use only the dedicated NA feed, as before.
 
-Extract the entire platform archive and run FlasherBuilder (Linux) or FlasherBuilder.exe (Windows). Keep the bundled folders and worker beside it. Windows 10/11 x64; Linux x86-64 with curl and Qt runtime libraries (see README).
-
-The source ZIP supports both systems and includes dependency sources and third-party licenses. Generated test fixtures must never be flashed.
+Available for Linux and Windows. Extract the full platform archive and run FlasherBuilder (Linux) or FlasherBuilder.exe (Windows).
 '''
     release = find_release(args.tag)
     if release is None or not release.get('draft'): raise ValueError('Expected an unpublished draft release.')

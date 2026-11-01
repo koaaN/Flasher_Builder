@@ -34,12 +34,40 @@ class NaSupportTests(unittest.TestCase):
                 self.assertEqual(call.call_count,2)
             with patch.object(ota_catalog,'request',return_value=(None,{})) as call:
                 self.assertEqual(ota_catalog.load_catalog(tmp,force=True,na=True),na)
-                self.assertEqual(call.call_args.args[1],ota_catalog.NA_API)
-                self.assertEqual(call.call_args.kwargs['headers'],{'If-None-Match':ota_catalog.NA_API})
+                self.assertEqual({c.args[1]:c.kwargs['headers'] for c in call.call_args_list},
+                    {url:{'If-None-Match':url} for url in (ota_catalog.NA_API,ota_catalog.API)})
             with patch.object(ota_catalog,'request',side_effect=ota_catalog.CatalogError('offline')):
                 cached=ota_catalog.load_catalog(tmp,force=True,na=True)
                 self.assertTrue(cached['_stale'])
                 self.assertEqual(cached['releases'],na['releases'])
+
+    def test_merges_regular_op15_na_but_never_regular_op13_na_or_other_regions(self):
+        rebuilt=[entry(),entry('OP 15')]
+        normal=[entry('OP 15',id='official15',package_type=None),
+                entry('OP 13',id='excluded13',package_type=None),
+                entry('OP 15',id='excluded-eu',region='EU'),rebuilt[1]]
+        def feed(cache_dir,force=False,na=False):
+            return {'api_version':'1','releases':rebuilt if na else normal}
+        with patch.object(ota_catalog,'_load_feed',side_effect=feed):
+            data=ota_catalog.load_catalog('/tmp',na=True)
+            self.assertEqual({e['id'] for e in ota_catalog.releases_for(data,'OP 15','NA')},{'OP 15','official15'})
+            self.assertEqual([e['id'] for e in ota_catalog.releases_for(data,'OP 13','NA')],['OP 13'])
+            self.assertEqual(ota_catalog.find_release('/tmp','official15','OP 15','NA')['id'],'official15')
+            with self.assertRaises(ota_catalog.CatalogError):
+                ota_catalog.find_release('/tmp','excluded13','OP 13','NA')
+
+    def test_either_feed_can_fail_without_hiding_the_other(self):
+        for failed in ('na','regular'):
+            def feed(cache_dir,force=False,na=False):
+                if na == (failed=='na'):raise ota_catalog.CatalogError('offline')
+                return {'api_version':'1','releases':[entry('OP 15',id='rebuilt' if na else 'official'),entry('OP 13',id='only-if-rebuilt')]}
+            with self.subTest(failed=failed),patch.object(ota_catalog,'_load_feed',side_effect=feed):
+                data=ota_catalog.load_catalog('/tmp',na=True)
+                self.assertEqual(len(ota_catalog.releases_for(data,'OP 15','NA')),1)
+                self.assertEqual(len(ota_catalog.releases_for(data,'OP 13','NA')),0 if failed=='na' else 1)
+                self.assertEqual(data['_feed_errors'],{failed:'offline'})
+        with patch.object(ota_catalog,'_load_feed',side_effect=ota_catalog.CatalogError('offline')):
+            with self.assertRaises(ota_catalog.CatalogError):ota_catalog.load_catalog('/tmp',na=True)
 
     def test_exact_na_device_selection_uses_na_feed_and_direct_download_without_session(self):
         for device in ('OP 13','OP 15'):
